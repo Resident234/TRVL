@@ -11,6 +11,7 @@ use app\shared\Publications\Contract\PublicationRepositoryInterface;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Dto\PublicationData;
 use app\shared\Settings\Service\PublicationSettingsService;
+use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
@@ -116,10 +117,12 @@ final class PublicationsService
         string $text,
         array $imageUrls,
         MessageEntities $formatting,
+        LinkButton $button,
         ?ForumPublicationRef $forumRef = null,
     ): void {
         $this->assertPartValid($text, $formatting);
-        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting);
+        $button->assertValid();
+        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $button);
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -136,13 +139,22 @@ final class PublicationsService
         string $text,
         array $imageUrls,
         MessageEntities $formatting,
+        LinkButton $button,
         string $publishedAt,
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
     ): void {
         $this->assertPartValid($text, $formatting);
+        $button->assertValid();
         $normalized = $this->normalizeDate($publishedAt, $userTimezone);
-        $id = $this->publications->createPost($text, $imageUrls, $normalized, $this->now(), $formatting);
+        $id = $this->publications->createPost(
+            $text,
+            $imageUrls,
+            $normalized,
+            $this->now(),
+            $formatting,
+            $button,
+        );
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -161,18 +173,22 @@ final class PublicationsService
      * saved without images. $formats is the highlighting of every part the
      * same way, one entity list per part, counted from the same text the form
      * shows — the trim() below moves it along with the text it describes.
+     * $buttons is the link button of every part in the same order again; a part
+     * with an empty one goes to the channel without a keyboard.
      *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
      * @param MessageEntities[] $formats
+     * @param LinkButton[] $buttons
      * @throws InvalidArgumentException when a part is empty or longer than the
-     * Telegram limit, when its formatting does not fit it, or when the date is
-     * invalid
+     * Telegram limit, when its formatting does not fit it, when its button is
+     * half-filled or malformed, or when the date is invalid
      */
     public function saveParts(
         array $texts,
         array $imageGroups,
         array $formats,
+        array $buttons,
         string $publishedAt,
         string $action,
         ?ForumPublicationRef $forumRef = null,
@@ -180,19 +196,22 @@ final class PublicationsService
     ): void {
         $parts = [];
         $formatting = [];
+        $keyboard = [];
         foreach (array_values($texts) as $index => $text) {
             $parts[] = trim($text);
             $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
+            $keyboard[] = $buttons[$index] ?? LinkButton::empty();
         }
         $albums = array_values($imageGroups);
 
         foreach ($parts as $index => $text) {
             $this->assertPartValid($text, $formatting[$index]);
+            $keyboard[$index]->assertValid();
         }
 
         if (count($parts) === 1) {
             if ($action === 'draft') {
-                $this->saveDraft($parts[0], $albums[0] ?? [], $formatting[0], $forumRef);
+                $this->saveDraft($parts[0], $albums[0] ?? [], $formatting[0], $keyboard[0], $forumRef);
 
                 return;
             }
@@ -201,6 +220,7 @@ final class PublicationsService
                 $parts[0],
                 $albums[0] ?? [],
                 $formatting[0],
+                $keyboard[0],
                 $publishedAt,
                 $forumRef,
                 $userTimezone,
@@ -218,6 +238,7 @@ final class PublicationsService
                     'text' => $text,
                     'imageUrls' => $albums[$index] ?? [],
                     'formatting' => $formatting[$index],
+                    'button' => $keyboard[$index],
                 ];
             }
 
@@ -233,6 +254,7 @@ final class PublicationsService
                 'text' => $text,
                 'imageUrls' => $albums[$index] ?? [],
                 'formatting' => $formatting[$index],
+                'button' => $keyboard[$index],
                 'publishedAt' => $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes()),
             ];
         }
@@ -425,6 +447,7 @@ final class PublicationsService
                 $draft->createdAt,
                 $draft->updatedAt,
                 formatting: $draft->formatting,
+                button: $draft->button,
             ),
             $now,
         );
@@ -455,6 +478,7 @@ final class PublicationsService
                 $draft->createdAt,
                 $draft->updatedAt,
                 formatting: $draft->formatting,
+                button: $draft->button,
             ),
             $now,
         );
@@ -478,7 +502,7 @@ final class PublicationsService
         }
 
         $now = $this->now();
-        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting);
+        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting, $post->button);
     }
 
     /**
@@ -486,7 +510,8 @@ final class PublicationsService
      * with photos it goes as a photo album (the caption on the first
      * photo, the full text as a separate message when it does not fit
      * the caption limit), without photos as a plain text message. The
-     * highlighting of the text goes with it as message entities.
+     * highlighting of the text goes with it as message entities, and the
+     * link button of the record as the keyboard under the message.
      *
      * @throws RuntimeException when the bot token is not configured
      * @throws TelegramApiException on API failure
@@ -499,18 +524,24 @@ final class PublicationsService
                 $post->text,
                 $this->prepareImageUrlsForTelegram($post->imageUrls),
                 $post->formatting,
+                $post->button,
             );
         }
 
         if ($post->imageUrls !== [] && method_exists($this->channel, 'publishPhotos')) {
-            return $this->channel->publishPhotos($post->text, $post->imageUrls, $post->formatting);
+            return $this->channel->publishPhotos(
+                $post->text,
+                $post->imageUrls,
+                $post->formatting,
+                $post->button,
+            );
         }
 
         if (!method_exists($this->channel, 'publishText')) {
             throw new RuntimeException('Telegram-канал не сконфигурирован.');
         }
 
-        return $this->channel->publishText($post->text, $post->formatting);
+        return $this->channel->publishText($post->text, $post->formatting, $post->button);
     }
 
     /**
@@ -629,7 +660,7 @@ final class PublicationsService
 
     /**
      * Replaces an archived edit's message content in the channel
-     * with the record's text field.
+     * with the record's text field, its formatting and its link button.
      *
      * @throws RuntimeException when the bot token is not configured
      * @throws TelegramApiException on API failure
@@ -646,7 +677,7 @@ final class PublicationsService
             );
         }
 
-        $this->channel->editPostText($record->telegramId, $record->text, $record->formatting);
+        $this->channel->editPostText($record->telegramId, $record->text, $record->formatting, $record->button);
     }
 
     /**
@@ -672,12 +703,14 @@ final class PublicationsService
      *
      * @param string[] $imageUrls
      * @throws InvalidArgumentException when the text is empty, its formatting
-     * does not fit it, the date is invalid or the source record does not exist
+     * does not fit it, the button is malformed, the date is invalid or the
+     * source record does not exist
      */
     public function saveFromForm(
         string $text,
         array $imageUrls,
         MessageEntities $formatting,
+        LinkButton $button,
         string $publishedAt,
         string $source,
         ?int $sourceId,
@@ -685,6 +718,7 @@ final class PublicationsService
         ?string $userTimezone = null,
     ): void {
         $this->assertPartValid($text, $formatting);
+        $button->assertValid();
         $now = $this->now();
 
         if ($source === 'deleted') {
@@ -703,6 +737,7 @@ final class PublicationsService
                         $record->createdAt,
                         $record->updatedAt,
                         formatting: $formatting,
+                        button: $button,
                     ),
                     $now,
                 );
@@ -722,6 +757,7 @@ final class PublicationsService
                     $record->createdAt,
                     $record->updatedAt,
                     formatting: $formatting,
+                    button: $button,
                 ),
                 $now,
             );
@@ -734,7 +770,7 @@ final class PublicationsService
             $this->assertDraftExists($sourceId);
             if ($action === 'draft') {
                 // 6) draft + "Сохранить": update in place.
-                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting);
+                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting, $button);
 
                 return;
             }
@@ -751,6 +787,7 @@ final class PublicationsService
                     $draft->createdAt,
                     $draft->updatedAt,
                     formatting: $formatting,
+                    button: $button,
                 ),
                 $now,
             );
@@ -790,6 +827,7 @@ final class PublicationsService
                 $this->normalizeDate($publishedAt, $userTimezone),
                 $now,
                 $formatting,
+                $button,
             );
 
             return;
@@ -807,6 +845,7 @@ final class PublicationsService
                 $post->createdAt,
                 $post->updatedAt,
                 formatting: $formatting,
+                button: $button,
             ),
             $now,
         );
@@ -857,6 +896,7 @@ final class PublicationsService
                 $record->createdAt,
                 $record->updatedAt,
                 formatting: $record->formatting,
+                button: $record->button,
             ),
             $now,
         );
@@ -887,6 +927,7 @@ final class PublicationsService
                 $record->createdAt,
                 $record->updatedAt,
                 formatting: $record->formatting,
+                button: $record->button,
             ),
             $now,
         );

@@ -9,6 +9,7 @@ use yii\helpers\Html;
 ?>
 <div class="activity-log" data-text="<?= Html::encode($record->text) ?>"
      data-formatting="<?= Html::encode($record->formatting->toJson()) ?>"
+     data-button="<?= Html::encode($record->button->toJson()) ?>"
      data-source-type="draft" data-source-id="<?= $record->id ?>"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
     <div class="d-flex align-items-center gap-2 mb-1">

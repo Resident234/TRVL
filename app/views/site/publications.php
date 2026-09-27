@@ -90,6 +90,23 @@ $this->registerCss(
     text-align: left;
 }
 
+/* The keyboard of a channel message is one button across its whole width, with
+   the label in the colour of a link. */
+.telegram-preview-button {
+    display: block;
+    margin-top: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background-color: var(--bs-body-bg);
+    color: var(--bs-link-color);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
 /* The buttons that move a selection sit next to it, in viewport coordinates. */
 .publication-selection-actions {
     position: fixed;
@@ -299,6 +316,26 @@ CSS
                                 <div class="stacked-images mt-2 d-none publication-part-images"></div>
                             </div>
 
+                            <?php /* The button of a part. It comes out of the switch
+                                    under the shared «Кнопка-ссылка» field and starts
+                                    with the button of that field; the first block
+                                    never shows its own, its button is the shared
+                                    one. A hidden box is disabled, so it submits
+                                    nothing and the part goes without a button. */ ?>
+                            <div class="publication-part-button d-none mt-2">
+                                <label class="form-label mb-1" for="publicationPartButtonText">
+                                    <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка этой части
+                                </label>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <input type="text" class="form-control publication-part-button-text"
+                                           id="publicationPartButtonText" name="publicationPartButtonText[]"
+                                           disabled placeholder="Надпись кнопки">
+                                    <input type="text" class="form-control publication-part-button-url"
+                                           id="publicationPartButtonUrl" name="publicationPartButtonUrl[]"
+                                           disabled placeholder="https://example.com/poll">
+                                </div>
+                            </div>
+
                             <!-- The row a part is merged with the one under it by;
                                  the last part of the form has none. -->
                             <div class="text-end mt-2 d-none publication-merge-row">
@@ -385,6 +422,40 @@ CSS
                             Изображения отправляются в канал вместе с текстом публикации (первое — с подписью);
                             у разбитой публикации это изображения её первой части. Файл, выбранный здесь,
                             сохраняется на сервере и становится ссылкой этого же альбома.
+                        </small>
+                    </div>
+
+                    <!-- Link button -->
+                    <div class="mb-3">
+                        <label class="form-label mb-1" for="publicationButtonText">
+                            <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка
+                        </label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <input type="text" class="form-control" id="publicationButtonText"
+                                   name="publicationButtonText" placeholder="Надпись кнопки">
+                            <input type="text" class="form-control" id="publicationButtonUrl"
+                                   name="publicationButtonUrl" maxlength="2048"
+                                   placeholder="https://example.com/poll">
+                        </div>
+
+                        <?php /* The switch of the button to every part of a split
+                                publication: it stands in the form only while the
+                                publication really has parts. */ ?>
+                        <div class="form-check mt-2 d-none" id="publicationButtonEveryPartRow">
+                            <input class="form-check-input" type="checkbox" id="publicationButtonEveryPart">
+                            <label class="form-check-label" for="publicationButtonEveryPart">
+                                Кнопка-ссылка в каждой части
+                            </label>
+                            <small class="text-muted d-block">
+                                Показывает поле кнопки у каждой части и заполняет её этой же кнопкой;
+                                надпись и адрес одной части можно поправить после этого
+                            </small>
+                        </div>
+
+                        <small class="text-muted d-block mt-2">
+                            Кнопка появляется под сообщением в канале и ведёт по своему адресу: надпись длиной
+                            до 64 байт, адрес — с http://, https:// или tg://. Пустые поля означают публикацию
+                            без кнопки; у разбитой публикации это кнопка её первой части.
                         </small>
                     </div>
 
@@ -1252,6 +1323,10 @@ jQuery(document).ready(function () {
         var distributeImagesInput = document.getElementById('publicationDistributeImages');
         var splitButton = document.getElementById('publicationSplitPart');
         var splitModesBox = document.getElementById('publicationSplitModes');
+        var buttonTextInput = document.getElementById('publicationButtonText');
+        var buttonUrlInput = document.getElementById('publicationButtonUrl');
+        var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
+        var buttonEveryPartRow = document.getElementById('publicationButtonEveryPartRow');
 
         // --- the rich-text editor of a part -----------------------------------
         //
@@ -1730,6 +1805,87 @@ jQuery(document).ready(function () {
                 });
         }
 
+        // --- the link button of a part ------------------------------------------
+
+        // The shared «Кнопка-ссылка» field of the form carries the button of the
+        // first part, so the box of that part stays hidden and disabled the same
+        // way the album box does. The switch of the field shows the box of every
+        // part after it and puts the button of the shared field into each one.
+
+        function buttonBoxes() {
+            return Array.prototype.slice
+                .call(partsBox.querySelectorAll('.publication-part-button'))
+                .slice(1);
+        }
+
+        function buttonFieldsOf(box) {
+            return [
+                box.querySelector('.publication-part-button-text'),
+                box.querySelector('.publication-part-button-url'),
+            ];
+        }
+
+        // The button of the first part: half a pair is as good as none, and both
+        // the preview and the switch read it the same way.
+        function sharedButton() {
+            return {
+                text: buttonTextInput ? buttonTextInput.value.trim() : '',
+                url: buttonUrlInput ? buttonUrlInput.value.trim() : '',
+            };
+        }
+
+        // One button per part, the shared field taking the first of them.
+        function readButtonGroups() {
+            var boxes = buttonBoxes();
+
+            return textParts().map(function (field, index) {
+                if (index === 0) {
+                    return sharedButton();
+                }
+                var parts = buttonFieldsOf(boxes[index - 1]);
+
+                return {
+                    text: parts[0].value.trim(),
+                    url: parts[1].value.trim(),
+                };
+            });
+        }
+
+        function isEveryPartButton() {
+            return !!(buttonEveryPartInput && buttonEveryPartInput.checked)
+                && textParts().length > 1;
+        }
+
+        // The boxes hold the button of the shared field while the switch is on and
+        // stand empty while it is off: what a hidden box keeps must not reach the
+        // form or the preview. A rebuild of the parts puts the button in again.
+        function syncPartButtons() {
+            var button = isEveryPartButton() ? sharedButton() : {text: '', url: ''};
+
+            buttonBoxes().forEach(function (box) {
+                var parts = buttonFieldsOf(box);
+                parts[0].value = button.text;
+                parts[1].value = button.url;
+            });
+        }
+
+        // The switch of the parts is a field of a split publication only, and a
+        // box answers for the form just while it shows: a disabled field is not
+        // submitted, so a part with no box goes to the channel with no button.
+        function updateButtonBoxes() {
+            var shown = isEveryPartButton();
+
+            if (buttonEveryPartRow) {
+                buttonEveryPartRow.classList.toggle('d-none', textParts().length < 2);
+            }
+            buttonBoxes().forEach(function (box) {
+                box.classList.toggle('d-none', !shown);
+                buttonFieldsOf(box).forEach(function (field) {
+                    field.disabled = !shown;
+                });
+            });
+        }
+
         // A rebuild of the parts rewrites every album, so a notice about links a
         // probe dropped earlier has nothing left to point at.
         function clearNotices() {
@@ -1892,6 +2048,15 @@ jQuery(document).ready(function () {
 
                 block.querySelector('.publication-part-album').classList.remove('d-none');
 
+                // The box of a part is named after its place in the list too: the
+                // first part is served by the shared field, so the names run one
+                // behind the parts.
+                var buttonFields = block.querySelectorAll('.publication-part-button input');
+                buttonFields[0].id = 'publicationPartButtonText' + (index + 1);
+                buttonFields[1].id = 'publicationPartButtonUrl' + (index + 1);
+                block.querySelector('.publication-part-button label')
+                    .setAttribute('for', buttonFields[0].id);
+
                 partsBox.appendChild(block);
                 field.value = value;
                 field.__formatting = (formats || [])[index] || [];
@@ -1910,6 +2075,8 @@ jQuery(document).ready(function () {
             setAlbumFields(groups === undefined ? keepGroups(values.length) : groups);
             writeFileGroups(carriedFiles);
             updateAlbumBoxes();
+            syncPartButtons();
+            updateButtonBoxes();
             clearNotices();
 
             updateMergeRows();
@@ -1967,6 +2134,45 @@ jQuery(document).ready(function () {
                 emptyGroups(parts.length),
                 emptyFileGroups(parts.length),
                 formatsOfParts(parts, text, formatting || []));
+        }
+
+        // The button a record was saved with: the jsonb object of its row keeps
+        // the two fields of the form apart, so a fill reads them by name.
+        function parseButton(raw) {
+            if (!raw) {
+                return {text: '', url: ''};
+            }
+
+            try {
+                var stored = JSON.parse(raw);
+            } catch (e) {
+                return {text: '', url: ''};
+            }
+            if (!stored || typeof stored !== 'object') {
+                return {text: '', url: ''};
+            }
+
+            return {
+                text: typeof stored.text === 'string' ? stored.text : '',
+                url: typeof stored.url === 'string' ? stored.url : '',
+            };
+        }
+
+        // The record is one part, and its button is the shared field of the form.
+        // A long text fills several parts from it, so the boxes of those parts
+        // come back to the button the record really holds.
+        function fillButton(raw) {
+            var button = parseButton(raw);
+
+            if (buttonTextInput) {
+                buttonTextInput.value = button.text;
+            }
+            if (buttonUrlInput) {
+                buttonUrlInput.value = button.url;
+            }
+            syncPartButtons();
+            updateButtonBoxes();
+            update();
         }
 
         // --- manual split of one part into two --------------------------------
@@ -2866,6 +3072,20 @@ jQuery(document).ready(function () {
             node.appendChild(fragment);
         }
 
+        // The keyboard of a message is one button across its whole width. Half a
+        // pair is no button: the form refuses it, and the preview shows none.
+        function renderPreviewButton(button) {
+            if (!button || button.text === '' || button.url === '') {
+                return null;
+            }
+
+            var node = document.createElement('span');
+            node.className = 'telegram-preview-button';
+            node.textContent = button.text;
+
+            return node;
+        }
+
         var update = function () {
             if (!preview) {
                 return;
@@ -2873,6 +3093,7 @@ jQuery(document).ready(function () {
 
             var albums = albumPictures();
             var fields = textParts();
+            var buttons = readButtonGroups();
             var shown = [];
 
             partValues().forEach(function (value, index) {
@@ -2881,13 +3102,19 @@ jQuery(document).ready(function () {
                         text: value,
                         pictures: albums[index] || [],
                         entities: formattingOf(fields[index]),
+                        button: buttons[index],
                     });
                 }
             });
 
             var placeholder = preview.getAttribute('data-placeholder') || '';
             if (shown.length === 0) {
-                shown.push({ text: placeholder, pictures: albums[0] || [], entities: [] });
+                shown.push({
+                    text: placeholder,
+                    pictures: albums[0] || [],
+                    entities: [],
+                    button: buttons[0],
+                });
             }
 
             // A publication that stands in several fields goes out as several
@@ -2909,6 +3136,10 @@ jQuery(document).ready(function () {
                 body.className = 'publication-preview-part';
                 renderFormattedText(body, one.text, one.entities);
                 part.appendChild(body);
+                var keyboard = renderPreviewButton(one.button);
+                if (keyboard) {
+                    part.appendChild(keyboard);
+                }
                 preview.appendChild(part);
             });
 
@@ -2970,6 +3201,29 @@ jQuery(document).ready(function () {
         if (distributeImagesInput) {
             distributeImagesInput.addEventListener('change', distributeImages);
         }
+        // The preview answers to the button of the first part as it does to its
+        // text: the shared field is read on every keystroke.
+        if (buttonTextInput) {
+            buttonTextInput.addEventListener('input', update);
+        }
+        if (buttonUrlInput) {
+            buttonUrlInput.addEventListener('input', update);
+        }
+        // The switch hands the button of the shared field out to the parts, and
+        // takes it back from them when it goes off.
+        if (buttonEveryPartInput) {
+            buttonEveryPartInput.addEventListener('change', function () {
+                syncPartButtons();
+                updateButtonBoxes();
+                update();
+            });
+        }
+        // The boxes of the parts, the cloned ones included.
+        partsBox.addEventListener('input', function (event) {
+            if (event.target.closest('.publication-part-button')) {
+                update();
+            }
+        });
         if (splitButton) {
             splitButton.addEventListener('click', splitPartAtCaret);
         }
@@ -3101,6 +3355,7 @@ jQuery(document).ready(function () {
                 parseFormatting(log.getAttribute('data-formatting'))
             );
             fillImages(log.getAttribute('data-image-urls') || '');
+            fillButton(log.getAttribute('data-button'));
             scrollToMiddle(log);
 
             if (sourceTypeInput && sourceIdInput) {
@@ -3161,6 +3416,12 @@ jQuery(document).ready(function () {
                 editingLog.querySelector('.editing-badge').classList.add('d-none');
             }
             editingLog = null;
+            if (buttonEveryPartInput) {
+                buttonEveryPartInput.checked = false;
+            }
+            // The button of the record comes out of the form the same way the text
+            // does: the shared field first, the boxes of the parts behind it.
+            fillButton('');
             setTextParts([''], [''], []);
             if (numberPartsInput) {
                 numberPartsInput.checked = false;

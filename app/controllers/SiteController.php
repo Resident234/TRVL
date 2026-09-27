@@ -12,6 +12,7 @@ use app\shared\Forum\Service\ParserSettingsService;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Service\PublicationsService;
 use app\shared\Settings\Service\PublicationSettingsService;
+use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
@@ -863,6 +864,7 @@ class SiteController extends Controller
         // rendering both count line breaks as a single "\n".
         $texts = $this->publicationTextsFromRequest();
         $formats = $this->publicationFormatsFromRequest(count($texts));
+        $buttons = $this->publicationButtonsFromRequest(count($texts));
         $publishedAt = (string)($this->request->post('publicationAt', ''));
         $userTz = (string)($this->request->post('publicationTz', ''));
         $action = $this->request->post('action') === 'draft' ? 'draft' : 'publish';
@@ -881,6 +883,7 @@ class SiteController extends Controller
                     $texts,
                     $imageGroups,
                     $formats,
+                    $buttons,
                     $publishedAt,
                     $action,
                     $forumRef,
@@ -900,6 +903,7 @@ class SiteController extends Controller
                     $texts[0],
                     $imageUrls,
                     $formats[0],
+                    $buttons[0],
                     $publishedAt,
                     $source,
                     $sourceId,
@@ -959,6 +963,49 @@ class SiteController extends Controller
         }
 
         return $formats;
+    }
+
+    /**
+     * The link buttons of the publication form as one button per part: the
+     * shared «Кнопка-ссылка» field carries the button of the first part, the
+     * cloned text blocks add one pair of fields each while the «Кнопка-ссылка в
+     * каждой части» switch is on, so a submission brings a part's button in the
+     * place of that part. A part whose fields are missing — its box stayed
+     * switched off — goes to the channel without a button.
+     *
+     * @return LinkButton[]
+     */
+    private function publicationButtonsFromRequest(int $parts): array
+    {
+        $labels = $this->buttonFieldsFromRequest('publicationButtonText', 'publicationPartButtonText');
+        $urls = $this->buttonFieldsFromRequest('publicationButtonUrl', 'publicationPartButtonUrl');
+
+        $buttons = [];
+        for ($index = 0; $index < $parts; $index++) {
+            $buttons[] = LinkButton::fromArray([
+                'text' => $labels[$index] ?? null,
+                'url' => $urls[$index] ?? null,
+            ]);
+        }
+
+        return $buttons;
+    }
+
+    /**
+     * One kind of the button fields of the form: the shared field of the first
+     * part followed by the cloned fields of the parts that came after it, so
+     * the two lists line up with the parts the way the albums do.
+     *
+     * @return array<int, mixed>
+     */
+    private function buttonFieldsFromRequest(string $shared, string $perPart): array
+    {
+        $raw = $this->request->post($perPart, []);
+
+        return array_merge(
+            [$this->request->post($shared, '')],
+            is_array($raw) ? array_values($raw) : [$raw],
+        );
     }
 
     /**

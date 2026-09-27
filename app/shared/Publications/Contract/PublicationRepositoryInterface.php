@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\shared\Publications\Contract;
 
 use app\shared\Publications\Dto\PublicationData;
+use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Dto\MessageEntities;
 
 /**
@@ -42,7 +43,13 @@ interface PublicationRepositoryInterface
     /**
      * Creates a draft from the form data. Returns the new row id.
      */
-    public function createDraft(string $text, array $imageUrls, string $now, MessageEntities $formatting): int;
+    public function createDraft(
+        string $text,
+        array $imageUrls,
+        string $now,
+        MessageEntities $formatting,
+        LinkButton $button,
+    ): int;
 
     /**
      * Creates a scheduled (or immediately due) post from the form
@@ -54,6 +61,7 @@ interface PublicationRepositoryInterface
         string $publishedAt,
         string $now,
         MessageEntities $formatting,
+        LinkButton $button,
     ): int;
 
     /**
@@ -63,7 +71,7 @@ interface PublicationRepositoryInterface
      * publication time. Returns the id of the first part, the record a
      * forum link is bound to.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, publishedAt: string}> $parts
      */
     public function createPosts(array $parts, string $now): int;
 
@@ -72,7 +80,7 @@ interface PublicationRepositoryInterface
      * single transaction, with the same all-or-nothing guarantee and the
      * same first part id as createPosts().
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton}> $parts
      */
     public function createDrafts(array $parts, string $now): int;
 
@@ -99,7 +107,7 @@ interface PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData;
 
     /**
-     * Updates a scheduled post: text, image urls, formatting and
+     * Updates a scheduled post: text, image urls, formatting, button and
      * published_at from the form; updated_at is set to $now, created_at
      * stays untouched.
      */
@@ -110,13 +118,21 @@ interface PublicationRepositoryInterface
         string $publishedAt,
         string $now,
         MessageEntities $formatting,
+        LinkButton $button,
     ): void;
 
     /**
-     * Updates a draft: text, image urls and formatting from the form;
-     * updated_at is set to $now, created_at stays untouched.
+     * Updates a draft: text, image urls, formatting and button from the
+     * form; updated_at is set to $now, created_at stays untouched.
      */
-    public function updateDraft(int $id, string $text, array $imageUrls, string $now, MessageEntities $formatting): void;
+    public function updateDraft(
+        int $id,
+        string $text,
+        array $imageUrls,
+        string $now,
+        MessageEntities $formatting,
+        LinkButton $button,
+    ): void;
 
     /**
      * Deletes a post row and returns it as it was before deletion.

@@ -7,6 +7,7 @@ namespace app\shared\Telegram\Service;
 use app\shared\Telegram\Contract\PublishedDescriptionRepositoryInterface;
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
 use app\shared\Telegram\Dto\ChannelInfo;
+use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PublishedDescriptionData;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
@@ -91,15 +92,18 @@ final class ChannelService
      * @throws RuntimeException when the bot token is not configured
      * @throws InvalidArgumentException when the text is empty or longer than 4096 chars
      */
-    public function publishText(string $text, MessageEntities $entities = new MessageEntities()): int
-    {
+    public function publishText(
+        string $text,
+        MessageEntities $entities = new MessageEntities(),
+        LinkButton $button = new LinkButton(),
+    ): int {
         if (mb_strlen($text) === 0 || mb_strlen($text) > self::TEXT_MAX_LENGTH) {
             throw new InvalidArgumentException(
                 sprintf('Текст поста должен быть от 1 до %d символов.', self::TEXT_MAX_LENGTH),
             );
         }
 
-        return $this->client()->sendTextMessage($this->channelId, $text, $entities)->messageId;
+        return $this->client()->sendTextMessage($this->channelId, $text, $entities, $button)->messageId;
     }
 
     /**
@@ -110,6 +114,7 @@ final class ChannelService
         string $photoPath,
         string $caption,
         MessageEntities $entities = new MessageEntities(),
+        LinkButton $button = new LinkButton(),
     ): int {
         if (!is_file($photoPath)) {
             throw new InvalidArgumentException(sprintf('Файл изображения не найден: %s', $photoPath));
@@ -121,7 +126,9 @@ final class ChannelService
             );
         }
 
-        return $this->client()->sendPhotoMessage($this->channelId, $photoPath, $caption, $entities)->messageId;
+        return $this->client()
+            ->sendPhotoMessage($this->channelId, $photoPath, $caption, $entities, $button)
+            ->messageId;
     }
 
     /**
@@ -133,7 +140,9 @@ final class ChannelService
      * into the caption is sent once more after the photos as a
      * continuation message, never as a repeat of the whole text. The
      * formatting follows the same cut: entities are clipped to whatever
-     * survived in the caption and re-based on the continuation. The
+     * survived in the caption and re-based on the continuation. The link
+     * button goes under the message that carries the caption, so a part
+     * gets one button whatever the album is made of. The
      * message id of the first photo message is returned.
      *
      * @param string[] $photoUrls
@@ -144,6 +153,7 @@ final class ChannelService
         string $text,
         array $photoUrls,
         MessageEntities $entities = new MessageEntities(),
+        LinkButton $button = new LinkButton(),
     ): int {
         if (mb_strlen($text) === 0) {
             throw new InvalidArgumentException('Текст поста не может быть пустым.');
@@ -186,13 +196,18 @@ final class ChannelService
         $firstMessageId = 0;
 
         foreach (array_chunk($photoUrls, self::ALBUM_MAX_PHOTOS) as $chunk) {
+            // The button belongs to the message the caption went into, which is
+            // the first photo of the first album: a publication gets one button,
+            // not one per ten pictures.
+            $chunkButton = $firstMessageId === 0 ? $button : LinkButton::empty();
+
             if (count($chunk) === 1) {
                 $messageId = $this->client()
-                    ->sendPhotoMessage($this->channelId, $chunk[0], $caption, $captionEntities)
+                    ->sendPhotoMessage($this->channelId, $chunk[0], $caption, $captionEntities, $chunkButton)
                     ->messageId;
             } else {
                 $messageId = $this->client()
-                    ->sendPhotoGroupMessage($this->channelId, $chunk, $caption, $captionEntities)
+                    ->sendPhotoGroupMessage($this->channelId, $chunk, $caption, $captionEntities, $chunkButton)
                     ->messageId;
             }
 
@@ -202,7 +217,12 @@ final class ChannelService
         }
 
         if ($continuation !== null) {
-            $this->client()->sendTextMessage($this->channelId, $continuation, $continuationEntities);
+            $this->client()->sendTextMessage(
+                $this->channelId,
+                $continuation,
+                $continuationEntities,
+                LinkButton::empty(),
+            );
         }
 
         return $firstMessageId;
@@ -230,15 +250,19 @@ final class ChannelService
      * @throws RuntimeException when the bot token is not configured
      * @throws InvalidArgumentException when the text is empty or longer than 4096 chars
      */
-    public function editPostText(int $messageId, string $text, MessageEntities $entities = new MessageEntities()): void
-    {
+    public function editPostText(
+        int $messageId,
+        string $text,
+        MessageEntities $entities = new MessageEntities(),
+        LinkButton $button = new LinkButton(),
+    ): void {
         if (mb_strlen($text) === 0 || mb_strlen($text) > self::TEXT_MAX_LENGTH) {
             throw new InvalidArgumentException(
                 sprintf('Текст поста должен быть от 1 до %d символов.', self::TEXT_MAX_LENGTH),
             );
         }
 
-        $this->client()->editChannelMessageText($this->channelId, $messageId, $text, $entities);
+        $this->client()->editChannelMessageText($this->channelId, $messageId, $text, $entities, $button);
     }
 
     /**

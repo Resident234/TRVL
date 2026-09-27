@@ -35,6 +35,7 @@ final class LoginTest extends \Codeception\Test\Unit
                         string $channelId,
                         string $text,
                         \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
+                        \app\shared\Telegram\Dto\LinkButton $button = new \app\shared\Telegram\Dto\LinkButton(),
                     ): \app\shared\Telegram\Dto\PostResult {
                         throw new \RuntimeException('not needed in this test');
                     }
@@ -44,6 +45,7 @@ final class LoginTest extends \Codeception\Test\Unit
                         string $photoPath,
                         string $caption,
                         \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
+                        \app\shared\Telegram\Dto\LinkButton $button = new \app\shared\Telegram\Dto\LinkButton(),
                     ): \app\shared\Telegram\Dto\PostResult {
                         throw new \RuntimeException('not needed in this test');
                     }
@@ -53,6 +55,7 @@ final class LoginTest extends \Codeception\Test\Unit
                         array $photoUrls,
                         string $caption,
                         \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
+                        \app\shared\Telegram\Dto\LinkButton $button = new \app\shared\Telegram\Dto\LinkButton(),
                     ): \app\shared\Telegram\Dto\PostResult {
                         throw new \RuntimeException('not needed in this test');
                     }
@@ -70,6 +73,7 @@ final class LoginTest extends \Codeception\Test\Unit
                         int $messageId,
                         string $text,
                         \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
+                        \app\shared\Telegram\Dto\LinkButton $button = new \app\shared\Telegram\Dto\LinkButton(),
                     ): void {
                     }
                 },

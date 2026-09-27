@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\shared\Settings\Service;
 
 use app\shared\Settings\Contract\PublicationSettingsRepositoryInterface;
+use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Service\ChannelService;
 use InvalidArgumentException;
 
@@ -342,6 +343,8 @@ final class PublicationSettingsService
             ['label' => 'Описание канала', 'value' => ChannelService::DESCRIPTION_MAX_LENGTH, 'unit' => 'символов'],
             ['label' => 'Изображений в одном альбоме', 'value' => ChannelService::ALBUM_MAX_PHOTOS, 'unit' => 'штук'],
             ['label' => 'Резерв под строку «Часть N»', 'value' => ChannelService::PARTS_NUMBERING_RESERVE, 'unit' => 'символов'],
+            ['label' => 'Надпись кнопки-ссылки', 'value' => LinkButton::TEXT_MAX_LENGTH, 'unit' => 'байт'],
+            ['label' => 'Адрес кнопки-ссылки', 'value' => LinkButton::URL_MAX_LENGTH, 'unit' => 'символов'],
         ];
     }
 
