@@ -638,6 +638,41 @@ CSS
     </div>
 </div>
 
+<!-- Link dialog -->
+<div class="modal fade" id="publicationLinkModal" tabindex="-1" aria-labelledby="publicationLinkModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="publicationLinkModalLabel">
+                    Ссылка
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label" for="publicationLinkAddress">Адрес ссылки</label>
+                <input type="text" class="form-control" id="publicationLinkAddress"
+                       autocomplete="off" placeholder="https://example.com/page">
+                <small class="text-muted d-block mt-2">
+                    Протокол можно не писать — адрес http:// или https:// принимается и так,
+                    а в тексте ссылки остаётся только то, что стоит за ним.
+                </small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger d-none" id="publicationLinkRemove">
+                    <i class="bi bi-link-45deg me-1"></i>Убрать ссылку
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Отмена
+                </button>
+                <button type="button" class="btn btn-primary" id="publicationLinkApply">
+                    <i class="bi bi-check2 me-1"></i>Применить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php
 $csrfParam = Yii::$app->request->csrfParam;
 $csrfToken = Yii::$app->request->csrfToken;
@@ -928,6 +963,57 @@ function entitiesFromOps(ops) {
     });
 
     return sortEntities(list);
+}
+
+// --- the addresses a text holds as plain words --------------------------------
+
+// An address written out in the open: the scheme is what makes it one, since a
+// host without it cannot be told from the word it sits in. The brackets and the
+// quotes an address is often named between end its run.
+var ADDRESS_IN_TEXT = /https?:\/\/[^\s<>"'«»]+/g;
+
+// The punctuation that closes the sentence around an address rather than the
+// address itself. A closing bracket is not in this list: it leaves with the
+// address only when nothing opened it.
+var ADDRESS_TAIL = /[.,;:!?>»«'"…\]]+$/;
+
+// The protocol is what a label of a link does not show: the host and whatever
+// follows it are the whole of it.
+function addressLabel(url) {
+    return url.replace(/^https?:\/\//, '');
+}
+
+// The addresses of a text a link does not yet stand on: where each one starts,
+// how far it reaches, the address itself and the label it is worth. A span that
+// already links the text is left alone, so running this over linked text finds
+// nothing and turns no address into a link twice.
+function findLinks(text, list) {
+    var found = [];
+    var links = (list || []).filter(function (entity) {
+        return entity.type === 'text_link';
+    });
+
+    (text || '').replace(ADDRESS_IN_TEXT, function (match, start) {
+        var address = match.replace(ADDRESS_TAIL, '');
+        while (address.charAt(address.length - 1) === ')'
+            && (address.match(/\(/g) || []).length < (address.match(/\)/g) || []).length) {
+            address = address.slice(0, -1);
+        }
+
+        var end = start + address.length;
+        var label = addressLabel(address);
+        var covered = links.some(function (entity) {
+            return entity.offset < end && entity.offset + entity.length > start;
+        });
+
+        if (!covered && label !== '') {
+            found.push({ start: start, length: address.length, url: address, label: label });
+        }
+
+        return match;
+    });
+
+    return found;
 }
 
 jQuery(document).ready(function () {
@@ -1327,6 +1413,10 @@ jQuery(document).ready(function () {
         var buttonUrlInput = document.getElementById('publicationButtonUrl');
         var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
         var buttonEveryPartRow = document.getElementById('publicationButtonEveryPartRow');
+        var linkModal = document.getElementById('publicationLinkModal');
+        var linkAddressInput = document.getElementById('publicationLinkAddress');
+        var linkApplyButton = document.getElementById('publicationLinkApply');
+        var linkRemoveButton = document.getElementById('publicationLinkRemove');
 
         // --- the rich-text editor of a part -----------------------------------
         //
@@ -1424,7 +1514,12 @@ jQuery(document).ready(function () {
             var editor = new Quill(root, {
                 theme: 'snow',
                 placeholder: field.placeholder || '',
-                modules: { toolbar: TOOLBAR_FORMATS },
+                modules: {
+                    toolbar: {
+                        container: TOOLBAR_FORMATS,
+                        handlers: { link: function () { openLinkDialog(field); } },
+                    },
+                },
             });
             field.__editor = editor;
             field.__formatting = formattingOf(field);
@@ -1523,6 +1618,17 @@ jQuery(document).ready(function () {
                 var range = editor.getSelection(true);
                 editor.deleteText(range.index, range.length, 'api');
                 editor.insertText(range.index, text, 'user');
+
+                // An address that came in with the text is an address the user
+                // meant to keep, so it is read as one here too; the caret follows
+                // the text back to where the paste left it.
+                var removed = linkifyEditor(field);
+                if (removed > 0) {
+                    var caret = Math.min(range.index + text.length - removed, field.value.length);
+                    editor.setSelection(caret, 0, 'api');
+                    field.__caret = [caret, caret];
+                    writeMirror(field, editor.getText().replace(/\n$/, ''));
+                }
             }, true);
 
             paintEditor(field);
@@ -1556,6 +1662,141 @@ jQuery(document).ready(function () {
             field.__painting = false;
             field.__formatting = entities || [];
             paintEditor(field);
+        }
+
+        // The addresses a part holds as plain words turned into links: the
+        // protocol leaves the text and the label of the link is what stays of the
+        // address. The editor itself is what changes, so the highlighting of the
+        // part is read back from the document instead of being moved over the
+        // shorter text by hand — which is also what carries the spans of the
+        // neighbours along. The cuts run from the end backwards, so the place of
+        // the next one still stands. Returns how many characters left the text.
+        function linkifyEditor(field) {
+            var editor = field.__editor;
+            if (!editor) {
+                return 0;
+            }
+
+            var text = editor.getText().replace(/\n$/, '');
+            var links = findLinks(text, formattingOf(field));
+            var removed = 0;
+
+            links.reverse().forEach(function (link) {
+                var scheme = link.url.length - link.label.length;
+
+                editor.deleteText(link.start, scheme, 'api');
+                editor.formatText(link.start, link.length - scheme, 'link', link.url, 'api');
+                removed += scheme;
+            });
+
+            if (removed === 0) {
+                return 0;
+            }
+
+            field.__formatting = entitiesFromOps(editor.getContents().ops);
+            field.__painting = true;
+            TEXTAREA_VALUE.set.call(field, editor.getText().replace(/\n$/, ''));
+            field.__painting = false;
+
+            return removed;
+        }
+
+        function linkifyParts() {
+            textParts().forEach(function (field) {
+                linkifyEditor(field);
+            });
+        }
+
+        // --- the link of a selection --------------------------------------------
+
+        // The toolbar asks for the address of a link in a window of its own: the
+        // prompt Quill answers with belongs to the browser — its words are the
+        // browser's, the address of a link that already stands is not shown in it,
+        // and nothing there says that an empty answer takes the link away. A
+        // selection is what the link goes over; a caret standing inside a link
+        // names the link it belongs to, so the same button adds, edits and removes
+        // one.
+
+        var linkTarget = null;
+
+        function enclosingLink(field, at) {
+            var found = null;
+
+            formattingOf(field).forEach(function (entity) {
+                if (entity.type === 'text_link'
+                    && at >= entity.offset && at <= entity.offset + entity.length) {
+                    found = entity;
+                }
+            });
+
+            return found;
+        }
+
+        // An address the channel takes: a host written without a scheme is read as
+        // an https one, and an address of any other kind is refused. An empty one
+        // is not a mistake but the way to take a link away. What the editor keeps
+        // is what the channel draws — an http(s) address; the deep links of
+        // Telegram itself belong to the button of a part, which has its own field.
+        function linkAddressOf(raw) {
+            var value = (raw || '').trim();
+
+            if (value === '') {
+                return '';
+            }
+            if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+                value = 'https://' + value;
+            }
+
+            return /^https?:\/\//i.test(value) ? value : null;
+        }
+
+        function showLinkModal(show) {
+            if (!linkModal || typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+                return;
+            }
+            bootstrap.Modal.getOrCreateInstance(linkModal)[show ? 'show' : 'hide']();
+        }
+
+        function openLinkDialog(field) {
+            var editor = field.__editor;
+            var range = editor.getSelection() || (field.__caret
+                ? { index: field.__caret[0], length: field.__caret[1] - field.__caret[0] }
+                : null);
+            var format = range ? editor.getFormat(range.index, range.length) : {};
+            var url = typeof format.link === 'string' ? format.link : '';
+
+            if (range && range.length === 0 && url !== '') {
+                var held = enclosingLink(field, range.index);
+
+                if (held) {
+                    range = { index: held.offset, length: held.length };
+                }
+            }
+            if (!range || range.length === 0) {
+                showFlash('error', 'Выделите текст, который станет ссылкой.');
+                return;
+            }
+
+            linkTarget = { field: field, start: range.index, length: range.length };
+            if (linkAddressInput) {
+                linkAddressInput.value = url;
+            }
+            if (linkRemoveButton) {
+                linkRemoveButton.classList.toggle('d-none', url === '');
+            }
+            showLinkModal(true);
+        }
+
+        function writeLinkOfSelection(address) {
+            if (!linkTarget) {
+                return;
+            }
+            var target = linkTarget;
+
+            linkTarget = null;
+            showLinkModal(false);
+            target.field.__editor.formatText(target.start, target.length, 'link', address, 'user');
+            target.field.__editor.setSelection(target.start, target.length, 'api');
         }
 
         // The parts as the splitting and the merging see them: the text without
@@ -2081,6 +2322,7 @@ jQuery(document).ready(function () {
 
             updateMergeRows();
             updateAlbumMoves();
+            linkifyParts();
             applyPartNumbers();
             updateCounters();
             updateImages();
@@ -3224,6 +3466,43 @@ jQuery(document).ready(function () {
                 update();
             }
         });
+        // The window of a link: Enter means the same as «Применить», and closing
+        // the window by any other way leaves the selection untouched.
+        if (linkApplyButton) {
+            linkApplyButton.addEventListener('click', function () {
+                var address = linkAddressOf(linkAddressInput.value);
+
+                if (address === null) {
+                    showFlash('error', 'Ссылка принимает адрес http:// или https://.');
+                    return;
+                }
+                writeLinkOfSelection(address);
+            });
+        }
+        if (linkRemoveButton) {
+            linkRemoveButton.addEventListener('click', function () {
+                writeLinkOfSelection(false);
+            });
+        }
+        if (linkAddressInput) {
+            linkAddressInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    linkApplyButton.click();
+                }
+            });
+        }
+        if (linkModal) {
+            linkModal.addEventListener('shown.bs.modal', function () {
+                if (linkAddressInput) {
+                    linkAddressInput.focus();
+                    linkAddressInput.select();
+                }
+            });
+            linkModal.addEventListener('hidden.bs.modal', function () {
+                linkTarget = null;
+            });
+        }
         if (splitButton) {
             splitButton.addEventListener('click', splitPartAtCaret);
         }
