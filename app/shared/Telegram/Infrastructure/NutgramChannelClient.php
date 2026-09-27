@@ -6,6 +6,7 @@ namespace app\shared\Telegram\Infrastructure;
 
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
 use app\shared\Telegram\Dto\ChannelInfo;
+use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Exceptions\TelegramException;
@@ -13,6 +14,7 @@ use SergiX44\Nutgram\Telegram\Types\Chat\Chat;
 use SergiX44\Nutgram\Telegram\Types\Input\InputMediaPhoto;
 use SergiX44\Nutgram\Telegram\Types\Internal\InputFile;
 use SergiX44\Nutgram\Telegram\Types\Message\Message;
+use SergiX44\Nutgram\Telegram\Types\Message\MessageEntity;
 use Throwable;
 
 /**
@@ -46,20 +48,28 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         $this->call(static fn (Nutgram $bot): ?bool => $bot->setChatDescription($channelId, $description));
     }
 
-    public function sendTextMessage(string $channelId, string $text): PostResult
-    {
+    public function sendTextMessage(
+        string $channelId,
+        string $text,
+        MessageEntities $entities = new MessageEntities(),
+    ): PostResult {
         $message = $this->call(
             static fn (Nutgram $bot): ?Message => $bot->sendMessage(
                 chat_id: $channelId,
                 text: $text,
+                entities: self::toMessageEntities($entities),
             ),
         );
 
         return new PostResult($message->message_id, $message->date);
     }
 
-    public function sendPhotoMessage(string $channelId, string $photoPath, string $caption): PostResult
-    {
+    public function sendPhotoMessage(
+        string $channelId,
+        string $photoPath,
+        string $caption,
+        MessageEntities $entities = new MessageEntities(),
+    ): PostResult {
         // Check if it's a local file path
         $photo = $this->isLocalFile($photoPath) ? new InputFile($photoPath) : $photoPath;
 
@@ -68,14 +78,19 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
                 chat_id: $channelId,
                 photo: $photo,
                 caption: $caption,
+                caption_entities: self::toMessageEntities($entities),
             ),
         );
 
         return new PostResult($message->message_id, $message->date);
     }
 
-    public function sendPhotoGroupMessage(string $channelId, array $photoUrls, string $caption): PostResult
-    {
+    public function sendPhotoGroupMessage(
+        string $channelId,
+        array $photoUrls,
+        string $caption,
+        MessageEntities $entities = new MessageEntities(),
+    ): PostResult {
         $media = [];
         foreach (array_values($photoUrls) as $index => $url) {
             // Check if it's a local file path
@@ -83,6 +98,7 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
             $media[] = new InputMediaPhoto(
                 media: $mediaUrl,
                 caption: $index === 0 ? $caption : null,
+                caption_entities: $index === 0 ? self::toMessageEntities($entities) : null,
             );
         }
 
@@ -130,14 +146,43 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         );
     }
 
-    public function editChannelMessageText(string $channelId, int $messageId, string $text): void
-    {
+    public function editChannelMessageText(
+        string $channelId,
+        int $messageId,
+        string $text,
+        MessageEntities $entities = new MessageEntities(),
+    ): void {
         $this->call(
             static fn (Nutgram $bot): bool => $bot->editMessageText(
                 text: $text,
                 chat_id: $channelId,
                 message_id: $messageId,
+                entities: self::toMessageEntities($entities),
             ) !== null,
+        );
+    }
+
+    /**
+     * Our DTO in, SDK types out: no Nutgram class leaks above this adapter.
+     * Nutgram omits a null parameter, which is how "no formatting" reaches
+     * the API.
+     *
+     * @return MessageEntity[]|null
+     */
+    private static function toMessageEntities(MessageEntities $entities): ?array
+    {
+        if ($entities->isEmpty()) {
+            return null;
+        }
+
+        return array_map(
+            static fn (array $entity): MessageEntity => new MessageEntity(
+                type: (string) $entity['type'],
+                offset: (int) $entity['offset'],
+                length: (int) $entity['length'],
+                url: isset($entity['url']) ? (string) $entity['url'] : null,
+            ),
+            $entities->toArray(),
         );
     }
 

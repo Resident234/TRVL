@@ -12,6 +12,7 @@ use app\shared\Forum\Service\ParserSettingsService;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Service\PublicationsService;
 use app\shared\Settings\Service\PublicationSettingsService;
+use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
 use app\widgets\Alert;
@@ -861,6 +862,7 @@ class SiteController extends Controller
         // would gain invisible chars on every save; Telegram and the block
         // rendering both count line breaks as a single "\n".
         $texts = $this->publicationTextsFromRequest();
+        $formats = $this->publicationFormatsFromRequest(count($texts));
         $publishedAt = (string)($this->request->post('publicationAt', ''));
         $userTz = (string)($this->request->post('publicationTz', ''));
         $action = $this->request->post('action') === 'draft' ? 'draft' : 'publish';
@@ -875,7 +877,15 @@ class SiteController extends Controller
             $imageUrls = $imageGroups[0];
 
             if ($source === 'new') {
-                $this->publications->saveParts($texts, $imageGroups, $publishedAt, $action, $forumRef, $userTz ?: null);
+                $this->publications->saveParts(
+                    $texts,
+                    $imageGroups,
+                    $formats,
+                    $publishedAt,
+                    $action,
+                    $forumRef,
+                    $userTz ?: null,
+                );
                 Yii::$app->session->setFlash('success', $action === 'draft'
                     ? 'Черновик сохранён.'
                     : 'Публикация сохранена и будет отправлена в канал в заданное время.');
@@ -886,7 +896,16 @@ class SiteController extends Controller
                     );
                 }
 
-                $this->publications->saveFromForm($texts[0], $imageUrls, $publishedAt, $source, $sourceId, $action, $userTz ?: null);
+                $this->publications->saveFromForm(
+                    $texts[0],
+                    $imageUrls,
+                    $formats[0],
+                    $publishedAt,
+                    $source,
+                    $sourceId,
+                    $action,
+                    $userTz ?: null,
+                );
                 Yii::$app->session->setFlash('success', 'Изменения сохранены.');
             }
             $ok = true;
@@ -917,6 +936,29 @@ class SiteController extends Controller
             static fn ($text): string => str_replace(["\r\n", "\r"], "\n", (string)$text),
             $fields,
         );
+    }
+
+    /**
+     * The highlighting of the publication form as one entity list per part: the
+     * editor of a part keeps its plain text in the textarea and the spans of
+     * that text it paints in the hidden publicationFormatting[] field next to
+     * it, so a submission brings the two lists in the same order. A part whose
+     * field is missing — a record written before the editor existed — comes
+     * back plain.
+     *
+     * @return MessageEntities[]
+     */
+    private function publicationFormatsFromRequest(int $parts): array
+    {
+        $raw = $this->request->post('publicationFormatting', '');
+        $fields = is_array($raw) ? array_values($raw) : [$raw];
+
+        $formats = [];
+        for ($index = 0; $index < $parts; $index++) {
+            $formats[] = MessageEntities::fromStored($fields[$index] ?? null);
+        }
+
+        return $formats;
     }
 
     /**

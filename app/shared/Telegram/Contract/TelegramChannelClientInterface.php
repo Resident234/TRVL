@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\shared\Telegram\Contract;
 
 use app\shared\Telegram\Dto\ChannelInfo;
+use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
 
 interface TelegramChannelClientInterface
@@ -17,14 +18,25 @@ interface TelegramChannelClientInterface
     public function setChannelDescription(string $channelId, string $description): void;
 
     /**
+     * @param MessageEntities $entities inline formatting of the text; an empty
+     *        list sends plain text
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
      */
-    public function sendTextMessage(string $channelId, string $text): PostResult;
+    public function sendTextMessage(
+        string $channelId,
+        string $text,
+        MessageEntities $entities = new MessageEntities(),
+    ): PostResult;
 
     /**
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
      */
-    public function sendPhotoMessage(string $channelId, string $photoPath, string $caption): PostResult;
+    public function sendPhotoMessage(
+        string $channelId,
+        string $photoPath,
+        string $caption,
+        MessageEntities $entities = new MessageEntities(),
+    ): PostResult;
 
     /**
      * Sends a group of photos as a single album message; the caption
@@ -34,7 +46,12 @@ interface TelegramChannelClientInterface
      * @param string[] $photoUrls
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
      */
-    public function sendPhotoGroupMessage(string $channelId, array $photoUrls, string $caption): PostResult;
+    public function sendPhotoGroupMessage(
+        string $channelId,
+        array $photoUrls,
+        string $caption,
+        MessageEntities $entities = new MessageEntities(),
+    ): PostResult;
 
     /**
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
@@ -49,5 +66,10 @@ interface TelegramChannelClientInterface
     /**
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
      */
-    public function editChannelMessageText(string $channelId, int $messageId, string $text): void;
+    public function editChannelMessageText(
+        string $channelId,
+        int $messageId,
+        string $text,
+        MessageEntities $entities = new MessageEntities(),
+    ): void;
 }

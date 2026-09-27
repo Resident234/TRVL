@@ -14,11 +14,14 @@ declare(strict_types=1);
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
+use app\assets\PublicationEditorAsset;
 use app\shared\Settings\Service\PublicationSettingsService;
 use app\shared\Telegram\Service\ChannelService;
 use yii\helpers\Html;
 
 $this->title = 'Публикации в канал';
+
+PublicationEditorAsset::register($this);
 
 // One message of the channel carries at most this many characters, so a longer
 // text is broken into parts, each in its own field of the form.
@@ -236,9 +239,18 @@ CSS
                                 <label for="publicationTextInput" class="form-label mb-0">Текст публикации</label>
                                 <small class="text-muted publication-text-count"></small>
                             </div>
-                            <textarea class="form-control publication-text-part" id="publicationTextInput"
-                                      name="publicationText[]"
-                                      placeholder="Введите текст публикации"></textarea>
+                            <?php /* The plain text of a part lives in this field: every split,
+                                        merge and counter of the page reads it, and it is what the
+                                        form submits. The editor below paints the highlighting over
+                                        it and keeps the two in step, so it stays hidden. */ ?>
+                            <div class="publication-editor">
+                                <textarea class="form-control publication-text-part d-none" id="publicationTextInput"
+                                          name="publicationText[]" tabindex="-1" aria-hidden="true"
+                                          placeholder="Введите текст публикации"></textarea>
+                                <div class="publication-editor-field"></div>
+                                <input type="hidden" class="publication-format-field"
+                                       name="publicationFormatting[]" value="[]">
+                            </div>
 
                             <?php /* The album of a part. The first block never shows its own:
                                     its album is the shared «Изображения публикации» field under the
@@ -605,6 +617,247 @@ var __BLOCK_TARGETS = {
     drafts: 'pub-drafts-list',
     deleted: 'pub-deleted-list'
 };
+
+// --- message entities: the arithmetic the editor lives by ---------------------
+//
+// The highlighting of a part is a list of Telegram entities over its plain
+// text: {type, offset, length}, plus url for a text_link. Offsets count UTF-16
+// code units, which is what an index into a JavaScript string already is, so
+// the numbers a browser reads out of the editor reach the server unchanged.
+
+var ENTITY_OF_FORMAT = {
+    bold: 'bold',
+    italic: 'italic',
+    underline: 'underline',
+    strike: 'strikethrough',
+    code: 'code',
+    link: 'text_link'
+};
+
+var FORMAT_OF_ENTITY = {
+    bold: 'bold',
+    italic: 'italic',
+    underline: 'underline',
+    strikethrough: 'strike',
+    code: 'code',
+    text_link: 'link'
+};
+
+// The order the spans of one and the same piece of text are listed in.
+var ENTITY_ORDER = ['bold', 'italic', 'underline', 'strikethrough', 'code', 'text_link'];
+
+// The tags the preview renders the entity types with. The list of the types
+// themselves is the channel's, not the browser's: an entity of a type without
+// a tag here is left as plain text.
+var FORMAT_TAGS = {
+    bold: 'strong',
+    italic: 'em',
+    underline: 'u',
+    strikethrough: 's',
+    code: 'code',
+    text_link: 'a'
+};
+
+function makeEntity(type, offset, length, url) {
+    var entity = { type: type, offset: offset, length: length };
+    if (url) {
+        entity.url = url;
+    }
+
+    return entity;
+}
+
+function sortEntities(list) {
+    return list.slice().sort(function (a, b) {
+        return (a.offset - b.offset) || (ENTITY_ORDER.indexOf(a.type) - ENTITY_ORDER.indexOf(b.type));
+    });
+}
+
+// Two spans of the same highlighting that grew together in the text.
+function joinAdjacent(list) {
+    var joined = [];
+
+    sortEntities(list).forEach(function (entity) {
+        var last = joined[joined.length - 1];
+
+        if (last && last.type === entity.type && last.url === entity.url
+            && last.offset + last.length === entity.offset) {
+            last.length += entity.length;
+
+            return;
+        }
+        joined.push(entity);
+    });
+
+    return joined;
+}
+
+function shiftEntities(list, delta) {
+    return list.map(function (entity) {
+        return makeEntity(entity.type, entity.offset + delta, entity.length, entity.url);
+    });
+}
+
+// The highlighting of the piece of text [from, to), counted from its own
+// beginning: a span sticking out of the piece is cut down to it, a span fully
+// outside disappears with the text it stood on.
+function takeEntities(list, from, to) {
+    var taken = [];
+
+    list.forEach(function (entity) {
+        var start = Math.max(entity.offset, from);
+        var end = Math.min(entity.offset + entity.length, to);
+
+        if (end - start < 1) {
+            return;
+        }
+        taken.push(makeEntity(entity.type, start - from, end - start, entity.url));
+    });
+
+    return sortEntities(taken);
+}
+
+// The two halves of a cut: what the part above the seam and the part below it
+// keep of the highlighting.
+function splitEntitiesAt(list, cut) {
+    return {
+        head: takeEntities(list, 0, cut),
+        tail: takeEntities(list, cut, Number.MAX_SAFE_INTEGER)
+    };
+}
+
+// The text left with a piece cut out of it: the halves on both sides of the
+// hole close the gap up, and a span the hole split in two comes back as one.
+function exciseEntities(list, from, to) {
+    return joinAdjacent(
+        takeEntities(list, 0, from)
+            .concat(shiftEntities(takeEntities(list, to, Number.MAX_SAFE_INTEGER), from))
+    );
+}
+
+// The highlighting of a new value of the text that was there before: whatever
+// did not move keeps its spans, inserted text pushes them along, removed text
+// takes the spans that stood inside it away. This is what carries a part's
+// formatting through the «Часть N» numbering and through every rewrite of the
+// text that does not move it between the parts.
+function remapEntities(list, before, after) {
+    if (before === after || list.length === 0) {
+        return list.slice();
+    }
+
+    var common = 0;
+    var limit = Math.min(before.length, after.length);
+    while (common < limit && before.charAt(common) === after.charAt(common)) {
+        common += 1;
+    }
+
+    var tail = 0;
+    while (tail < limit - common
+        && before.charAt(before.length - 1 - tail) === after.charAt(after.length - 1 - tail)) {
+        tail += 1;
+    }
+
+    // The run that stands for the changed text: [common, holeEnd) in the old
+    // value, [common, gapEnd) in the new one.
+    var holeEnd = before.length - tail;
+    var gapEnd = after.length - tail;
+
+    return sortEntities(
+        takeEntities(list, 0, common)
+            .concat(shiftEntities(takeEntities(list, holeEnd, Number.MAX_SAFE_INTEGER), gapEnd))
+    );
+}
+
+// The highlighting of several parts glued into one run of text: the spans of
+// each move behind the ones of the parts before it, over the blank line that
+// separates them.
+function joinFormats(values, formats) {
+    var list = [];
+    var at = 0;
+
+    values.forEach(function (value, index) {
+        list = list.concat(shiftEntities(formats[index] || [], at));
+        at += value.length + 2;
+    });
+
+    return sortEntities(list);
+}
+
+// The highlighting of the parts a run of text was cut up into: every piece is
+// looked up again in the text it came from and takes the spans standing on it.
+// The cuts drop the whitespace around them, so the positions are found rather
+// than counted.
+function formatsOfParts(parts, whole, list) {
+    var formats = [];
+    var from = 0;
+
+    parts.forEach(function (part) {
+        var at = part === '' ? from : whole.indexOf(part, from);
+
+        if (at === -1) {
+            formats.push([]);
+
+            return;
+        }
+
+        formats.push(takeEntities(list, at, at + part.length));
+        from = at + part.length;
+    });
+
+    return formats;
+}
+
+// The entity list of an editor document: the runs of one and the same
+// highlighting are walked in order and joined back into spans. A block format
+// a paste brought along (a heading, a list) is dropped: the channel gets the
+// text of the line either way.
+function entitiesFromOps(ops) {
+    var open = {};
+    var list = [];
+    var offset = 0;
+
+    (ops || []).forEach(function (op) {
+        var text = typeof op.insert === 'string' ? op.insert : '';
+        var attributes = op.attributes || {};
+        // An embed — a picture, a video — is one unit of the text for Telegram.
+        var length = text === '' ? 1 : text.length;
+
+        ENTITY_ORDER.forEach(function (type) {
+            var value = attributes[FORMAT_OF_ENTITY[type]];
+            if (type === 'text_link') {
+                value = value ? String(value) : '';
+            }
+
+            var held = open[type];
+            if (!value) {
+                if (held) {
+                    list.push(held);
+                    open[type] = null;
+                }
+
+                return;
+            }
+
+            if (held) {
+                held.length += length;
+
+                return;
+            }
+
+            open[type] = makeEntity(type, offset, length, type === 'text_link' ? value : null);
+        });
+
+        offset += length;
+    });
+
+    ENTITY_ORDER.forEach(function (type) {
+        if (open[type]) {
+            list.push(open[type]);
+        }
+    });
+
+    return sortEntities(list);
+}
 
 jQuery(document).ready(function () {
     var pickerFormat = __PICKER_FORMAT;
@@ -1000,6 +1253,255 @@ jQuery(document).ready(function () {
         var splitButton = document.getElementById('publicationSplitPart');
         var splitModesBox = document.getElementById('publicationSplitModes');
 
+        // --- the rich-text editor of a part -----------------------------------
+        //
+        // The textarea of a part stays the carrier of its plain text: every
+        // counter, cut and merge of this page reads it, and it is what the form
+        // submits. Quill is the surface the user sees and types into, and what
+        // it paints comes back as the entity list of that text. Three rules tie
+        // the two together:
+        //
+        //   * writing `field.value` carries the spans along with the text that
+        //     moved and repaints the editor, so the numbering, a merge and a
+        //     fill of a record all keep the formatting;
+        //   * typing in the editor writes the value through the native setter,
+        //     re-reads the spans from the document and then dispatches the
+        //     `input` event this page has always listened to;
+        //   * the caret of the editor answers for the field — `selectionStart`,
+        //     `selectionEnd`, `setSelectionRange` and `focus` point at the text
+        //     on the screen, so a cut at the caret stays a cut where the user
+        //     sees it.
+
+        var TEXTAREA_VALUE = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+        var TOOLBAR_FORMATS = [['bold', 'italic', 'underline', 'strike', 'code'], ['link']];
+
+        function formattingOf(field) {
+            return field.__formatting || [];
+        }
+
+        function editorRootOf(field) {
+            return field.parentNode ? field.parentNode.querySelector('.publication-editor-field') : null;
+        }
+
+        function formatFieldOf(field) {
+            return field.parentNode ? field.parentNode.querySelector('.publication-format-field') : null;
+        }
+
+        // The editor's own reading of the list: painting clamps a span that fell
+        // out of the text and joins the runs that grew together, so what the form
+        // submits is what the screen shows.
+        function paintEditor(field) {
+            var editor = field.__editor;
+            if (!editor) {
+                return;
+            }
+
+            var value = TEXTAREA_VALUE.get.call(field);
+            var caret = field.__caret;
+            field.__painting = true;
+            editor.setText(value);
+
+            // A value that ends in a line break loses that break: an editor holds
+            // no empty line behind its last one, and the channel trims it anyway.
+            var shown = editor.getText().replace(/\n$/, '');
+            if (shown !== value) {
+                TEXTAREA_VALUE.set.call(field, shown);
+            }
+
+            formattingOf(field).forEach(function (entity) {
+                var format = FORMAT_OF_ENTITY[entity.type];
+                if (!format) {
+                    return;
+                }
+                editor.formatText(entity.offset, entity.length, format, entity.url || true, 'api');
+            });
+            field.__formatting = entitiesFromOps(editor.getContents().ops);
+
+            if (caret && document.activeElement === editor.root) {
+                var start = Math.min(caret[0], shown.length);
+                var end = Math.min(Math.max(caret[1], start), shown.length);
+                editor.setSelection(start, end - start, 'api');
+                field.__caret = [start, end];
+            }
+            field.__painting = false;
+        }
+
+        function writeMirror(field, value) {
+            field.__painting = true;
+            TEXTAREA_VALUE.set.call(field, value);
+            field.__painting = false;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // The highlighting a part starts out with: the list of entities over the
+        // text the field already holds, painted into the editor.
+        function setPartFormatting(field, entities) {
+            field.__formatting = entities || [];
+            paintEditor(field);
+        }
+
+        function mountPartEditor(field) {
+            var root = editorRootOf(field);
+            if (field.__editor || !root || typeof Quill !== 'function') {
+                return;
+            }
+
+            var editor = new Quill(root, {
+                theme: 'snow',
+                placeholder: field.placeholder || '',
+                modules: { toolbar: TOOLBAR_FORMATS },
+            });
+            field.__editor = editor;
+            field.__formatting = formattingOf(field);
+            field.__caret = null;
+
+            Object.defineProperty(field, 'value', {
+                configurable: true,
+                get: function () {
+                    return TEXTAREA_VALUE.get.call(field);
+                },
+                set: function (next) {
+                    var before = TEXTAREA_VALUE.get.call(field);
+                    TEXTAREA_VALUE.set.call(field, next);
+
+                    if (field.__painting || before === next) {
+                        return;
+                    }
+
+                    field.__formatting = remapEntities(formattingOf(field), before, next);
+                    paintEditor(field);
+                    // The painted list is what the server gets: a value written
+                    // from the page never leaves its field behind the text.
+                    writeFormattingField(field);
+                },
+            });
+
+            [['selectionStart', 0], ['selectionEnd', 1]].forEach(function (pair) {
+                var which = pair[1];
+                Object.defineProperty(field, pair[0], {
+                    configurable: true,
+                    get: function () {
+                        return field.__caret ? field.__caret[which] : 0;
+                    },
+                    set: function (position) {
+                        var other = field.__caret ? field.__caret[1 - which] : 0;
+                        setCaret(which === 0 ? position : other, which === 0 ? other : position);
+                    },
+                });
+            });
+
+            function setCaret(from, to) {
+                field.__caret = [from, to];
+                editor.setSelection(from, Math.max(0, to - from), 'api');
+            }
+
+            field.setSelectionRange = function (from, to) {
+                setCaret(from, to === undefined ? from : to);
+            };
+            field.focus = function () {
+                editor.focus();
+            };
+
+            editor.on('text-change', function (delta, old, source) {
+                if (source !== 'user' || field.__painting) {
+                    return;
+                }
+
+                var range = editor.getSelection();
+                field.__caret = range ? [range.index, range.index + range.length] : field.__caret;
+                field.__formatting = entitiesFromOps(editor.getContents().ops);
+                writeMirror(field, editor.getText().replace(/\n$/, ''));
+            });
+            editor.on('selection-change', function (range, previous, source) {
+                if (!range || source !== 'user') {
+                    return;
+                }
+
+                lastEditedField = field;
+                field.__caret = [range.index, range.index + range.length];
+            });
+            // The caret of the page lives in the editor now, so the field it was
+            // typed in is the one a cut or a move works on.
+            root.addEventListener('focusin', function () {
+                lastEditedField = field;
+            });
+            // A selection is made with the mouse or with shift and the arrows, and
+            // the editor reports neither to the listener of the box.
+            ['mouseup', 'keyup'].forEach(function (name) {
+                root.addEventListener(name, function () {
+                    showSelectionActions(field);
+                });
+            });
+            // Text arriving from outside the page comes in as it is copied, without
+            // the headings and the colours of the page it was taken from. The
+            // listener answers in the capture phase: Quill reads the clipboard of
+            // the editable box itself, and its reading has to be the one that
+            // never happens.
+            root.addEventListener('paste', function (event) {
+                var text = (event.clipboardData || window.clipboardData).getData('text');
+                if (text === null || text === undefined) {
+                    return;
+                }
+
+                event.preventDefault();
+                event.stopPropagation();
+                var range = editor.getSelection(true);
+                editor.deleteText(range.index, range.length, 'api');
+                editor.insertText(range.index, text, 'user');
+            }, true);
+
+            paintEditor(field);
+        }
+
+        function mountPartEditors() {
+            textParts().forEach(mountPartEditor);
+        }
+
+        // The hidden field of a part carries its list to the server next to the
+        // text the spans are counted over.
+        function writeFormattingField(field) {
+            var holder = formatFieldOf(field);
+
+            if (holder) {
+                holder.value = JSON.stringify(formattingOf(field));
+            }
+        }
+
+        function writeFormattingFields() {
+            textParts().forEach(writeFormattingField);
+        }
+
+        // The text and the highlighting of a part written together: the value goes
+        // in without the spans of the text it replaced being moved over it, and the
+        // list that comes with it is painted as it stands.
+        function seedPart(field, value, entities) {
+            field.__caret = null;
+            field.__painting = true;
+            TEXTAREA_VALUE.set.call(field, value);
+            field.__painting = false;
+            field.__formatting = entities || [];
+            paintEditor(field);
+        }
+
+        // The parts as the splitting and the merging see them: the text without
+        // the «Часть N» prefix, and the entity offsets moved out of it too.
+        function bareParts() {
+            var fields = textParts();
+            var values = fields.map(function (field) {
+                return stripPartNumber(field.value);
+            });
+
+            return {
+                fields: fields,
+                values: values,
+                formats: fields.map(function (field, index) {
+                    var delta = values[index].length - field.value.length;
+
+                    return takeEntities(shiftEntities(formattingOf(field), delta), 0, values[index].length);
+                }),
+            };
+        }
+
         function textParts() {
             return Array.prototype.slice.call(partsBox.querySelectorAll('.publication-text-part'));
         }
@@ -1347,8 +1849,10 @@ jQuery(document).ready(function () {
         // `groups` is the album of every part, the shared field taking the first
         // of them. Without it the lists that are already in the form keep their
         // part, and only the parts that appear get an empty one. `files` holds
-        // the picked files of every part the same way.
-        function setTextParts(values, groups, files) {
+        // the picked files of every part the same way. `formats` is the
+        // highlighting of every part, counted over the text of `values` — the
+        // «Часть N» prefix is added after it, and the spans move along with it.
+        function setTextParts(values, groups, files, formats) {
             // The blocks that are about to be replaced carry the pickers of the
             // parts, so their lists are read while the fields still exist.
             var carriedFiles = files === undefined ? readFileGroups() : files;
@@ -1364,7 +1868,7 @@ jQuery(document).ready(function () {
 
             values.forEach(function (value, index) {
                 if (index === 0) {
-                    source.value = value;
+                    seedPart(source, value, (formats || [])[0]);
                     return;
                 }
                 var block = partTemplate.cloneNode(true);
@@ -1390,6 +1894,7 @@ jQuery(document).ready(function () {
 
                 partsBox.appendChild(block);
                 field.value = value;
+                field.__formatting = (formats || [])[index] || [];
             });
 
             textParts().forEach(function (field, index) {
@@ -1400,6 +1905,8 @@ jQuery(document).ready(function () {
                 block.querySelector('.publication-part-album-files').disabled = index === 0;
             });
 
+            mountPartEditors();
+
             setAlbumFields(groups === undefined ? keepGroups(values.length) : groups);
             writeFileGroups(carriedFiles);
             updateAlbumBoxes();
@@ -1409,8 +1916,8 @@ jQuery(document).ready(function () {
             updateAlbumMoves();
             applyPartNumbers();
             updateCounters();
-            fitTextInputNow();
             updateImages();
+            writeFormattingFields();
         }
 
         // Splitting runs when a text arrives from outside — a forum post, a
@@ -1418,9 +1925,8 @@ jQuery(document).ready(function () {
         // Parts the user split by hand are left alone unless one of them no
         // longer fits a message.
         function splitIfNeeded() {
-            var values = partValues();
             var limit = partLimit();
-            var overflowing = values.filter(function (value) {
+            var overflowing = partValues().filter(function (value) {
                 return value.length > limit;
             });
 
@@ -1428,27 +1934,39 @@ jQuery(document).ready(function () {
                 return false;
             }
 
-            var bare = values.map(function (value) {
-                return stripPartNumber(value);
-            }).join('\n\n');
+            var bare = bareParts();
+            var text = bare.values.join('\n\n');
+            var parts = splitIntoParts(text);
 
             // The whole text is cut anew, so the albums of the parts come together
             // in the first of them: none of the new parts is the one a list was
             // written for.
-            setTextParts(splitIntoParts(bare),
+            setTextParts(parts,
                 asTexts(flattenGroups(readImageGroups())),
-                flattenGroups(readFileGroups()));
+                flattenGroups(readFileGroups()),
+                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)));
 
             return true;
+        }
+
+        // The highlighting a record was saved with: the list of entities travels
+        // in the attribute of its row, in the same shape the form submits it.
+        function parseFormatting(raw) {
+            return raw ? JSON.parse(raw) : [];
         }
 
         // The text of a record or a forum post arrives as one run of it, and the
         // album that comes with it belongs to its first part — the field of the
         // fill writes that one, so the parts of this list start out empty.
-        function loadText(text) {
+        // `formatting` is the highlighting the record was saved with, cut up along
+        // with the text the parts are made of.
+        function loadText(text, formatting) {
             var parts = splitIntoParts(text);
 
-            setTextParts(parts, emptyGroups(parts.length), emptyFileGroups(parts.length));
+            setTextParts(parts,
+                emptyGroups(parts.length),
+                emptyFileGroups(parts.length),
+                formatsOfParts(parts, text, formatting || []));
         }
 
         // --- manual split of one part into two --------------------------------
@@ -1565,18 +2083,17 @@ jQuery(document).ready(function () {
         }
 
         function splitPartAtCaret() {
-            var fields = textParts();
-            var values = partValues().map(stripPartNumber);
-            var index = splitTarget(fields, values);
+            var bare = bareParts();
+            var index = splitTarget(bare.fields, bare.values);
 
             if (index === -1) {
                 return;
             }
 
-            var text = values[index];
+            var text = bare.values[index];
             // The «Часть N» prefix travels in the shown value, so the caret offset
             // has to be moved out of it before it points into the text.
-            var caret = (fields[index].selectionStart || 0) - (fields[index].value.length - text.length);
+            var caret = (bare.fields[index].selectionStart || 0) - (bare.fields[index].value.length - text.length);
             var cut = manualCut(text, caret);
             if (cut === -1) {
                 cut = middleCut(text);
@@ -1588,25 +2105,30 @@ jQuery(document).ready(function () {
 
             var head = text.slice(0, cut).replace(/\s+$/, '');
             var tail = text.slice(cut).replace(/^\s+/, '');
-            var groups = alignGroups(readImageGroups(), values.length);
-            var files = alignGroups(readFileGroups(), values.length);
+            // The highlighting is cut with the text: each half keeps the spans
+            // standing on it, and the whitespace the seam swallows takes theirs
+            // out of the list along with itself.
+            var halves = splitEntitiesAt(bare.formats[index], cut);
+            var formats = bare.formats.slice();
+
+            formats.splice(index, 1,
+                takeEntities(halves.head, 0, head.length),
+                takeEntities(halves.tail, text.length - cut - tail.length, Number.MAX_SAFE_INTEGER)
+            );
+
+            var groups = alignGroups(readImageGroups(), bare.values.length);
+            var files = alignGroups(readFileGroups(), bare.values.length);
 
             // The part that starts below the caret begins without pictures of its
             // own: the album stays with the text it was attached to.
             groups.splice(index + 1, 0, []);
             files.splice(index + 1, 0, []);
 
-            setTextParts(values.slice(0, index)
+            setTextParts(bare.values.slice(0, index)
                 .concat([head, tail])
-                .concat(values.slice(index + 1)), asTexts(groups), files);
+                .concat(bare.values.slice(index + 1)), asTexts(groups), files, formats);
 
-            var next = textParts()[index + 1];
-            if (next && typeof next.focus === 'function') {
-                next.focus();
-                if (typeof next.setSelectionRange === 'function') {
-                    next.setSelectionRange(0, 0);
-                }
-            }
+            caretOfPart(textParts()[index + 1], 0);
         }
 
         // --- manual split of the whole text at boundaries of one kind ---------
@@ -1672,7 +2194,8 @@ jQuery(document).ready(function () {
         // A piece that does not fit one message is still cut down by that rule,
         // because the server rejects a longer part.
         function splitWholeText(mode) {
-            var text = partValues().map(stripPartNumber).join('\n\n');
+            var bare = bareParts();
+            var text = bare.values.join('\n\n');
             var parts = [];
 
             piecesAt(text, wholeTextCuts(text, mode)).forEach(function (piece) {
@@ -1683,46 +2206,11 @@ jQuery(document).ready(function () {
 
             setTextParts(parts.length > 0 ? parts : [''],
                 asTexts(flattenGroups(readImageGroups())),
-                flattenGroups(readFileGroups()));
+                flattenGroups(readFileGroups()),
+                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)));
         }
 
-        // Two neighbouring parts into one: the seam becomes a paragraph, exactly
-        // the way the automatic split and the moved selections join text.
-        function mergeParts(index) {
-            var values = partValues().map(stripPartNumber);
-
-            if (index < 0 || index + 1 >= values.length) {
-                return;
-            }
-
-            var seam = values[index].replace(/\s+$/, '').length;
-            var groups = alignGroups(readImageGroups(), values.length);
-
-            // The album of the part that goes away joins the one it grew into.
-            groups[index] = unionGroups([groups[index], groups[index + 1]]);
-            groups.splice(index + 1, 1);
-
-            var files = spliceImageGroups(alignGroups(readFileGroups(), values.length), index);
-
-            values[index] = joinParts(values[index], values[index + 1]);
-            values.splice(index + 1, 1);
-            setTextParts(values, asTexts(groups), files);
-
-            // The joined text does not have to fit one message, so it goes back
-            // through the split when it stopped fitting.
-            if (splitIfNeeded()) {
-                return;
-            }
-
-            var field = textParts()[index];
-            if (field) {
-                // The caret marks the place the two parts grew together at.
-                field.focus();
-                field.setSelectionRange(seam, seam);
-            }
-        }
-
-        // --- moving a selection of text between two parts ----------------------
+        // --- joining two neighbouring parts -------------------------------------
 
         // The seam of a join is a paragraph: both sides keep their own text.
         function joinParts(first, second) {
@@ -1736,11 +2224,87 @@ jQuery(document).ready(function () {
             return tail === '' ? head : head + '\n\n' + tail;
         }
 
+        // The highlighting of the same join: the spans of the second part stand
+        // behind the seam the first one grew, and whatever the seam swallowed of
+        // them goes away with the whitespace it was made of.
+        function joinedFormats(first, firstFormats, second, secondFormats) {
+            var head = first.replace(/\s+$/, '');
+            var tail = second.replace(/^\s+/, '');
+            // Where the tail of the second part begins in the joined text: read off
+            // the join itself, so the seam stays defined in one place.
+            var at = joinParts(first, second).length - tail.length;
+
+            return sortEntities(
+                takeEntities(firstFormats, 0, head.length)
+                    .concat(shiftEntities(
+                        takeEntities(secondFormats, second.length - tail.length, Number.MAX_SAFE_INTEGER),
+                        at
+                    ))
+            );
+        }
+
+        // Two neighbouring parts into one: the seam becomes a paragraph, exactly
+        // the way the automatic split and the moved selections join text.
+        function mergeParts(index) {
+            var bare = bareParts();
+
+            if (index < 0 || index + 1 >= bare.values.length) {
+                return;
+            }
+
+            var seam = bare.values[index].replace(/\s+$/, '').length;
+            var groups = alignGroups(readImageGroups(), bare.values.length);
+
+            // The album of the part that goes away joins the one it grew into.
+            groups[index] = unionGroups([groups[index], groups[index + 1]]);
+            groups.splice(index + 1, 1);
+
+            var files = spliceImageGroups(alignGroups(readFileGroups(), bare.values.length), index);
+            var merged = joinedFormats(
+                bare.values[index],
+                bare.formats[index],
+                bare.values[index + 1],
+                bare.formats[index + 1]
+            );
+
+            bare.values[index] = joinParts(bare.values[index], bare.values[index + 1]);
+            bare.formats[index] = merged;
+            bare.values.splice(index + 1, 1);
+            bare.formats.splice(index + 1, 1);
+            setTextParts(bare.values, asTexts(groups), files, bare.formats);
+
+            // The joined text does not have to fit one message, so it goes back
+            // through the split when it stopped fitting.
+            if (splitIfNeeded()) {
+                return;
+            }
+
+            // The caret marks the place the two parts grew together at.
+            caretOfPart(textParts()[index], seam);
+        }
+
+        // A position in the text of a part, moved into the field as the user sees
+        // it: the line of the number is part of what stands there, and the caret
+        // of an editor answers for the hidden field it mirrors.
+        function caretOfPart(field, position) {
+            if (!field) {
+                return;
+            }
+
+            var at = position + (field.value.length - stripPartNumber(field.value).length);
+
+            field.focus();
+            field.setSelectionRange(at, at);
+        }
+
+        // --- moving a selection of text between two parts ----------------------
+
         // Forward puts the selection in front of the next part, backward — after
         // the previous one, so the reading order survives. A part the move empties
         // is dropped, and at the edge of the form the text gets a part of its own.
-        function shiftSelectedText(values, index, from, to, forward) {
+        function shiftSelectedText(values, formats, index, from, to, forward) {
             var text = values[index];
+            var list = formats[index];
             var raw = text.slice(from, to);
             var moved = raw.replace(/^\s+/, '').replace(/\s+$/, '');
 
@@ -1758,31 +2322,56 @@ jQuery(document).ready(function () {
             var source = wholeWords || head === '' || tail === ''
                 ? head + tail
                 : head + ' ' + tail;
+            // The highlighting of what stays: the spans before the cut hold their
+            // place, the ones behind it close the gap the selection left.
+            var sourceFormats = sortEntities(
+                takeEntities(list, 0, head.length)
+                    .concat(shiftEntities(
+                        takeEntities(list, to, Number.MAX_SAFE_INTEGER),
+                        source.length - tail.length
+                    ))
+            );
+            // The piece that travels carries the spans it stood under, cut out of
+            // the part and counted from its own beginning again.
+            var lead = raw.length - raw.replace(/^\s+/, '').length;
+            var piece = takeEntities(
+                shiftEntities(takeEntities(list, from, to), -lead),
+                0,
+                moved.length
+            );
             var target = forward ? index + 1 : index - 1;
             var next = values.slice();
+            var nextFormats = formats.slice();
             next[index] = source;
+            nextFormats[index] = sourceFormats;
 
             if (target < 0) {
                 next.unshift(moved);
+                nextFormats.unshift(piece);
                 target = 0;
             } else if (target >= next.length) {
                 next.push(moved);
+                nextFormats.push(piece);
             } else {
                 next[target] = forward
                     ? joinParts(moved, next[target])
                     : joinParts(next[target], moved);
+                nextFormats[target] = forward
+                    ? joinedFormats(moved, piece, values[target], formats[target])
+                    : joinedFormats(values[target], formats[target], moved, piece);
             }
 
             var caret = forward ? moved.length : next[target].length;
 
             if (source === '') {
                 next.splice(index, 1);
+                nextFormats.splice(index, 1);
                 if (index < target) {
                     target -= 1;
                 }
             }
 
-            return { values: next, index: target, caret: caret };
+            return { values: next, formats: nextFormats, index: target, caret: caret };
         }
 
         var selectionPopup = document.getElementById('publicationSelectionActions');
@@ -1833,62 +2422,23 @@ jQuery(document).ready(function () {
             return { left: Math.round(left), top: Math.round(top) };
         }
 
-        // A textarea gives no pixel coordinates for a position in its text, so the
-        // offset is measured in a hidden copy of the field up to that position.
-        var MIRROR_STYLE_PROPS = [
-            'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant',
-            'letterSpacing', 'lineHeight', 'wordSpacing', 'textTransform', 'textAlign',
-            'textIndent', 'width', 'paddingTop', 'paddingRight', 'paddingBottom',
-            'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth',
-            'borderLeftWidth', 'boxSizing',
-        ];
-
+        // The editor knows where a position of its text paints: the bounds of the
+        // zero width span there, measured against the box that scrolls.
         function caretPoint(field, position) {
-            var computed = window.getComputedStyle(field);
-            var mirror = document.createElement('div');
+            var editor = field.__editor;
+            var root = editorRootOf(field);
 
-            MIRROR_STYLE_PROPS.forEach(function (prop) {
-                mirror.style[prop] = computed[prop];
-            });
-            // The copied widths only take part in the box model with a style.
-            mirror.style.borderStyle = 'solid';
-            mirror.style.borderColor = 'transparent';
-            mirror.style.position = 'absolute';
-            mirror.style.visibility = 'hidden';
-            mirror.style.whiteSpace = 'pre-wrap';
-            mirror.style.overflowWrap = 'break-word';
-            mirror.style.top = '0';
-            mirror.style.left = '-9999px';
-
-            // A scrollbar eats into the text of the field but not into its box, and
-            // the copy would wrap a scrollbar later than the original.
-            var gutter = field.offsetWidth - field.clientWidth;
-            if (gutter > 0) {
-                mirror.style.width = (parseFloat(computed.width) - gutter) + 'px';
+            if (!editor || !root) {
+                return { x: 0, y: 0 };
             }
 
-            mirror.textContent = field.value.slice(0, position);
+            var box = root.getBoundingClientRect();
+            var bounds = editor.getBounds(
+                Math.max(0, Math.min(position, editor.getLength() - 1)),
+                0
+            ) || { left: 0, top: 0, height: 0 };
 
-            var marker = document.createElement('span');
-            marker.textContent = '\u200b';
-            mirror.appendChild(marker);
-
-            document.body.appendChild(mirror);
-            var fieldRect = field.getBoundingClientRect();
-            var mirrorRect = mirror.getBoundingClientRect();
-            var markerRect = marker.getBoundingClientRect();
-            document.body.removeChild(mirror);
-
-            // A zero width marker is only as tall as the glyph box, so the line of
-            // the text itself is what the popup has to clear.
-            var lineHeight = parseFloat(computed.lineHeight);
-
-            return {
-                x: fieldRect.left + markerRect.left - mirrorRect.left,
-                y: fieldRect.top + markerRect.top - mirrorRect.top
-                    + (isNaN(lineHeight) ? markerRect.height : lineHeight)
-                    - field.scrollTop,
-            };
+            return { x: box.left + bounds.left, y: box.top + bounds.top + bounds.height };
         }
 
         function showSelectionActions(field) {
@@ -1925,9 +2475,10 @@ jQuery(document).ready(function () {
             }
 
             var selection = selectionRange(selectionField);
-            var values = partValues().map(stripPartNumber);
+            var bare = bareParts();
             var moved = shiftSelectedText(
-                values,
+                bare.values,
+                bare.formats,
                 index,
                 selection.from,
                 selection.to,
@@ -1942,62 +2493,22 @@ jQuery(document).ready(function () {
             // An album goes with the text it belongs to: a part the move emptied
             // leaves its pictures to the neighbour that took the selection, and a
             // part born at the edge of the form starts without any.
-            var groups = alignGroups(readImageGroups(), values.length);
-            var files = alignGroups(readFileGroups(), values.length);
+            var groups = alignGroups(readImageGroups(), bare.values.length);
+            var files = alignGroups(readFileGroups(), bare.values.length);
 
-            if (moved.values.length === values.length + 1) {
+            if (moved.values.length === bare.values.length + 1) {
                 groups.splice(moved.index, 0, []);
                 files.splice(moved.index, 0, []);
-            } else if (moved.values.length === values.length - 1) {
+            } else if (moved.values.length === bare.values.length - 1) {
                 var joined = forward ? index : index - 1;
                 groups = spliceImageGroups(groups, joined);
                 files = spliceImageGroups(files, joined);
             }
 
-            setTextParts(moved.values, asTexts(groups), files);
+            setTextParts(moved.values, asTexts(groups), files, moved.formats);
 
-            var target = textParts()[moved.index];
-            if (target && typeof target.focus === 'function') {
-                target.focus();
-
-                if (typeof target.setSelectionRange === 'function') {
-                    target.setSelectionRange(moved.caret, moved.caret);
-                }
-            }
-        }
-
-        function resizePublicationTextInput() {
-            var maxHeight = window.innerHeight * 0.8;
-            textParts().forEach(function (field) {
-                field.style.minHeight = '60px';
-                field.style.resize = 'none';
-                field.style.overflowY = 'auto';
-                field.style.height = 'auto';
-                var sh = field.scrollHeight;
-                field.style.height = Math.max(60, Math.min(sh, maxHeight)) + 'px';
-                // Hide scrollbar when content fits, show when it overflows
-                field.style.overflowY = sh > maxHeight ? 'auto' : 'hidden';
-            });
-        }
-
-        // The fit measures with height:auto, which drops the box to its two
-        // default rows for one layout pass and moves the caret with it, so it
-        // runs only once typing stops instead of on every keystroke.
-        var resizeTimer = null;
-
-        function fitTextInputNow() {
-            if (resizeTimer) {
-                clearTimeout(resizeTimer);
-                resizeTimer = null;
-            }
-            resizePublicationTextInput();
-        }
-
-        function fitTextInputAfterTyping() {
-            if (resizeTimer) {
-                clearTimeout(resizeTimer);
-            }
-            resizeTimer = setTimeout(fitTextInputNow, 5000);
+            // The caret stays where the moved text came to rest.
+            caretOfPart(textParts()[moved.index], moved.caret);
         }
 
         var preview = document.getElementById('publicationPreview');
@@ -2300,23 +2811,83 @@ jQuery(document).ready(function () {
             updateImages();
         };
 
+        // The preview shows the highlighting the channel will show: the text is cut
+        // at the edge of every span and each piece is wrapped in the tags of the
+        // spans standing over it, nested in the order the list keeps them in.
+        function renderFormattedText(node, text, entities) {
+            var spans = (entities || []).filter(function (entity) {
+                var tag = FORMAT_TAGS[entity.type];
+
+                return !!tag
+                    && entity.length > 0
+                    && entity.offset >= 0
+                    && entity.offset + entity.length <= text.length;
+            });
+
+            if (spans.length === 0) {
+                node.textContent = text;
+
+                return;
+            }
+
+            var edges = [0, text.length];
+            spans.forEach(function (entity) {
+                edges.push(entity.offset, entity.offset + entity.length);
+            });
+            var stops = edges.filter(function (edge, index) {
+                return edges.indexOf(edge) === index;
+            }).sort(function (a, b) {
+                return a - b;
+            });
+
+            var fragment = document.createDocumentFragment();
+
+            stops.slice(0, -1).forEach(function (from, index) {
+                var to = stops[index + 1];
+                var covering = spans.filter(function (entity) {
+                    return entity.offset <= from && entity.offset + entity.length >= to;
+                }).sort(function (a, b) {
+                    return ENTITY_ORDER.indexOf(a.type) - ENTITY_ORDER.indexOf(b.type);
+                });
+                var piece = document.createTextNode(text.slice(from, to));
+
+                covering.forEach(function (entity) {
+                    var tag = document.createElement(FORMAT_TAGS[entity.type]);
+
+                    if (entity.type === 'text_link') {
+                        tag.setAttribute('href', entity.url || '#');
+                    }
+                    tag.appendChild(piece);
+                    piece = tag;
+                });
+                fragment.appendChild(piece);
+            });
+
+            node.appendChild(fragment);
+        }
+
         var update = function () {
             if (!preview) {
                 return;
             }
 
             var albums = albumPictures();
+            var fields = textParts();
             var shown = [];
 
             partValues().forEach(function (value, index) {
                 if (value !== '') {
-                    shown.push({ text: value, pictures: albums[index] || [] });
+                    shown.push({
+                        text: value,
+                        pictures: albums[index] || [],
+                        entities: formattingOf(fields[index]),
+                    });
                 }
             });
 
             var placeholder = preview.getAttribute('data-placeholder') || '';
             if (shown.length === 0) {
-                shown.push({ text: placeholder, pictures: albums[0] || [] });
+                shown.push({ text: placeholder, pictures: albums[0] || [], entities: [] });
             }
 
             // A publication that stands in several fields goes out as several
@@ -2336,36 +2907,32 @@ jQuery(document).ready(function () {
                 }
                 var body = document.createElement('p');
                 body.className = 'publication-preview-part';
-                body.textContent = one.text;
+                renderFormattedText(body, one.text, one.entities);
                 part.appendChild(body);
                 preview.appendChild(part);
             });
 
             // One part keeps the album in the strip under the fields, where a
             // single picture of it grows into the card of the preview.
-            var first = shown[0].urls;
+            var first = shown[0].pictures;
 
             renderImagesPreview(previewImages, many ? [] : first);
             updateSingleImagePreview(many ? [] : first);
         };
-        // One listener for every part field, including the ones cloned later.
+        // One listener for every part field, including the ones cloned later. The
+        // editor writes the field it mirrors through, so this is what a keystroke
+        // and a click on Bold both end in.
         partsBox.addEventListener('input', function (event) {
             if (!isPartField(event.target)) {
                 return;
             }
             // Typing replaces the selection the popup was pointing at.
             hideSelectionActions();
+            writeFormattingFields();
             updateCounters();
             update();
             if (textParts().length === 1) {
                 splitIfNeeded();
-            }
-            fitTextInputAfterTyping();
-        });
-        // Remembers which part holds the caret; see `lastEditedField`.
-        partsBox.addEventListener('focusin', function (event) {
-            if (isPartField(event.target)) {
-                lastEditedField = event.target;
             }
         });
         // The albums of the parts, the cloned ones included: a list typed by hand
@@ -2391,15 +2958,6 @@ jQuery(document).ready(function () {
                 acceptPickedFiles(imageFilesInput);
             });
         }
-        // A selection is made with the mouse or with shift and the arrows, and the
-        // fields never report it as an event of their own.
-        ['mouseup', 'keyup'].forEach(function (name) {
-            partsBox.addEventListener(name, function (event) {
-                if (isPartField(event.target)) {
-                    showSelectionActions(event.target);
-                }
-            });
-        });
         partsBox.addEventListener('focusout', hideSelectionActions);
         if (numberPartsInput) {
             numberPartsInput.addEventListener('change', function () {
@@ -2469,8 +3027,6 @@ jQuery(document).ready(function () {
         // Viewport coordinates: the popup does not follow what moves under it.
         window.addEventListener('resize', hideSelectionActions);
         window.addEventListener('scroll', hideSelectionActions, true);
-        resizePublicationTextInput();
-        window.addEventListener('resize', fitTextInputNow);
 
         if (imagesInput) {
             imagesInput.addEventListener('input', updateImages);
@@ -2484,6 +3040,9 @@ jQuery(document).ready(function () {
                     updatePreviewPublicationAt();
                 });
         }
+        // The part the form starts with is not written by anyone, so its editor
+        // is mounted here rather than by setTextParts.
+        mountPartEditors();
         update();
         updateCounters();
         updateImages();
@@ -2537,7 +3096,10 @@ jQuery(document).ready(function () {
             }
             editingLog = log;
             log.querySelector('.editing-badge').classList.remove('d-none');
-            loadText(log.getAttribute('data-text') || '');
+            loadText(
+                log.getAttribute('data-text') || '',
+                parseFormatting(log.getAttribute('data-formatting'))
+            );
             fillImages(log.getAttribute('data-image-urls') || '');
             scrollToMiddle(log);
 

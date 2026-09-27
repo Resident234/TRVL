@@ -11,6 +11,7 @@ use app\shared\Publications\Contract\PublicationRepositoryInterface;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Dto\PublicationData;
 use app\shared\Settings\Service\PublicationSettingsService;
+use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
 use DateTimeImmutable;
@@ -108,12 +109,17 @@ final class PublicationsService
      * in the temporary store.
      *
      * @param string[] $imageUrls
-     * @throws InvalidArgumentException when the text is empty
+     * @throws InvalidArgumentException when the text is empty or its
+     * formatting does not fit it
      */
-    public function saveDraft(string $text, array $imageUrls, ?ForumPublicationRef $forumRef = null): void
-    {
-        $this->assertTextValid($text);
-        $id = $this->publications->createDraft($text, $imageUrls, $this->now());
+    public function saveDraft(
+        string $text,
+        array $imageUrls,
+        MessageEntities $formatting,
+        ?ForumPublicationRef $forumRef = null,
+    ): void {
+        $this->assertPartValid($text, $formatting);
+        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting);
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -126,11 +132,17 @@ final class PublicationsService
      * @param string[] $imageUrls
      * @throws InvalidArgumentException when the text is empty or the date is invalid
      */
-    public function schedulePost(string $text, array $imageUrls, string $publishedAt, ?ForumPublicationRef $forumRef = null, ?string $userTimezone = null): void
-    {
-        $this->assertTextValid($text);
+    public function schedulePost(
+        string $text,
+        array $imageUrls,
+        MessageEntities $formatting,
+        string $publishedAt,
+        ?ForumPublicationRef $forumRef = null,
+        ?string $userTimezone = null,
+    ): void {
+        $this->assertPartValid($text, $formatting);
         $normalized = $this->normalizeDate($publishedAt, $userTimezone);
-        $id = $this->publications->createPost($text, $imageUrls, $normalized, $this->now());
+        $id = $this->publications->createPost($text, $imageUrls, $normalized, $this->now(), $formatting);
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -146,36 +158,53 @@ final class PublicationsService
      * channel thread continues from. Every part goes out with the album the
      * form holds in its own field: $imageGroups is one list of URLs per part,
      * in the order of the parts, and a part that brings no list of its own is
-     * saved without images.
+     * saved without images. $formats is the highlighting of every part the
+     * same way, one entity list per part, counted from the same text the form
+     * shows — the trim() below moves it along with the text it describes.
      *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
+     * @param MessageEntities[] $formats
      * @throws InvalidArgumentException when a part is empty or longer than the
-     * Telegram limit, or when the date is invalid
+     * Telegram limit, when its formatting does not fit it, or when the date is
+     * invalid
      */
     public function saveParts(
         array $texts,
         array $imageGroups,
+        array $formats,
         string $publishedAt,
         string $action,
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
     ): void {
-        $parts = array_map(static fn (string $text): string => trim($text), array_values($texts));
+        $parts = [];
+        $formatting = [];
+        foreach (array_values($texts) as $index => $text) {
+            $parts[] = trim($text);
+            $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
+        }
         $albums = array_values($imageGroups);
 
-        foreach ($parts as $text) {
-            $this->assertTextValid($text);
+        foreach ($parts as $index => $text) {
+            $this->assertPartValid($text, $formatting[$index]);
         }
 
         if (count($parts) === 1) {
             if ($action === 'draft') {
-                $this->saveDraft($parts[0], $albums[0] ?? [], $forumRef);
+                $this->saveDraft($parts[0], $albums[0] ?? [], $formatting[0], $forumRef);
 
                 return;
             }
 
-            $this->schedulePost($parts[0], $albums[0] ?? [], $publishedAt, $forumRef, $userTimezone);
+            $this->schedulePost(
+                $parts[0],
+                $albums[0] ?? [],
+                $formatting[0],
+                $publishedAt,
+                $forumRef,
+                $userTimezone,
+            );
 
             return;
         }
@@ -185,7 +214,11 @@ final class PublicationsService
         if ($action === 'draft') {
             $rows = [];
             foreach ($parts as $index => $text) {
-                $rows[] = ['text' => $text, 'imageUrls' => $albums[$index] ?? []];
+                $rows[] = [
+                    'text' => $text,
+                    'imageUrls' => $albums[$index] ?? [],
+                    'formatting' => $formatting[$index],
+                ];
             }
 
             $this->bindForumRef($this->publications->createDrafts($rows, $now), $forumRef);
@@ -199,11 +232,25 @@ final class PublicationsService
             $rows[] = [
                 'text' => $text,
                 'imageUrls' => $albums[$index] ?? [],
+                'formatting' => $formatting[$index],
                 'publishedAt' => $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes()),
             ];
         }
 
         $this->bindForumRef($this->publications->createPosts($rows, $now), $forumRef);
+    }
+
+    /**
+     * The highlighting of a part as it comes from the form, moved over the
+     * whitespace trim() took off its head and cut down to what is left of it
+     * before the trailing whitespace goes. Leading whitespace is ASCII, so its
+     * byte count is also its count in UTF-16 code units.
+     */
+    private static function trimFormatting(string $text, MessageEntities $formatting): MessageEntities
+    {
+        $lead = strlen($text) - strlen(ltrim($text));
+
+        return $formatting->slice($lead, MessageEntities::utf16Length(trim($text)));
     }
 
     /**
@@ -377,6 +424,7 @@ final class PublicationsService
                 $now,
                 $draft->createdAt,
                 $draft->updatedAt,
+                formatting: $draft->formatting,
             ),
             $now,
         );
@@ -406,6 +454,7 @@ final class PublicationsService
                 $this->normalizeDate($publishedAt, $userTimezone),
                 $draft->createdAt,
                 $draft->updatedAt,
+                formatting: $draft->formatting,
             ),
             $now,
         );
@@ -429,14 +478,15 @@ final class PublicationsService
         }
 
         $now = $this->now();
-        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now);
+        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting);
     }
 
     /**
      * Publishes a single post through the Telegram channel service:
      * with photos it goes as a photo album (the caption on the first
      * photo, the full text as a separate message when it does not fit
-     * the caption limit), without photos as a plain text message.
+     * the caption limit), without photos as a plain text message. The
+     * highlighting of the text goes with it as message entities.
      *
      * @throws RuntimeException when the bot token is not configured
      * @throws TelegramApiException on API failure
@@ -445,18 +495,22 @@ final class PublicationsService
     {
         // If we have images and forum HTTP client, download images and upload as files
         if ($post->imageUrls !== [] && $this->forumHttpClient !== null && method_exists($this->channel, 'publishPhotos')) {
-            return $this->channel->publishPhotos($post->text, $this->prepareImageUrlsForTelegram($post->imageUrls));
+            return $this->channel->publishPhotos(
+                $post->text,
+                $this->prepareImageUrlsForTelegram($post->imageUrls),
+                $post->formatting,
+            );
         }
 
         if ($post->imageUrls !== [] && method_exists($this->channel, 'publishPhotos')) {
-            return $this->channel->publishPhotos($post->text, $post->imageUrls);
+            return $this->channel->publishPhotos($post->text, $post->imageUrls, $post->formatting);
         }
 
         if (!method_exists($this->channel, 'publishText')) {
             throw new RuntimeException('Telegram-канал не сконфигурирован.');
         }
 
-        return $this->channel->publishText($post->text);
+        return $this->channel->publishText($post->text, $post->formatting);
     }
 
     /**
@@ -592,7 +646,7 @@ final class PublicationsService
             );
         }
 
-        $this->channel->editPostText($record->telegramId, $record->text);
+        $this->channel->editPostText($record->telegramId, $record->text, $record->formatting);
     }
 
     /**
@@ -617,12 +671,20 @@ final class PublicationsService
      * time on every move or update.
      *
      * @param string[] $imageUrls
-     * @throws InvalidArgumentException when the text is empty, the date
-     * is invalid or the source record does not exist
+     * @throws InvalidArgumentException when the text is empty, its formatting
+     * does not fit it, the date is invalid or the source record does not exist
      */
-    public function saveFromForm(string $text, array $imageUrls, string $publishedAt, string $source, ?int $sourceId, string $action, ?string $userTimezone = null): void
-    {
-        $this->assertTextValid($text);
+    public function saveFromForm(
+        string $text,
+        array $imageUrls,
+        MessageEntities $formatting,
+        string $publishedAt,
+        string $source,
+        ?int $sourceId,
+        string $action,
+        ?string $userTimezone = null,
+    ): void {
+        $this->assertPartValid($text, $formatting);
         $now = $this->now();
 
         if ($source === 'deleted') {
@@ -640,6 +702,7 @@ final class PublicationsService
                         null,
                         $record->createdAt,
                         $record->updatedAt,
+                        formatting: $formatting,
                     ),
                     $now,
                 );
@@ -658,6 +721,7 @@ final class PublicationsService
                     $this->normalizeDate($publishedAt, $userTimezone),
                     $record->createdAt,
                     $record->updatedAt,
+                    formatting: $formatting,
                 ),
                 $now,
             );
@@ -670,7 +734,7 @@ final class PublicationsService
             $this->assertDraftExists($sourceId);
             if ($action === 'draft') {
                 // 6) draft + "Сохранить": update in place.
-                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now);
+                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting);
 
                 return;
             }
@@ -686,6 +750,7 @@ final class PublicationsService
                     $this->normalizeDate($publishedAt, $userTimezone),
                     $draft->createdAt,
                     $draft->updatedAt,
+                    formatting: $formatting,
                 ),
                 $now,
             );
@@ -718,7 +783,14 @@ final class PublicationsService
 
         if ($action === 'publish') {
             // 1) scheduled post + "Опубликовать": update in place.
-            $this->publications->updatePost($sourceId, $text, $imageUrls, $this->normalizeDate($publishedAt, $userTimezone), $now);
+            $this->publications->updatePost(
+                $sourceId,
+                $text,
+                $imageUrls,
+                $this->normalizeDate($publishedAt, $userTimezone),
+                $now,
+                $formatting,
+            );
 
             return;
         }
@@ -734,6 +806,7 @@ final class PublicationsService
                 null,
                 $post->createdAt,
                 $post->updatedAt,
+                formatting: $formatting,
             ),
             $now,
         );
@@ -783,6 +856,7 @@ final class PublicationsService
                 $now,
                 $record->createdAt,
                 $record->updatedAt,
+                formatting: $record->formatting,
             ),
             $now,
         );
@@ -812,6 +886,7 @@ final class PublicationsService
                 $this->normalizeDate($publishedAt, $userTimezone),
                 $record->createdAt,
                 $record->updatedAt,
+                formatting: $record->formatting,
             ),
             $now,
         );
@@ -941,9 +1016,10 @@ final class PublicationsService
 
     /**
      * @throws InvalidArgumentException when the text is empty or longer than
-     * the message limit Telegram accepts
+     * the message limit Telegram accepts, or when its formatting does not
+     * describe real spans of it
      */
-    private function assertTextValid(string $text): void
+    private function assertPartValid(string $text, MessageEntities $formatting): void
     {
         $length = mb_strlen($text);
         if ($length === 0 || $length > ChannelService::TEXT_MAX_LENGTH) {
@@ -951,6 +1027,8 @@ final class PublicationsService
                 sprintf('Текст публикации должен быть от 1 до %d символов.', ChannelService::TEXT_MAX_LENGTH),
             );
         }
+
+        $formatting->assertFitsText($text);
     }
 
     /**

@@ -6,6 +6,7 @@ namespace app\tests\Unit\shared\Publications\Infrastructure;
 
 use app\shared\Publications\Dto\PublicationData;
 use app\shared\Publications\Infrastructure\PublicationRepository;
+use app\shared\Telegram\Dto\MessageEntities;
 use Codeception\Test\Unit;
 use InvalidArgumentException;
 use Yii;
@@ -33,7 +34,12 @@ final class PublicationRepositoryTest extends Unit
 
     public function testCreateDraftSavesRowWithImageUrls(): void
     {
-        $this->_repository->createDraft('Текст черновика', ['https://example.com/a.png'], '2026-09-10 10:00:00');
+        $this->_repository->createDraft(
+            'Текст черновика',
+            ['https://example.com/a.png'],
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+        );
 
         $drafts = $this->_repository->allDrafts();
 
@@ -47,7 +53,13 @@ final class PublicationRepositoryTest extends Unit
 
     public function testCreatePostSavesScheduledTime(): void
     {
-        $this->_repository->createPost('Текст поста', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00');
+        $this->_repository->createPost(
+            'Текст поста',
+            [],
+            '2026-09-10 21:30:00',
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+        );
 
         $posts = $this->_repository->allPosts();
 
@@ -57,12 +69,45 @@ final class PublicationRepositoryTest extends Unit
         $this->assertNull($posts[0]->telegramId);
     }
 
+    public function testFormattingSurvivesCreateAndUpdate(): void
+    {
+        $bold = [['type' => 'bold', 'offset' => 0, 'length' => 5]];
+        $italic = [['type' => 'italic', 'offset' => 7, 'length' => 5]];
+
+        $this->_repository->createDraft('Жирный текст', [], '2026-09-10 10:00:00', new MessageEntities($bold));
+        $this->_repository->createPost('Жирный текст', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities($bold));
+
+        $this->assertSame($bold, $this->_repository->allDrafts()[0]->formatting->toArray());
+        $this->assertSame($bold, $this->_repository->allPosts()[0]->formatting->toArray());
+
+        $this->_repository->updateDraft(1, 'Курсивный текст', [], '2026-09-10 11:00:00', new MessageEntities($italic));
+        $this->_repository->updatePost(1, 'Курсивный текст', [], '2026-09-10 22:00:00', '2026-09-10 11:00:00', new MessageEntities($italic));
+
+        $this->assertSame($italic, $this->_repository->allDrafts()[0]->formatting->toArray());
+        $this->assertSame($italic, $this->_repository->allPosts()[0]->formatting->toArray());
+    }
+
     public function testCreatePostsStoresEveryPartInOrder(): void
     {
         $firstId = $this->_repository->createPosts([
-            ['text' => 'Часть 1', 'imageUrls' => ['https://example.com/a.png'], 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'publishedAt' => '2026-09-10 21:31:00'],
-            ['text' => 'Часть 3', 'imageUrls' => [], 'publishedAt' => '2026-09-10 21:32:00'],
+            [
+                'text' => 'Часть 1',
+                'imageUrls' => ['https://example.com/a.png'],
+                'formatting' => new MessageEntities(),
+                'publishedAt' => '2026-09-10 21:30:00',
+            ],
+            [
+                'text' => 'Часть 2',
+                'imageUrls' => [],
+                'formatting' => new MessageEntities(),
+                'publishedAt' => '2026-09-10 21:31:00',
+            ],
+            [
+                'text' => 'Часть 3',
+                'imageUrls' => [],
+                'formatting' => new MessageEntities(),
+                'publishedAt' => '2026-09-10 21:32:00',
+            ],
         ], '2026-09-10 10:00:00');
 
         $due = $this->_repository->findDueForPublishing('2026-09-10 21:35:00');
@@ -82,8 +127,8 @@ final class PublicationRepositoryTest extends Unit
     public function testCreateDraftsStoresEveryPart(): void
     {
         $firstId = $this->_repository->createDrafts([
-            ['text' => 'Часть 1', 'imageUrls' => ['https://example.com/a.png']],
-            ['text' => 'Часть 2', 'imageUrls' => []],
+            ['text' => 'Часть 1', 'imageUrls' => ['https://example.com/a.png'], 'formatting' => new MessageEntities()],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00');
 
         $drafts = $this->_repository->allDrafts();
@@ -99,8 +144,18 @@ final class PublicationRepositoryTest extends Unit
     {
         try {
             $this->_repository->createPosts([
-                ['text' => 'Часть 1', 'imageUrls' => [], 'publishedAt' => '2026-09-10 21:30:00'],
-                ['text' => 'Часть 2', 'imageUrls' => [], 'publishedAt' => 'не дата'],
+                [
+                    'text' => 'Часть 1',
+                    'imageUrls' => [],
+                    'formatting' => new MessageEntities(),
+                    'publishedAt' => '2026-09-10 21:30:00',
+                ],
+                [
+                    'text' => 'Часть 2',
+                    'imageUrls' => [],
+                    'formatting' => new MessageEntities(),
+                    'publishedAt' => 'не дата',
+                ],
             ], '2026-09-10 10:00:00');
             $this->fail('Вторая часть с неразбираемой датой должна была сорвать вставку.');
         } catch (DbException $e) {
@@ -112,8 +167,8 @@ final class PublicationRepositoryTest extends Unit
 
     public function testAllPostsSortedByPublishedAtDescending(): void
     {
-        $this->_repository->createPost('Поздний', [], '2026-09-10 22:00:00', '2026-09-10 10:00:00');
-        $this->_repository->createPost('Ранний', [], '2026-09-10 21:00:00', '2026-09-10 10:00:00');
+        $this->_repository->createPost('Поздний', [], '2026-09-10 22:00:00', '2026-09-10 10:00:00', new MessageEntities());
+        $this->_repository->createPost('Ранний', [], '2026-09-10 21:00:00', '2026-09-10 10:00:00', new MessageEntities());
 
         $posts = $this->_repository->allPosts();
 
@@ -123,9 +178,9 @@ final class PublicationRepositoryTest extends Unit
 
     public function testAllDraftsSortedByUpdatedAtDescending(): void
     {
-        $this->_repository->createDraft('Первый', [], '2026-09-10 10:00:00');
-        $this->_repository->createDraft('Второй', [], '2026-09-10 11:00:00');
-        $this->_repository->updateDraft(1, 'Первый обновлён', [], '2026-09-10 12:00:00');
+        $this->_repository->createDraft('Первый', [], '2026-09-10 10:00:00', new MessageEntities());
+        $this->_repository->createDraft('Второй', [], '2026-09-10 11:00:00', new MessageEntities());
+        $this->_repository->updateDraft(1, 'Первый обновлён', [], '2026-09-10 12:00:00', new MessageEntities());
 
         $drafts = $this->_repository->allDrafts();
 
@@ -135,9 +190,9 @@ final class PublicationRepositoryTest extends Unit
 
     public function testFindDueForPublishingReturnsOnlyDueUnpublished(): void
     {
-        $this->_repository->createPost('Прошлое', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00');
-        $this->_repository->createPost('Наступившее', [], '2026-09-10 12:00:00', '2026-09-10 10:00:00');
-        $this->_repository->createPost('Будущее', [], '2026-09-11 12:00:00', '2026-09-10 10:00:00');
+        $this->_repository->createPost('Прошлое', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00', new MessageEntities());
+        $this->_repository->createPost('Наступившее', [], '2026-09-10 12:00:00', '2026-09-10 10:00:00', new MessageEntities());
+        $this->_repository->createPost('Будущее', [], '2026-09-11 12:00:00', '2026-09-10 10:00:00', new MessageEntities());
 
         $due = $this->_repository->findDueForPublishing('2026-09-10 20:00:00');
 
@@ -148,7 +203,7 @@ final class PublicationRepositoryTest extends Unit
 
     public function testFindDueSkipsPostsWithTelegramId(): void
     {
-        $this->_repository->createPost('Опубликованный', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00');
+        $this->_repository->createPost('Опубликованный', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00', new MessageEntities());
         $this->_repository->storeTelegramId(1, 4242, '2026-09-09 12:05:00', '2026-09-09 12:05:30');
 
         $due = $this->_repository->findDueForPublishing('2026-09-10 20:00:00');
@@ -204,7 +259,16 @@ final class PublicationRepositoryTest extends Unit
 
     public function testRestoredDeletedRecordMovesToPosts(): void
     {
-        $post = new PublicationData(1, 'Восстанавливаемый', [], 4242, '2026-09-10 21:00:00', '2026-09-10 10:00:00', '2026-09-10 10:00:00');
+        $post = new PublicationData(
+            1,
+            'Восстанавливаемый',
+            [],
+            4242,
+            '2026-09-10 21:00:00',
+            '2026-09-10 10:00:00',
+            '2026-09-10 10:00:00',
+            formatting: new MessageEntities([['type' => 'bold', 'offset' => 0, 'length' => 5]]),
+        );
         $this->_repository->insertDeletedWithHistory($post, '2026-09-10 12:00:00');
 
         $record = $this->_repository->deleteDeleted(1);
@@ -217,6 +281,7 @@ final class PublicationRepositoryTest extends Unit
                 '2026-09-11 12:00:00',
                 $record->createdAt,
                 $record->updatedAt,
+                formatting: $record->formatting,
             ),
             '2026-09-11 12:00:00',
         );
@@ -227,6 +292,11 @@ final class PublicationRepositoryTest extends Unit
         $this->assertNull($posts[0]->telegramId);
         $this->assertSame('2026-09-11 12:00:00', $posts[0]->publishedAt);
         $this->assertSame('2026-09-10 10:00:00', $posts[0]->createdAt);
+        $this->assertSame(
+            [['type' => 'bold', 'offset' => 0, 'length' => 5]],
+            $posts[0]->formatting->toArray(),
+            'A restored record must carry its formatting back into the posts table.',
+        );
     }
 
     public function testRestoredDeletedRecordMovesToDrafts(): void

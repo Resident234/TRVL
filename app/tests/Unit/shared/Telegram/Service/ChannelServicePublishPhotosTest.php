@@ -6,6 +6,7 @@ namespace app\tests\Unit\shared\Telegram\Service;
 
 use app\shared\Telegram\Contract\PublishedDescriptionRepositoryInterface;
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
+use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
 use app\shared\Telegram\Service\ChannelService;
 use Codeception\Test\Unit;
@@ -32,7 +33,7 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoMessage')
-            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст')
+            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст', new MessageEntities())
             ->willReturn(new PostResult(11, 123));
 
         $this->_client->expects($this->never())->method('sendPhotoGroupMessage');
@@ -52,7 +53,7 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoGroupMessage')
-            ->with(self::CHANNEL_ID, $urls, 'Текст')
+            ->with(self::CHANNEL_ID, $urls, 'Текст', new MessageEntities())
             ->willReturn(new PostResult(12, 123));
 
         $this->_client->expects($this->never())->method('sendPhotoMessage');
@@ -91,15 +92,60 @@ final class ChannelServicePublishPhotosTest extends Unit
                 self::CHANNEL_ID,
                 'https://example.com/a.jpg',
                 implode("\n", array_fill(0, 10, $line)),
+                new MessageEntities(),
             )
             ->willReturn(new PostResult(13, 123));
         $this->_client
             ->expects($this->once())
             ->method('sendTextMessage')
-            ->with(self::CHANNEL_ID, implode("\n", array_fill(0, 2, $line)))
+            ->with(
+                self::CHANNEL_ID,
+                implode("\n", array_fill(0, 2, $line)),
+                new MessageEntities(),
+            )
             ->willReturn(new PostResult(14, 123));
 
         $this->assertSame(13, $this->_service->publishPhotos($text, ['https://example.com/a.jpg']));
+    }
+
+    public function testFormattingIsCutTogetherWithTheCaption(): void
+    {
+        $line = str_repeat('а', 100);
+        $text = implode("\n", array_fill(0, 12, $line));
+
+        $formatting = new MessageEntities([
+            ['type' => 'bold', 'offset' => 50, 'length' => 100],
+            ['type' => 'code', 'offset' => 1005, 'length' => 20],
+            ['type' => 'italic', 'offset' => 1015, 'length' => 5],
+        ]);
+
+        $this->_client
+            ->expects($this->once())
+            ->method('sendPhotoMessage')
+            ->with(
+                self::CHANNEL_ID,
+                'https://example.com/a.jpg',
+                implode("\n", array_fill(0, 10, $line)),
+                new MessageEntities([
+                    ['type' => 'bold', 'offset' => 50, 'length' => 100],
+                    ['type' => 'code', 'offset' => 1005, 'length' => 4],
+                ]),
+            )
+            ->willReturn(new PostResult(13, 123));
+        $this->_client
+            ->expects($this->once())
+            ->method('sendTextMessage')
+            ->with(
+                self::CHANNEL_ID,
+                implode("\n", array_fill(0, 2, $line)),
+                new MessageEntities([
+                    ['type' => 'code', 'offset' => 0, 'length' => 15],
+                    ['type' => 'italic', 'offset' => 5, 'length' => 5],
+                ]),
+            )
+            ->willReturn(new PostResult(14, 123));
+
+        $this->assertSame(13, $this->_service->publishPhotos($text, ['https://example.com/a.jpg'], $formatting));
     }
 
     public function testLongTextWithoutLineBreaksIsCutAtCaptionLimit(): void
@@ -109,12 +155,17 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoMessage')
-            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', str_repeat('а', 1024))
+            ->with(
+                self::CHANNEL_ID,
+                'https://example.com/a.jpg',
+                str_repeat('а', 1024),
+                new MessageEntities(),
+            )
             ->willReturn(new PostResult(13, 123));
         $this->_client
             ->expects($this->once())
             ->method('sendTextMessage')
-            ->with(self::CHANNEL_ID, str_repeat('а', 976))
+            ->with(self::CHANNEL_ID, str_repeat('а', 976), new MessageEntities())
             ->willReturn(new PostResult(14, 123));
 
         $this->assertSame(13, $this->_service->publishPhotos($text, ['https://example.com/a.jpg']));
@@ -139,7 +190,7 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoMessage')
-            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст')
+            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст', new MessageEntities())
             ->willReturn(new PostResult(15, 123));
 
         $this->assertSame(

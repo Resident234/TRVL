@@ -34,8 +34,11 @@ final class LogoutTest extends \Codeception\Test\Unit
                     {
                     }
 
-                    public function sendTextMessage(string $channelId, string $text): \app\shared\Telegram\Dto\PostResult
-                    {
+                    public function sendTextMessage(
+                        string $channelId,
+                        string $text,
+                        \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
+                    ): \app\shared\Telegram\Dto\PostResult {
                         throw new \RuntimeException('not needed in this test');
                     }
 
@@ -43,6 +46,7 @@ final class LogoutTest extends \Codeception\Test\Unit
                         string $channelId,
                         string $photoPath,
                         string $caption,
+                        \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
                     ): \app\shared\Telegram\Dto\PostResult {
                         throw new \RuntimeException('not needed in this test');
                     }
@@ -51,6 +55,7 @@ final class LogoutTest extends \Codeception\Test\Unit
                         string $channelId,
                         array $photoUrls,
                         string $caption,
+                        \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
                     ): \app\shared\Telegram\Dto\PostResult {
                         throw new \RuntimeException('not needed in this test');
                     }
@@ -63,8 +68,12 @@ final class LogoutTest extends \Codeception\Test\Unit
                     {
                     }
 
-                    public function editChannelMessageText(string $channelId, int $messageId, string $text): void
-                    {
+                    public function editChannelMessageText(
+                        string $channelId,
+                        int $messageId,
+                        string $text,
+                        \app\shared\Telegram\Dto\MessageEntities $entities = new \app\shared\Telegram\Dto\MessageEntities(),
+                    ): void {
                     }
                 },
                 '@gsu_travels',

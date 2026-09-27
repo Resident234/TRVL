@@ -1,0 +1,59 @@
+/* The Quill editor of a publication part. Quill brings its own snow theme;
+   these rules only pull it into the look of the portal: the fonts and the
+   corner radii of a Bootstrap field, the height limits the textarea used to
+   fit by hand, and the plain Telegram rendering of the spans. */
+
+.publication-editor {
+    position: relative;
+}
+
+.publication-editor .ql-toolbar {
+    border-color: var(--bs-border-color);
+    border-bottom: 0;
+    border-radius: var(--bs-border-radius);
+    background-color: var(--bs-light);
+}
+
+.publication-editor .ql-container {
+    border-color: var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    font-family: inherit;
+    font-size: inherit;
+    height: auto;
+}
+
+.publication-editor .ql-editor {
+    font-family: inherit;
+    font-size: inherit;
+    height: auto;
+    line-height: 1.5;
+    min-height: 60px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.publication-editor .ql-editor:focus {
+    outline: 0;
+}
+
+.publication-editor .ql-editor.ql-blank::before {
+    color: var(--bs-secondary-color);
+    font-style: normal;
+    left: 15px;
+}
+
+.publication-editor .ql-editor a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.publication-editor .ql-editor code {
+    font-family: var(--bs-font-monospace);
+}
+
+/* The same spans the channel shows: the preview of a part is built out of the
+   entity list of its text, so the browser defaults are all that is needed. */
+.publication-preview-part code {
+    font-family: var(--bs-font-monospace);
+    font-size: inherit;
+}

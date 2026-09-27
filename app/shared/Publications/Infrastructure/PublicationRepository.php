@@ -6,6 +6,7 @@ namespace app\shared\Publications\Infrastructure;
 
 use app\shared\Publications\Contract\PublicationRepositoryInterface;
 use app\shared\Publications\Dto\PublicationData;
+use app\shared\Telegram\Dto\MessageEntities;
 use InvalidArgumentException;
 use PDO;
 use yii\db\Connection;
@@ -23,7 +24,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allPosts(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_post}}'
             . $this->order('published_at', $oldestFirst),
             $limit,
@@ -34,7 +35,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allDrafts(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, NULL AS telegram_id, NULL AS published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, NULL AS telegram_id, NULL AS published_at, created_at, updated_at'
             . ' FROM {{%publications_draft}}'
             . $this->order('updated_at', $oldestFirst),
             $limit,
@@ -52,21 +53,28 @@ final class PublicationRepository implements PublicationRepositoryInterface
         return $this->countOf('{{%publications_draft}}');
     }
 
-    public function createDraft(string $text, array $imageUrls, string $now): int
+    public function createDraft(string $text, array $imageUrls, string $now, MessageEntities $formatting): int
     {
         return $this->insertReturningId('{{%publications_draft}}', [
             'text' => $text,
             'image_urls' => $imageUrls,
+            'formatting' => $formatting->toArray(),
             'created_at' => $now,
             'updated_at' => $now,
         ]);
     }
 
-    public function createPost(string $text, array $imageUrls, string $publishedAt, string $now): int
-    {
+    public function createPost(
+        string $text,
+        array $imageUrls,
+        string $publishedAt,
+        string $now,
+        MessageEntities $formatting,
+    ): int {
         return $this->insertReturningId('{{%publications_post}}', [
             'text' => $text,
             'image_urls' => $imageUrls,
+            'formatting' => $formatting->toArray(),
             'published_at' => $publishedAt,
             'created_at' => $now,
             'updated_at' => $now,
@@ -74,7 +82,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     }
 
     /**
-     * @param array<int, array{text: string, imageUrls: string[], publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, publishedAt: string}> $parts
      */
     public function createPosts(array $parts, string $now): int
     {
@@ -82,7 +90,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     }
 
     /**
-     * @param array<int, array{text: string, imageUrls: string[]}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities}> $parts
      */
     public function createDrafts(array $parts, string $now): int
     {
@@ -92,7 +100,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDueForPublishing(string $now): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_post}}'
             . ' WHERE telegram_id IS NULL AND published_at <= :now'
             . ' ORDER BY id ASC',
@@ -115,7 +123,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPost(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_post}} WHERE id = :id',
             [':id' => $id],
         );
@@ -124,32 +132,40 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, NULL AS telegram_id, NULL AS published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, NULL AS telegram_id, NULL AS published_at, created_at, updated_at'
             . ' FROM {{%publications_draft}} WHERE id = :id',
             [':id' => $id],
         );
     }
 
-    public function updatePost(int $id, string $text, array $imageUrls, string $publishedAt, string $now): void
-    {
+    public function updatePost(
+        int $id,
+        string $text,
+        array $imageUrls,
+        string $publishedAt,
+        string $now,
+        MessageEntities $formatting,
+    ): void {
         $this->db
             ->createCommand()
             ->update('{{%publications_post}}', [
                 'text' => $text,
                 'image_urls' => $imageUrls,
+                'formatting' => $formatting->toArray(),
                 'published_at' => $publishedAt,
                 'updated_at' => $now,
             ], ['id' => $id])
             ->execute();
     }
 
-    public function updateDraft(int $id, string $text, array $imageUrls, string $now): void
+    public function updateDraft(int $id, string $text, array $imageUrls, string $now, MessageEntities $formatting): void
     {
         $this->db
             ->createCommand()
             ->update('{{%publications_draft}}', [
                 'text' => $text,
                 'image_urls' => $imageUrls,
+                'formatting' => $formatting->toArray(),
                 'updated_at' => $now,
             ], ['id' => $id])
             ->execute();
@@ -191,6 +207,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'telegram_id' => $post->telegramId,
             'text' => $post->text,
             'image_urls' => $post->imageUrls,
+            'formatting' => $post->formatting->toArray(),
             'published_at' => $post->publishedAt ?? $now,
             'created_at' => $post->createdAt,
             'updated_at' => $now,
@@ -202,6 +219,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         return $this->insertReturningId('{{%publications_draft}}', [
             'text' => $draft->text,
             'image_urls' => $draft->imageUrls,
+            'formatting' => $draft->formatting->toArray(),
             'created_at' => $draft->createdAt,
             'updated_at' => $now,
         ]);
@@ -215,6 +233,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 'telegram_id' => $post->telegramId,
                 'text' => $post->text,
                 'image_urls' => $post->imageUrls,
+                'formatting' => $post->formatting->toArray(),
                 'published_at' => $post->publishedAt ?? $now,
                 'created_at' => $post->createdAt,
                 'updated_at' => $now,
@@ -226,7 +245,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allDeleted(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at, deleted_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at, deleted_at'
             . ' FROM {{%publications_deleted}}'
             . $this->order('updated_at', $oldestFirst),
             $limit,
@@ -242,7 +261,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDeleted(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at, deleted_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at, deleted_at'
             . ' FROM {{%publications_deleted}} WHERE id = :id',
             [':id' => $id],
         );
@@ -266,7 +285,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPendingChannelDeletion(): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_deleted}}'
             . ' WHERE deleted_at IS NULL'
             . ' ORDER BY id ASC',
@@ -279,6 +298,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'telegram_id' => $record->telegramId,
             'text' => $record->text,
             'image_urls' => $record->imageUrls,
+            'formatting' => $record->formatting->toArray(),
             'published_at' => $record->publishedAt,
             'created_at' => $record->createdAt,
             'updated_at' => $now,
@@ -297,7 +317,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPendingChannelEdits(): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, telegram_id, published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_edited}}'
             . ' WHERE edited_at IS NULL'
             . ' ORDER BY id ASC',
@@ -317,7 +337,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
      * transaction, so a failure halfway through the list gives back an
      * empty table rather than a publication cut in pieces.
      *
-     * @param array<int, array{text: string, imageUrls: string[], publishedAt?: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, publishedAt?: string}> $parts
      */
     private function insertParts(string $table, array $parts, string $now, bool $scheduled): int
     {
@@ -328,6 +348,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 $columns = [
                     'text' => $part['text'],
                     'image_urls' => $part['imageUrls'],
+                    'formatting' => $part['formatting']->toArray(),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
@@ -397,6 +418,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             array_key_exists('deleted_at', $row)
                 ? ($row['deleted_at'] === null ? null : (string)$row['deleted_at'])
                 : null,
+            MessageEntities::fromStored($row['formatting']),
         );
     }
 
@@ -423,6 +445,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 array_key_exists('deleted_at', $row)
                     ? ($row['deleted_at'] === null ? null : (string)$row['deleted_at'])
                     : null,
+                MessageEntities::fromStored($row['formatting']),
             ),
             $rows,
         );

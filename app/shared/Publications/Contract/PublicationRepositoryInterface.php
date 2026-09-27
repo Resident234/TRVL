@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\shared\Publications\Contract;
 
 use app\shared\Publications\Dto\PublicationData;
+use app\shared\Telegram\Dto\MessageEntities;
 
 /**
  * Storage boundary for channel publications: scheduled posts and drafts.
@@ -41,13 +42,19 @@ interface PublicationRepositoryInterface
     /**
      * Creates a draft from the form data. Returns the new row id.
      */
-    public function createDraft(string $text, array $imageUrls, string $now): int;
+    public function createDraft(string $text, array $imageUrls, string $now, MessageEntities $formatting): int;
 
     /**
      * Creates a scheduled (or immediately due) post from the form
      * data. Returns the new row id.
      */
-    public function createPost(string $text, array $imageUrls, string $publishedAt, string $now): int;
+    public function createPost(
+        string $text,
+        array $imageUrls,
+        string $publishedAt,
+        string $now,
+        MessageEntities $formatting,
+    ): int;
 
     /**
      * Creates the parts of one long publication as separate scheduled
@@ -56,7 +63,7 @@ interface PublicationRepositoryInterface
      * publication time. Returns the id of the first part, the record a
      * forum link is bound to.
      *
-     * @param array<int, array{text: string, imageUrls: string[], publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, publishedAt: string}> $parts
      */
     public function createPosts(array $parts, string $now): int;
 
@@ -65,7 +72,7 @@ interface PublicationRepositoryInterface
      * single transaction, with the same all-or-nothing guarantee and the
      * same first part id as createPosts().
      *
-     * @param array<int, array{text: string, imageUrls: string[]}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities}> $parts
      */
     public function createDrafts(array $parts, string $now): int;
 
@@ -92,16 +99,24 @@ interface PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData;
 
     /**
-     * Updates a scheduled post: text, image urls and published_at from
-     * the form; updated_at is set to $now, created_at stays untouched.
+     * Updates a scheduled post: text, image urls, formatting and
+     * published_at from the form; updated_at is set to $now, created_at
+     * stays untouched.
      */
-    public function updatePost(int $id, string $text, array $imageUrls, string $publishedAt, string $now): void;
+    public function updatePost(
+        int $id,
+        string $text,
+        array $imageUrls,
+        string $publishedAt,
+        string $now,
+        MessageEntities $formatting,
+    ): void;
 
     /**
-     * Updates a draft: text and image urls from the form;
+     * Updates a draft: text, image urls and formatting from the form;
      * updated_at is set to $now, created_at stays untouched.
      */
-    public function updateDraft(int $id, string $text, array $imageUrls, string $now): void;
+    public function updateDraft(int $id, string $text, array $imageUrls, string $now, MessageEntities $formatting): void;
 
     /**
      * Deletes a post row and returns it as it was before deletion.
