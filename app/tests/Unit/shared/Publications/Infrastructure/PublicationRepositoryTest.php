@@ -200,9 +200,15 @@ final class PublicationRepositoryTest extends Unit
         $this->assertCount(2, $drafts);
         $this->assertContains('Часть 1', array_column($drafts, 'text'));
         $this->assertContains('Часть 2', array_column($drafts, 'text'));
+        // Both rows carry the same `updated_at`, which is what the list orders by,
+        // so their relative order is the database's — the heading is checked
+        // against the text of its own row instead.
+        $headingsByPart = array_column($drafts, 'title', 'text');
+        ksort($headingsByPart);
+
         $this->assertSame(
-            ['Ищем попутчиков', 'Что берём с собой'],
-            array_column($drafts, 'title'),
+            ['Часть 1' => 'Ищем попутчиков', 'Часть 2' => 'Что берём с собой'],
+            $headingsByPart,
             'Every draft part must come back with the heading of its own row.',
         );
         $this->assertNull($drafts[0]->publishedAt);

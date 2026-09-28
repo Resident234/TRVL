@@ -11,7 +11,6 @@ declare(strict_types=1);
 namespace app\assets;
 
 use yii\bootstrap5\BootstrapAsset;
-use yii\bootstrap5\BootstrapIconAsset;
 use yii\web\AssetBundle;
 use yii\web\View;
 use yii\web\YiiAsset;
@@ -28,6 +27,11 @@ class AppAsset extends AssetBundle
     public $baseUrl = '@web';
     public $css = [
         'css/site.css',
+        // The icon font the portal already ships in its UI-kit. The alternative,
+        // `yii\bootstrap5\BootstrapIconAsset`, publishes `@vendor/twbs/bootstrap-icons/font`,
+        // and that package is not a dependency of this project — asking for the
+        // asset made every page of the main layout fail to render.
+        'ui-kit/assets/fonts/bootstrap/bootstrap-icons.css',
     ];
     public $js = [
         'js/color-mode.js',
@@ -38,6 +42,5 @@ class AppAsset extends AssetBundle
     public $depends = [
         YiiAsset::class,
         BootstrapAsset::class,
-        BootstrapIconAsset::class,
     ];
 }

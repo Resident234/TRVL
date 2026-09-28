@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\assets;
 
 use yii\web\AssetBundle;
+use yii\web\JqueryAsset;
 
 /**
  * UI-kit based asset bundle for the TRVL dashboard.
@@ -20,7 +21,6 @@ class DashboardAsset extends AssetBundle
         'ui-kit/assets/vendor/daterange/daterange.css',
     ];
     public $js = [
-        'ui-kit/assets/js/jquery.min.js',
         'ui-kit/assets/js/bootstrap.bundle.min.js',
         'ui-kit/assets/js/moment.min.js',
         'ui-kit/assets/js/moment-timezone-with-data.min.js',
@@ -29,5 +29,11 @@ class DashboardAsset extends AssetBundle
         'ui-kit/assets/vendor/daterange/daterange.js',
         'ui-kit/assets/vendor/daterange/custom-daterange.js',
         'ui-kit/assets/js/custom.js',
+    ];
+    // The jQuery the plugin files above register onto. It is the UI-kit's own
+    // copy, because `assetManager` in `config/web.php` points `JqueryAsset` at
+    // that file — naming the bundle here only puts the copy before them.
+    public $depends = [
+        JqueryAsset::class,
     ];
 }

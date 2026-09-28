@@ -642,7 +642,7 @@ CSS
                 <div class="scroll350">
 
                     <!-- Timeline start -->
-                    <div class="m-0" id="pub-drafts-list"><?= $this->render('_block_drafts', ['drafts' => $drafts]) ?></div>
+                    <div class="m-0" id="pub-drafts-list"><?= $this->render('_block_drafts', ['drafts' => $drafts, 'now' => $now]) ?></div>
                     <!-- Timeline end -->
 
                 </div>

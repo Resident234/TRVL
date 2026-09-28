@@ -79,6 +79,24 @@ $config = [
         '@npm'   => '@vendor/npm-asset',
     ],
     'components' => [
+        // One jQuery per page, and it is the copy the UI-kit ships. Any bundle
+        // that asks for jQuery — every `yii\bootstrap5\Widget` does — used to
+        // print Yii's own copy after the UI-kit one, which replaced
+        // `window.jQuery` and left the plugins registered on the discarded
+        // copy: the date picker and the scrollbars were gone by the time the
+        // page script ran. Publishing the UI-kit file through `JqueryAsset`
+        // keeps a single copy and lets the dependency order put it first.
+        'assetManager' => [
+            'bundles' => [
+                \yii\web\JqueryAsset::class => [
+                    'sourcePath' => '@webroot/ui-kit/assets/js',
+                    'js' => ['jquery.min.js'],
+                    'publishOptions' => [
+                        'only' => ['jquery.min.js'],
+                    ],
+                ],
+            ],
+        ],
         'request' => [
             // The secret lives in the environment (`COOKIE_VALIDATION_KEY` in
             // `.env`), never in the repository. Without it Yii cannot sign the
