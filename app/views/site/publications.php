@@ -116,6 +116,82 @@ $this->registerCss(
 .publication-selection-actions .btn {
     white-space: nowrap;
 }
+
+/* The emoji panel opens over the caret of the part that asked for it, in
+   viewport coordinates like the buttons that move a selection. */
+.publication-emoji-panel {
+    position: fixed;
+    z-index: 1080;
+    width: 19rem;
+    padding: 0.5rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background-color: var(--bs-body-bg);
+}
+
+/* The colon reads its shortcode from the text of the part itself, so the panel
+   it opens has no search field and no categories to pick one from. */
+.publication-emoji-inline .publication-emoji-head {
+    display: none;
+}
+
+.publication-emoji-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.125rem;
+    margin-top: 0.5rem;
+}
+
+.publication-emoji-category {
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background-color: transparent;
+    color: var(--bs-secondary-color);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.publication-emoji-category:hover {
+    color: var(--bs-body-color);
+}
+
+.publication-emoji-category.active {
+    background-color: var(--bs-primary-bg-subtle);
+    border-color: transparent;
+    color: var(--bs-link-color);
+}
+
+.publication-emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    max-height: 10.5rem;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+}
+
+.publication-emoji-cell {
+    padding: 0;
+    border: 0;
+    border-radius: 0.25rem;
+    background: none;
+    font-size: 1.25rem;
+    line-height: 1.6;
+}
+
+/* The cell the arrows stopped on and the one under the cursor are the same
+   thing: the keyboard follows the mouse and the mouse follows the keyboard. */
+.publication-emoji-cell:hover,
+.publication-emoji-cell.active {
+    background-color: var(--bs-primary-bg-subtle);
+}
+
+/* Quill gives the buttons of its toolbar an icon of its own svg set and knows
+   nothing of this one, so it takes the icon font of the portal. */
+.publication-editor .ql-toolbar .ql-emoji {
+    color: var(--bs-body-color);
+    font-size: 1rem;
+}
 CSS
 );
 ?>
@@ -673,6 +749,17 @@ CSS
     </div>
 </div>
 
+<!-- Emoji panel. The script moves the node to the body, where nothing can
+     shadow the viewport it is placed against. -->
+<div class="publication-emoji-panel d-none shadow" id="publicationEmojiPanel">
+    <div class="publication-emoji-head">
+        <input type="text" class="form-control form-control-sm" id="publicationEmojiQuery"
+               autocomplete="off" placeholder="Поиск emoji" aria-label="Поиск emoji">
+        <div class="publication-emoji-categories" id="publicationEmojiCategories"></div>
+    </div>
+    <div class="publication-emoji-grid" id="publicationEmojiGrid"></div>
+</div>
+
 <?php
 $csrfParam = Yii::$app->request->csrfParam;
 $csrfToken = Yii::$app->request->csrfToken;
@@ -1014,6 +1101,161 @@ function findLinks(text, list) {
     });
 
     return found;
+}
+
+// --- the emoji the editor searches ---------------------------------------------
+
+// The table comes as one tabbed line per emoji — itself, the number of its
+// category, its words — because the keys of an object per row would cost more
+// than the words do. Reading it once keeps the parsing out of the search.
+function readEmojiTable(table) {
+    return table.d.split('\n').map(function (line) {
+        var fields = line.split('\t');
+
+        return {
+            emoji: fields[0],
+            category: table.g[Number(fields[1])],
+            name: fields[2],
+            words: fields.slice(3),
+        };
+    });
+}
+
+// The shape a word of the table and a typed query are put into before they are
+// compared: the letters are what a person types, so the case of a Latin name,
+// the ё they do not shift and the space between two words must not tell them
+// apart.
+function emojiKey(word) {
+    return String(word || '')
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/[^0-9a-zа-я]+/gi, ' ')
+        .trim();
+}
+
+// The emoji a query asks for, best first. A word of a name counts from its
+// beginning and nowhere else: «ёлка» is the name of a tree, while «тарелка» only
+// happens to hold those four letters, and the channel's own search keeps them
+// apart. A query of two words is read against the whole name. The name of an
+// emoji outweighs its keys — a CLDR key is a free association, and «секундомер»
+// is keyed to «кнопка» as readily as a pushpin is — and inside one rank the
+// table keeps its own order, which is the order of Unicode: the common emoji of
+// a category come before its rare ones.
+function emojiSearch(query, list, limit) {
+    var key = emojiKey(query);
+    var found = [];
+
+    if (key === '') {
+        return [];
+    }
+
+    var rankOf = function (word) {
+        var shape = emojiKey(word);
+
+        if (shape === '') {
+            return -1;
+        }
+        if (shape.split(' ').indexOf(key) >= 0 || shape.indexOf(key) === 0) {
+            return 0;
+        }
+        if (shape.split(' ').some(function (one) {
+            return one.indexOf(key) === 0;
+        })) {
+            return 1;
+        }
+
+        return -1;
+    };
+
+    (list || []).forEach(function (item, order) {
+        var best = rankOf(item.name);
+
+        item.words.forEach(function (word) {
+            var rank = rankOf(word);
+
+            if (rank >= 0) {
+                rank += 3;
+            }
+            if (rank >= 0 && (best < 0 || rank < best)) {
+                best = rank;
+            }
+        });
+
+        if (best >= 0) {
+            found.push({ item: item, rank: best, order: order });
+        }
+    });
+
+    found.sort(function (a, b) {
+        return a.rank - b.rank || a.order - b.order;
+    });
+
+    return found.slice(0, limit === undefined ? 60 : limit).map(function (hit) {
+        return hit.item;
+    });
+}
+
+function emojiCategories(list) {
+    var names = [];
+
+    (list || []).forEach(function (item) {
+        if (names.indexOf(item.category) < 0) {
+            names.push(item.category);
+        }
+    });
+
+    return names;
+}
+
+// --- the emoji a part must not be cut through ----------------------------------
+
+// The units of an emoji belong together: half of an astral character is no
+// character at all, a variation selector, a keycap sign, a skin tone or a joiner
+// stands for nothing without what it modifies, and a flag is two regional
+// indicators, of which each alone is a letter in a box. The channel counts the
+// text of a part in these same units, so a cut through one of them sends its two
+// halves into two messages.
+function isIndicator(point) {
+    return point >= 0x1F1E6 && point <= 0x1F1FF;
+}
+
+// The code point that ends at a position: an astral one begins a unit before the
+// low half a position of a cut stands over.
+function pointBefore(text, at) {
+    var last = text.charCodeAt(at - 1);
+
+    return text.codePointAt(last >= 0xDC00 && last <= 0xDFFF ? at - 2 : at - 1);
+}
+
+function splitsCharacter(text, at) {
+    var high = text.charCodeAt(at - 1);
+    var low = text.charCodeAt(at);
+    var after = text.codePointAt(at);
+    var before = pointBefore(text, at);
+
+    if (high >= 0xD800 && high <= 0xDBFF && low >= 0xDC00 && low <= 0xDFFF) {
+        return true;
+    }
+    if (after === 0xFE0F || after === 0xFE0E || after === 0x20E3 || after === 0x200D
+        || before === 0x200D) {
+        return true;
+    }
+    if (after >= 0x1F3FB && after <= 0x1F3FF) {
+        return true;
+    }
+
+    return isIndicator(after) && isIndicator(before);
+}
+
+// The nearest position that goes between two emoji rather than through one. It
+// only ever steps back, so a cut pulled off an emoji keeps the text of the part it
+// was chosen for and gives the rest to the next.
+function wholeCharacter(text, at) {
+    while (at > 0 && at < text.length && splitsCharacter(text, at)) {
+        at -= 1;
+    }
+
+    return at;
 }
 
 jQuery(document).ready(function () {
@@ -1525,6 +1767,30 @@ jQuery(document).ready(function () {
             field.__formatting = formattingOf(field);
             field.__caret = null;
 
+            // Quill builds the toolbar of a part from the formats of this page and
+            // knows nothing of an emoji button, so the page adds it to the toolbar
+            // it built and answers it alone. It answers mousedown, as the toolbar of
+            // Quill does: the button must not take the caret the panel opens over.
+            var toolbar = root.parentNode ? root.parentNode.querySelector('.ql-toolbar') : null;
+
+            if (toolbar) {
+                var emojiGroup = document.createElement('span');
+                var emojiButton = document.createElement('button');
+
+                emojiGroup.className = 'ql-formats';
+                emojiButton.type = 'button';
+                emojiButton.className = 'ql-emoji';
+                emojiButton.title = 'Добавить emoji';
+                emojiButton.setAttribute('aria-label', 'Добавить emoji');
+                emojiButton.innerHTML = '<i class="bi bi-emoji-smile"></i>';
+                emojiGroup.appendChild(emojiButton);
+                toolbar.appendChild(emojiGroup);
+                emojiButton.addEventListener('mousedown', function (event) {
+                    event.preventDefault();
+                    toggleEmojiPicker(field);
+                });
+            }
+
             Object.defineProperty(field, 'value', {
                 configurable: true,
                 get: function () {
@@ -1578,9 +1844,15 @@ jQuery(document).ready(function () {
                 }
 
                 var range = editor.getSelection();
+                var text = editor.getText().replace(/\n$/, '');
+
                 field.__caret = range ? [range.index, range.index + range.length] : field.__caret;
                 field.__formatting = entitiesFromOps(editor.getContents().ops);
-                writeMirror(field, editor.getText().replace(/\n$/, ''));
+                // The word in front of the caret is what the panel of a colon lists.
+                // It is asked before the mirror is written: writing it can cut the
+                // part anew and replace the very field this panel belongs to.
+                updateEmojiTrigger(field, text);
+                writeMirror(field, text);
             });
             editor.on('selection-change', function (range, previous, source) {
                 if (!range || source !== 'user') {
@@ -1602,6 +1874,14 @@ jQuery(document).ready(function () {
                     showSelectionActions(field);
                 });
             });
+            // The arrows and Enter belong to the panel of a colon while it is open
+            // over this part. The capture phase, as for the paste: Quill's own
+            // keyboard answers ArrowDown and Enter, and it must not.
+            root.addEventListener('keydown', function (event) {
+                if (emojiTarget && emojiTarget.field === field && emojiKeys(event)) {
+                    event.stopPropagation();
+                }
+            }, true);
             // Text arriving from outside the page comes in as it is copied, without
             // the headings and the colours of the page it was taken from. The
             // listener answers in the capture phase: Quill reads the clipboard of
@@ -1797,6 +2077,362 @@ jQuery(document).ready(function () {
             showLinkModal(false);
             target.field.__editor.formatText(target.start, target.length, 'link', address, 'user');
             target.field.__editor.setSelection(target.start, target.length, 'api');
+        }
+
+        // --- the emoji the editor offers ---------------------------------------
+        //
+        // One panel, two ways into it: the button of the toolbar opens it and asks
+        // its own search field, and a colon typed in the text of a part reads the
+        // word after it from the text itself and shows only the grid. Both put the
+        // emoji in the same way — through the editor, with the source of a keystroke
+        // — so the mirror of the part, its counters, its list of entities and the
+        // split of a part that ran over the limit all happen as they do for a typed
+        // letter. The words searched are the CLDR annotations of Russian, which are
+        // the names the apps of Telegram show, and the order of the results is the
+        // order of Unicode, so the common emoji of a category come before its rare
+        // ones.
+
+        var emojiPanel = document.getElementById('publicationEmojiPanel');
+        var emojiQueryInput = document.getElementById('publicationEmojiQuery');
+        var emojiCategoriesBox = document.getElementById('publicationEmojiCategories');
+        var emojiGridBox = document.getElementById('publicationEmojiGrid');
+        var EMOJI = window.TRVL_EMOJI ? readEmojiTable(window.TRVL_EMOJI) : [];
+        // A category of the table is a few hundred emoji wide, which is more than the
+        // panel shows and more than the arrows are worth walking. The order of
+        // Unicode puts the common ones of a category first, so what the cut leaves
+        // out is its rare tail.
+        var EMOJI_BROWSE_LIMIT = 160;
+        var EMOJI_SEARCH_LIMIT = 60;
+        // The part the panel belongs to, where its emoji goes and what its colon
+        // typed. `inline` is the panel of a colon, `picker` the one of the button.
+        var emojiTarget = null;
+        var emojiShown = [];
+        var emojiActive = -1;
+        var emojiCategory = '';
+        // The word Escape gave up on: the same one must not raise the panel again
+        // while it is still being typed.
+        var emojiDismissed = null;
+
+        // The colon opens the search only where a word could start: at the beginning
+        // of the text or after a space or an opening sign. The colons of a time, of
+        // an address and of a Russian «Время:» stand behind a letter or a digit, and
+        // a panel over the caret every time one of them is typed is worse than no
+        // panel at all.
+        function emojiTriggerAt(text, at) {
+            var upto = text.slice(0, at);
+            var colon = upto.lastIndexOf(':');
+
+            if (colon < 0) {
+                return null;
+            }
+
+            var before = colon > 0 ? upto.slice(colon - 1, colon) : '';
+            var word = upto.slice(colon + 1);
+
+            if (before !== '' && !/[\s([{«"']/.test(before)) {
+                return null;
+            }
+            if (!/^[-\wа-яё]*$/i.test(word)) {
+                return null;
+            }
+
+            return { start: colon, length: word.length + 1, shortcode: word };
+        }
+
+        // What the panel lists: the answer to a word, or the category it was opened
+        // on while nothing is asked for.
+        function emojiListOf(word) {
+            if (word !== '') {
+                return emojiSearch(word, EMOJI, EMOJI_SEARCH_LIMIT);
+            }
+
+            return EMOJI.filter(function (item) {
+                return item.category === emojiCategory;
+            }).slice(0, EMOJI_BROWSE_LIMIT);
+        }
+
+        function emojiQuery() {
+            if (!emojiTarget) {
+                return '';
+            }
+            if (emojiTarget.mode === 'inline') {
+                return emojiTarget.shortcode;
+            }
+
+            return emojiQueryInput ? emojiQueryInput.value.trim() : '';
+        }
+
+        function buildEmojiCategories() {
+            if (!emojiCategoriesBox) {
+                return;
+            }
+
+            emojiCategoriesBox.innerHTML = '';
+            emojiCategories(EMOJI).forEach(function (name) {
+                var button = document.createElement('button');
+
+                button.type = 'button';
+                button.className = 'publication-emoji-category';
+                button.dataset.emojiCategory = name;
+                button.textContent = name;
+                emojiCategoriesBox.appendChild(button);
+            });
+        }
+
+        function renderEmojiPanel() {
+            if (!emojiTarget || !emojiGridBox) {
+                return;
+            }
+
+            var word = emojiQuery();
+
+            emojiShown = emojiListOf(word);
+            // Nothing stands highlighted while the search field is still empty: the
+            // panel of the button waits for a word, the panel of a colon has a list
+            // to choose from as soon as it is open.
+            emojiActive = emojiShown.length > 0 && (word !== '' || emojiTarget.mode === 'inline')
+                ? 0
+                : -1;
+
+            emojiGridBox.innerHTML = '';
+            emojiShown.forEach(function (item, index) {
+                var cell = document.createElement('button');
+
+                cell.type = 'button';
+                cell.className = 'publication-emoji-cell' + (index === emojiActive ? ' active' : '');
+                cell.textContent = item.emoji;
+                cell.title = item.name;
+                emojiGridBox.appendChild(cell);
+            });
+            Array.prototype.forEach.call(emojiCategoriesBox.children, function (button) {
+                button.classList.toggle('active', word === '' && button.dataset.emojiCategory === emojiCategory);
+            });
+
+            // The list is as long as the panel, so the rows decide where it fits; a
+            // list that changed starts at its top again.
+            emojiGridBox.scrollTop = 0;
+            placeEmojiPanel();
+        }
+
+        function placeEmojiPanel() {
+            var point = popupPoint(
+                caretPoint(emojiTarget.field, emojiTarget.start + emojiTarget.length),
+                { width: emojiPanel.offsetWidth, height: emojiPanel.offsetHeight },
+                { width: window.innerWidth, height: window.innerHeight }
+            );
+
+            emojiPanel.style.left = point.left + 'px';
+            emojiPanel.style.top = point.top + 'px';
+        }
+
+        function openEmojiPanel(field, mode, trigger) {
+            if (!emojiPanel || !field.__editor) {
+                return;
+            }
+
+            var caret = field.__caret;
+
+            emojiTarget = {
+                field: field,
+                mode: mode,
+                // A colon names the word it types over; the button takes the caret
+                // of the editor, or the end of its text while the part was never
+                // clicked into.
+                start: trigger ? trigger.start : (caret ? caret[0] : field.__editor.getLength() - 1),
+                length: trigger ? trigger.length : (caret ? caret[1] - caret[0] : 0),
+                shortcode: trigger ? trigger.shortcode : '',
+            };
+            emojiCategory = emojiCategories(EMOJI)[0] || '';
+            emojiDismissed = null;
+            if (mode === 'picker' && emojiQueryInput) {
+                emojiQueryInput.value = '';
+            }
+
+            emojiPanel.classList.toggle('publication-emoji-inline', mode === 'inline');
+            emojiPanel.classList.remove('d-none');
+            renderEmojiPanel();
+
+            if (mode === 'picker' && emojiQueryInput) {
+                emojiQueryInput.focus();
+            }
+        }
+
+        function closeEmojiPanel() {
+            emojiTarget = null;
+            emojiShown = [];
+            emojiActive = -1;
+
+            if (emojiPanel) {
+                emojiPanel.classList.add('d-none');
+            }
+        }
+
+        // Escape leaves the word it read in the text, where it was typed: the panel
+        // does not come back over the same word until it changes.
+        function dismissEmoji() {
+            var field = emojiTarget ? emojiTarget.field : null;
+
+            if (emojiTarget && emojiTarget.mode === 'inline') {
+                emojiDismissed = { field: field, shortcode: emojiTarget.shortcode };
+            }
+
+            closeEmojiPanel();
+
+            if (field && field.__editor) {
+                field.focus();
+            }
+        }
+
+        function setEmojiActive(index) {
+            var previous = emojiGridBox.children[emojiActive];
+
+            if (previous) {
+                previous.classList.remove('active');
+            }
+
+            emojiActive = index;
+
+            var cell = emojiGridBox.children[index];
+
+            if (cell) {
+                cell.classList.add('active');
+                // The arrows walk a list the panel does not show whole.
+                cell.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function moveEmojiActive(step) {
+            if (emojiShown.length === 0) {
+                return;
+            }
+
+            setEmojiActive(emojiActive < 0
+                ? (step > 0 ? 0 : emojiShown.length - 1)
+                : (emojiActive + step + emojiShown.length) % emojiShown.length);
+        }
+
+        // The keys of the panel, whether they are typed into its search field or
+        // into the text of the part over the word it reads.
+        function emojiKeys(event) {
+            if (!emojiTarget) {
+                return false;
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                dismissEmoji();
+
+                return true;
+            }
+
+            // Only up and down walk the grid: left and right belong to the caret of
+            // the word being typed, in the text of a part as in the search field.
+            var steps = { ArrowDown: 1, ArrowUp: -1 };
+
+            if (Object.prototype.hasOwnProperty.call(steps, event.key)) {
+                event.preventDefault();
+                moveEmojiActive(steps[event.key]);
+
+                return true;
+            }
+            if (event.key !== 'Enter' && event.key !== 'Tab') {
+                return false;
+            }
+            // Nothing is chosen while the search field is empty; Tab is then left to
+            // the browser, which is how a keyboard walks out of a panel it has
+            // nothing to take from.
+            if (emojiActive < 0 && event.key === 'Tab') {
+                return false;
+            }
+
+            event.preventDefault();
+
+            if (emojiActive < 0) {
+                dismissEmoji();
+            } else {
+                insertEmoji(emojiShown[emojiActive]);
+            }
+
+            return true;
+        }
+
+        function toggleEmojiPicker(field) {
+            if (emojiTarget && emojiTarget.mode === 'picker' && emojiTarget.field === field) {
+                dismissEmoji();
+
+                return;
+            }
+
+            openEmojiPanel(field, 'picker', null);
+        }
+
+        // The only way an emoji enters a part: the editor changes, source `user`, and
+        // everything the page hangs off its text follows.
+        function insertEmoji(item) {
+            if (!emojiTarget) {
+                return;
+            }
+
+            var field = emojiTarget.field;
+            var editor = field.__editor;
+            var at = emojiTarget.start;
+
+            if (emojiTarget.length > 0) {
+                editor.deleteText(at, emojiTarget.length, 'api');
+            }
+            editor.insertText(at, item.emoji, 'user');
+            closeEmojiPanel();
+
+            // The write of the mirror can cut the part anew and replace every field
+            // of it but the first: the caret only goes back where a part of the page
+            // still stands.
+            if (textParts().indexOf(field) !== -1) {
+                var caret = Math.min(at + item.emoji.length, field.value.length);
+
+                editor.focus();
+                editor.setSelection(caret, 0, 'api');
+                field.__caret = [caret, caret];
+            }
+        }
+
+        // Every edit of a part asks the panel of the colon: the word in front of the
+        // caret is what it lists, and when there is none the panel closes.
+        function updateEmojiTrigger(field, text) {
+            if (!emojiPanel || (emojiTarget && emojiTarget.mode === 'picker')) {
+                return;
+            }
+
+            var caret = field.__caret;
+            var trigger = caret && caret[0] === caret[1] ? emojiTriggerAt(text, caret[0]) : null;
+
+            if (trigger && emojiDismissed && emojiDismissed.field === field
+                && emojiDismissed.shortcode === trigger.shortcode) {
+                return;
+            }
+
+            if (!trigger) {
+                emojiDismissed = null;
+
+                if (emojiTarget && emojiTarget.field === field) {
+                    closeEmojiPanel();
+                }
+
+                return;
+            }
+
+            if (emojiTarget && emojiTarget.field === field) {
+                emojiTarget.start = trigger.start;
+                emojiTarget.length = trigger.length;
+                emojiTarget.shortcode = trigger.shortcode;
+                renderEmojiPanel();
+
+                return;
+            }
+
+            if (emojiTarget) {
+                closeEmojiPanel();
+            }
+
+            openEmojiPanel(field, 'inline', trigger);
         }
 
         // The parts as the splitting and the merging see them: the text without
@@ -2178,7 +2814,9 @@ jQuery(document).ready(function () {
                     cut = rest.lastIndexOf(' ', limit);
                 }
                 if (cut < Math.floor(limit / 2)) {
-                    cut = limit;
+                    // Nothing of the text fits the boundary: it is cut where it
+                    // stands, only never in the middle of an emoji.
+                    cut = wholeCharacter(rest, limit);
                 }
                 parts.push(rest.slice(0, cut).replace(/\s+$/, ''));
                 rest = rest.slice(cut).replace(/^\s+/, '');
@@ -2256,6 +2894,9 @@ jQuery(document).ready(function () {
 
             // The fields are replaced, and with them the selection the popup points at.
             hideSelectionActions();
+            // And the part the emoji panel types into, which is gone by the time the
+            // next of them is clicked.
+            closeEmojiPanel();
 
             Array.prototype.slice
                 .call(partsBox.querySelectorAll('.publication-text-block'), 1)
@@ -2485,7 +3126,9 @@ jQuery(document).ready(function () {
                 return word;
             }
 
-            return usableCut(text, caret) ? caret : -1;
+            var at = wholeCharacter(text, caret);
+
+            return usableCut(text, at) ? at : -1;
         }
 
         // Without a caret the text is halved at the closest break: a blank line,
@@ -2501,7 +3144,9 @@ jQuery(document).ready(function () {
                 }
             }
 
-            return usableCut(text, half) ? half : -1;
+            var at = wholeCharacter(text, half);
+
+            return usableCut(text, at) ? at : -1;
         }
 
         // The field the caret was in last: a click on the button pulls the focus
@@ -3560,6 +4205,74 @@ jQuery(document).ready(function () {
         // Viewport coordinates: the popup does not follow what moves under it.
         window.addEventListener('resize', hideSelectionActions);
         window.addEventListener('scroll', hideSelectionActions, true);
+
+        if (emojiPanel) {
+            buildEmojiCategories();
+            // Placed against the viewport, for the same reason as the popup above.
+            document.body.appendChild(emojiPanel);
+            // The cells and the categories are clicked without taking the caret of
+            // the search field away, as the buttons of the selection popup do not
+            // take the caret of the text away. The field itself is the exception:
+            // that is where a word is typed.
+            emojiPanel.addEventListener('mousedown', function (event) {
+                if (event.target !== emojiQueryInput) {
+                    event.preventDefault();
+                }
+            });
+            emojiPanel.addEventListener('keydown', function (event) {
+                emojiKeys(event);
+            });
+            emojiCategoriesBox.addEventListener('click', function (event) {
+                var button = event.target.closest('[data-emoji-category]');
+
+                if (!button) {
+                    return;
+                }
+
+                // A category is asked instead of a word, not after it.
+                if (emojiQueryInput) {
+                    emojiQueryInput.value = '';
+                }
+                emojiCategory = button.dataset.emojiCategory;
+                renderEmojiPanel();
+            });
+            emojiGridBox.addEventListener('click', function (event) {
+                var cell = event.target.closest('.publication-emoji-cell');
+                var index = cell ? Array.prototype.indexOf.call(emojiGridBox.children, cell) : -1;
+
+                if (index >= 0) {
+                    insertEmoji(emojiShown[index]);
+                }
+            });
+        }
+        if (emojiQueryInput) {
+            emojiQueryInput.addEventListener('input', function () {
+                renderEmojiPanel();
+            });
+        }
+        // The panel belongs to one caret and one word: a click anywhere that is
+        // neither the panel nor the button that opened it leaves it behind. The
+        // button answers its own mousedown first, so it is not its own dismissal.
+        document.addEventListener('mousedown', function (event) {
+            if (!emojiTarget) {
+                return;
+            }
+            if (event.target.closest
+                && (event.target.closest('.publication-emoji-panel') || event.target.closest('.ql-emoji'))) {
+                return;
+            }
+
+            closeEmojiPanel();
+        });
+        window.addEventListener('resize', closeEmojiPanel);
+        window.addEventListener('scroll', function (event) {
+            // The grid scrolling its own list does not move the text under it.
+            if (event.target && emojiPanel && emojiPanel.contains(event.target)) {
+                return;
+            }
+
+            closeEmojiPanel();
+        }, true);
 
         if (imagesInput) {
             imagesInput.addEventListener('input', updateImages);

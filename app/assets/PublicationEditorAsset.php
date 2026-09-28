@@ -8,8 +8,9 @@ use yii\web\AssetBundle;
 use yii\web\View;
 
 /**
- * Quill editor for the publication text parts. Registered only by the
- * publications view: the rest of the portal has no rich-text input.
+ * Quill editor for the publication text parts, plus the emoji table the editor
+ * searches. Registered only by the publications view: the rest of the portal
+ * has no rich-text input.
  */
 class PublicationEditorAsset extends AssetBundle
 {
@@ -20,6 +21,7 @@ class PublicationEditorAsset extends AssetBundle
         'ui-kit/assets/css/publication-editor.css',
     ];
     public $js = [
+        'ui-kit/assets/vendor/emoji/trvl-emoji.js',
         'ui-kit/assets/vendor/quill/quill.js',
     ];
     public $jsOptions = [

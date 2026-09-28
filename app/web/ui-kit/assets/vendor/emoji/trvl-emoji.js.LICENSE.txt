@@ -1,0 +1,6 @@
+/*!
+ * TRVL emoji table — 1921 emoji with their Russian search words
+ * Order and categories: UTS #51 emoji-test.txt (https://unicode.org/reports/tr51/)
+ * Words: the CLDR annotations for ru (https://github.com/unicode-org/cldr)
+ * Both under the Unicode License v3 — https://www.unicode.org/license.html
+ */
