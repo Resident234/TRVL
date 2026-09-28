@@ -49,6 +49,7 @@ interface PublicationRepositoryInterface
         string $now,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
     ): int;
 
     /**
@@ -62,6 +63,7 @@ interface PublicationRepositoryInterface
         string $now,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
     ): int;
 
     /**
@@ -71,7 +73,7 @@ interface PublicationRepositoryInterface
      * publication time. Returns the id of the first part, the record a
      * forum link is bound to.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, title: string, publishedAt: string}> $parts
      */
     public function createPosts(array $parts, string $now): int;
 
@@ -80,7 +82,7 @@ interface PublicationRepositoryInterface
      * single transaction, with the same all-or-nothing guarantee and the
      * same first part id as createPosts().
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, title: string}> $parts
      */
     public function createDrafts(array $parts, string $now): int;
 
@@ -107,8 +109,8 @@ interface PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData;
 
     /**
-     * Updates a scheduled post: text, image urls, formatting, button and
-     * published_at from the form; updated_at is set to $now, created_at
+     * Updates a scheduled post: text, image urls, formatting, button, title
+     * and published_at from the form; updated_at is set to $now, created_at
      * stays untouched.
      */
     public function updatePost(
@@ -119,11 +121,12 @@ interface PublicationRepositoryInterface
         string $now,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
     ): void;
 
     /**
-     * Updates a draft: text, image urls, formatting and button from the
-     * form; updated_at is set to $now, created_at stays untouched.
+     * Updates a draft: text, image urls, formatting, button and title from
+     * the form; updated_at is set to $now, created_at stays untouched.
      */
     public function updateDraft(
         int $id,
@@ -132,6 +135,7 @@ interface PublicationRepositoryInterface
         string $now,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
     ): void;
 
     /**

@@ -10,10 +10,13 @@ use yii\helpers\Html;
 $wasPublished = $record->telegramId !== null
     || ($record->publishedAt !== null && $record->publishedAt <= $now);
 
+[$heading, $body] = $record->headingAndBody();
+
 ?>
 <div class="activity-log" data-text="<?= Html::encode($record->text) ?>"
      data-formatting="<?= Html::encode($record->formatting->toJson()) ?>"
      data-button="<?= Html::encode($record->button->toJson()) ?>"
+     data-title="<?= Html::encode($record->title) ?>"
      data-source-type="deleted" data-source-id="<?= $record->id ?>"
      data-published-at-utc="<?= Html::encode($record->publishedAt ?? '') ?>"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
@@ -25,7 +28,10 @@ $wasPublished = $record->telegramId !== null
         <?= PublicationsUi::scheduleButton($record->id, 'deleted') ?>
         <?= PublicationsUi::toDraftForm($record->id, 'deleted', 'Перенести в черновик') ?>
     </div>
-    <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($record->text) ?></p>
+    <?php if ($heading !== ''): ?>
+        <p class="mb-1 fw-bold"><?= Html::encode($heading) ?></p>
+    <?php endif ?>
+    <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($body) ?></p>
     <?= PublicationsUi::stackedImages($record->imageUrls) ?>
     <?= PublicationsUi::dateMeta([
         $wasPublished ? 'Опубликовано' : 'Запланировано' => $record->publishedAt,

@@ -9,10 +9,13 @@ use yii\helpers\Html;
 
 $isPublished = $record->telegramId !== null || ($record->publishedAt !== null && $record->publishedAt <= $now);
 
+[$heading, $body] = $record->headingAndBody();
+
 ?>
 <div class="activity-log" data-text="<?= Html::encode($record->text) ?>"
      data-formatting="<?= Html::encode($record->formatting->toJson()) ?>"
      data-button="<?= Html::encode($record->button->toJson()) ?>"
+     data-title="<?= Html::encode($record->title) ?>"
      data-source-type="post" data-source-id="<?= $record->id ?>"
      data-published-at-utc="<?= Html::encode($record->publishedAt ?? '') ?>"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
@@ -31,7 +34,10 @@ $isPublished = $record->telegramId !== null || ($record->publishedAt !== null &&
         <?php endif ?>
         <?= PublicationsUi::toDraftForm($record->id) ?>
     </div>
-    <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($record->text) ?></p>
+    <?php if ($heading !== ''): ?>
+        <p class="mb-1 fw-bold"><?= Html::encode($heading) ?></p>
+    <?php endif ?>
+    <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($body) ?></p>
     <?= PublicationsUi::stackedImages($record->imageUrls) ?>
     <?= PublicationsUi::dateMeta([
         $isPublished ? 'Опубликовано' : 'Запланировано' => $record->publishedAt,

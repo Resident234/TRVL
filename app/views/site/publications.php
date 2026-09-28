@@ -328,8 +328,17 @@ CSS
                     <!-- Textarea: cloned into one field per part once a text goes past the limit -->
                     <div id="publicationTextParts">
                         <div class="mb-3 publication-text-block">
+                            <?php /* The heading of a part: an optional first line the channel
+                                    draws bold over the text under it. A numbered part moves
+                                    its «Часть N» line in here, to the end of the heading. */ ?>
+                            <div class="mb-2">
+                                <label class="form-label mb-1 publication-title-label" for="publicationTitleInput">Заголовок</label>
+                                <input type="text" class="form-control publication-title-field"
+                                       id="publicationTitleInput" name="publicationTitle"
+                                       placeholder="Жирная первая строка публикации">
+                            </div>
                             <div class="d-flex justify-content-between align-items-baseline">
-                                <label for="publicationTextInput" class="form-label mb-0">Текст публикации</label>
+                                <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
                                 <small class="text-muted publication-text-count"></small>
                             </div>
                             <?php /* The plain text of a part lives in this field: every split,
@@ -974,6 +983,71 @@ function joinFormats(values, formats) {
     });
 
     return sortEntities(list);
+}
+
+// The line a part of a numbered publication opens with, and the whole of it up to
+// and including the blank line under it. The twin of the same match the server
+// makes when it composes a record into a message.
+var PART_NUMBER = /^Часть \d+[.:]?\s*(\n|$)/;
+
+function partNumberPrefix(text) {
+    var match = text.match(PART_NUMBER);
+
+    return match ? match[0] : '';
+}
+
+// The heading a part goes out with and the text under it: the heading of a
+// numbered part takes the number off the head of its text and stands at the end
+// of it, so a part never carries «Часть 2» twice.
+function splitHeading(title, text) {
+    var heading = title.trim();
+
+    if (heading === '') {
+        return {heading: '', gap: '', body: text, moved: 0};
+    }
+
+    var prefix = partNumberPrefix(text);
+
+    if (prefix === '') {
+        return {heading: heading, gap: '\n\n', body: text, moved: 0};
+    }
+
+    return {
+        heading: heading + '. ' + prefix.replace(/\s+$/, ''),
+        gap: text.length > prefix.length ? '\n\n' : '',
+        body: text.slice(prefix.length),
+        moved: prefix.length
+    };
+}
+
+// The same highlighting lying under a heading of its own: the whole heading is
+// bold and every span moves behind it and over the line that separates the two,
+// less the number the heading was built from.
+function entitiesUnderHeading(list, heading, gap, moved) {
+    if (heading === '') {
+        return list.slice();
+    }
+
+    return sortEntities(
+        [makeEntity('bold', 0, heading.length)]
+            .concat(shiftEntities(list, heading.length + gap.length - moved))
+    );
+}
+
+// The message a part goes to the channel as, and its highlighting: what the
+// preview shows and the counters count is the text the server composes, so a
+// heading is never a decoration the posted message does not carry.
+function composedMessage(title, text, entities) {
+    var cut = splitHeading(title, text);
+
+    if (cut.heading === '') {
+        return {text: text, entities: (entities || []).slice()};
+    }
+
+    return {
+        text: cut.body === '' ? cut.heading : cut.heading + cut.gap + cut.body,
+        entities: entitiesUnderHeading(entities || [], cut.heading, cut.gap, cut.moved)
+    };
 }
 
 // The highlighting of the parts a run of text was cut up into: every piece is
@@ -2468,6 +2542,19 @@ jQuery(document).ready(function () {
             });
         }
 
+        // The heading field of every part, in the order of the parts: the first
+        // block holds the shared «Заголовок» the form submits on its own, the
+        // cloned ones a field of the list behind it.
+        function titleFields() {
+            return Array.prototype.slice.call(partsBox.querySelectorAll('.publication-title-field'));
+        }
+
+        function readTitles() {
+            return titleFields().map(function (field) {
+                return field.value;
+            });
+        }
+
         // The album of a part is its own field, except for the first part: the
         // shared «Изображения публикации» textarea under the list is its album,
         // so the targets run one ahead of the part fields.
@@ -2788,14 +2875,28 @@ jQuery(document).ready(function () {
             return !!(numberPartsInput && numberPartsInput.checked);
         }
 
+        // The heading travels inside the same message as the text, so it eats into
+        // the length a text is split at too: a heading costs its own length plus
+        // the blank line under it, and the longest one of the parts sets the
+        // budget of all of them — a split never promises a message the channel
+        // would refuse.
+        function headingReserve() {
+            var longest = readTitles().reduce(function (best, title) {
+                return Math.max(best, title.trim().length);
+            }, 0);
+
+            return longest === 0 ? 0 : longest + 2;
+        }
+
         // The «Часть N» prefix travels inside the message, so it eats into the
         // length a text is split at. The reserve covers the line of the number.
         function partLimit() {
-            return isNumbered() ? __TEXT_PART_LIMIT - __NUMBERING_RESERVE : __TEXT_PART_LIMIT;
+            return __TEXT_PART_LIMIT - headingReserve()
+                - (isNumbered() ? __NUMBERING_RESERVE : 0);
         }
 
         function stripPartNumber(text) {
-            return text.replace(/^Часть \d+[.:]?\s*(\n|$)/, '');
+            return text.slice(partNumberPrefix(text).length);
         }
 
         // Break at the last paragraph, then line, then word that still fits;
@@ -2842,14 +2943,19 @@ jQuery(document).ready(function () {
         }
 
         function updateCounters() {
-            textParts().forEach(function (field) {
+            var titles = readTitles();
+
+            textParts().forEach(function (field, index) {
                 var counter = field.closest('.publication-text-block').querySelector('.publication-text-count');
                 if (!counter) {
                     return;
                 }
-                counter.textContent = field.value.length + ' / ' + __TEXT_PART_LIMIT;
+                // The number of the message the channel gets, not of the text in
+                // the field: a heading the part carries is part of that message.
+                var shown = composedMessage(titles[index] || '', field.value, formattingOf(field)).text.length;
+                counter.textContent = shown + ' / ' + __TEXT_PART_LIMIT;
                 counter.className = 'publication-text-count'
-                    + (field.value.length > __TEXT_PART_LIMIT ? ' text-danger' : ' text-muted');
+                    + (shown > __TEXT_PART_LIMIT ? ' text-danger' : ' text-muted');
             });
         }
 
@@ -2887,10 +2993,15 @@ jQuery(document).ready(function () {
         // the picked files of every part the same way. `formats` is the
         // highlighting of every part, counted over the text of `values` — the
         // «Часть N» prefix is added after it, and the spans move along with it.
-        function setTextParts(values, groups, files, formats) {
-            // The blocks that are about to be replaced carry the pickers of the
-            // parts, so their lists are read while the fields still exist.
+        // `titles` is the heading of every part; without it a part keeps the
+        // heading that was in its field, and a part that appears gets none —
+        // merging two parts keeps the heading of the one that stays, since a
+        // message has one first line.
+        function setTextParts(values, groups, files, formats, titles) {
+            // The blocks that are about to be replaced carry the pickers and the
+            // headings of the parts, so both are read while the fields still exist.
             var carriedFiles = files === undefined ? readFileGroups() : files;
+            var carriedTitles = titles === undefined ? readTitles() : titles;
 
             // The fields are replaced, and with them the selection the popup points at.
             hideSelectionActions();
@@ -2912,7 +3023,15 @@ jQuery(document).ready(function () {
                 var block = partTemplate.cloneNode(true);
                 var field = block.querySelector('.publication-text-part');
                 field.id = 'publicationTextInput' + (index + 1);
-                block.querySelector('label').setAttribute('for', field.id);
+                block.querySelector('.publication-text-label').setAttribute('for', field.id);
+
+                // A cloned block is one part of the list of headings the form
+                // submits, so it loses the name of the shared field it was
+                // cloned with.
+                var title = block.querySelector('.publication-title-field');
+                title.id = 'publicationPartTitle' + (index + 1);
+                title.name = 'publicationPartTitle[]';
+                block.querySelector('.publication-title-label').setAttribute('for', title.id);
 
                 var album = block.querySelector('.publication-part-album-field');
                 album.id = 'publicationPartImages' + (index + 1);
@@ -2946,10 +3065,14 @@ jQuery(document).ready(function () {
 
             textParts().forEach(function (field, index) {
                 var block = field.closest('.publication-text-block');
-                var label = block.querySelector('label');
+                var label = block.querySelector('.publication-text-label');
                 label.textContent = values.length > 1 ? 'Часть ' + (index + 1) : 'Текст публикации';
                 block.querySelector('.publication-part-album-field').disabled = index === 0;
                 block.querySelector('.publication-part-album-files').disabled = index === 0;
+            });
+
+            titleFields().forEach(function (field, index) {
+                field.value = carriedTitles[index] || '';
             });
 
             mountPartEditors();
@@ -3009,14 +3132,16 @@ jQuery(document).ready(function () {
         // album that comes with it belongs to its first part — the field of the
         // fill writes that one, so the parts of this list start out empty.
         // `formatting` is the highlighting the record was saved with, cut up along
-        // with the text the parts are made of.
-        function loadText(text, formatting) {
+        // with the text the parts are made of. `title` is the heading of the
+        // record, which opens the first of those parts; a forum post has none.
+        function loadText(text, formatting, title) {
             var parts = splitIntoParts(text);
 
             setTextParts(parts,
                 emptyGroups(parts.length),
                 emptyFileGroups(parts.length),
-                formatsOfParts(parts, text, formatting || []));
+                formatsOfParts(parts, text, formatting || []),
+                [title || '']);
         }
 
         // The button a record was saved with: the jsonb object of its row keeps
@@ -3211,15 +3336,18 @@ jQuery(document).ready(function () {
 
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
+            var titles = readTitles();
 
             // The part that starts below the caret begins without pictures of its
-            // own: the album stays with the text it was attached to.
+            // own: the album stays with the text it was attached to, and so does
+            // the heading it opened with.
             groups.splice(index + 1, 0, []);
             files.splice(index + 1, 0, []);
+            titles.splice(index + 1, 0, '');
 
             setTextParts(bare.values.slice(0, index)
                 .concat([head, tail])
-                .concat(bare.values.slice(index + 1)), asTexts(groups), files, formats);
+                .concat(bare.values.slice(index + 1)), asTexts(groups), files, formats, titles);
 
             caretOfPart(textParts()[index + 1], 0);
         }
@@ -3300,7 +3428,10 @@ jQuery(document).ready(function () {
             setTextParts(parts.length > 0 ? parts : [''],
                 asTexts(flattenGroups(readImageGroups())),
                 flattenGroups(readFileGroups()),
-                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)));
+                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)),
+                // The whole run is laid out again, so the only heading that survives
+                // is the one the publication opens with.
+                [readTitles()[0] || '']);
         }
 
         // --- joining two neighbouring parts -------------------------------------
@@ -3353,6 +3484,12 @@ jQuery(document).ready(function () {
             groups.splice(index + 1, 1);
 
             var files = spliceImageGroups(alignGroups(readFileGroups(), bare.values.length), index);
+            // The heading of the part that goes away goes with it: one message has
+            // one first line, and the part it grew into keeps its own.
+            var titles = readTitles();
+
+            titles.splice(index + 1, 1);
+
             var merged = joinedFormats(
                 bare.values[index],
                 bare.formats[index],
@@ -3364,7 +3501,7 @@ jQuery(document).ready(function () {
             bare.formats[index] = merged;
             bare.values.splice(index + 1, 1);
             bare.formats.splice(index + 1, 1);
-            setTextParts(bare.values, asTexts(groups), files, bare.formats);
+            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles);
 
             // The joined text does not have to fit one message, so it goes back
             // through the split when it stopped fitting.
@@ -3588,17 +3725,20 @@ jQuery(document).ready(function () {
             // part born at the edge of the form starts without any.
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
+            var titles = readTitles();
 
             if (moved.values.length === bare.values.length + 1) {
                 groups.splice(moved.index, 0, []);
                 files.splice(moved.index, 0, []);
+                titles.splice(moved.index, 0, '');
             } else if (moved.values.length === bare.values.length - 1) {
                 var joined = forward ? index : index - 1;
                 groups = spliceImageGroups(groups, joined);
                 files = spliceImageGroups(files, joined);
+                titles.splice(joined + 1, 1);
             }
 
-            setTextParts(moved.values, asTexts(groups), files, moved.formats);
+            setTextParts(moved.values, asTexts(groups), files, moved.formats, titles);
 
             // The caret stays where the moved text came to rest.
             caretOfPart(textParts()[moved.index], moved.caret);
@@ -3981,14 +4121,19 @@ jQuery(document).ready(function () {
             var albums = albumPictures();
             var fields = textParts();
             var buttons = readButtonGroups();
+            var titles = readTitles();
             var shown = [];
 
             partValues().forEach(function (value, index) {
                 if (value !== '') {
+                    // Every card shows the message the channel will get: the
+                    // heading of the part over its text, bold, with the number of
+                    // a numbered part at the end of the heading.
+                    var message = composedMessage(titles[index] || '', value, formattingOf(fields[index]));
                     shown.push({
-                        text: value,
+                        text: message.text,
                         pictures: albums[index] || [],
-                        entities: formattingOf(fields[index]),
+                        entities: message.entities,
                         button: buttons[index],
                     });
                 }
@@ -4052,6 +4197,16 @@ jQuery(document).ready(function () {
             if (textParts().length === 1) {
                 splitIfNeeded();
             }
+        });
+        // A heading costs the part some of its text, so a long enough one makes a
+        // part that fit overflow: the list is cut anew the way a new text cuts it.
+        partsBox.addEventListener('input', function (event) {
+            if (!event.target.classList || !event.target.classList.contains('publication-title-field')) {
+                return;
+            }
+            splitIfNeeded();
+            updateCounters();
+            update();
         });
         // The albums of the parts, the cloned ones included: a list typed by hand
         // outranks the probe that was still asking about the one it replaced.
@@ -4344,7 +4499,8 @@ jQuery(document).ready(function () {
             log.querySelector('.editing-badge').classList.remove('d-none');
             loadText(
                 log.getAttribute('data-text') || '',
-                parseFormatting(log.getAttribute('data-formatting'))
+                parseFormatting(log.getAttribute('data-formatting')),
+                log.getAttribute('data-title') || ''
             );
             fillImages(log.getAttribute('data-image-urls') || '');
             fillButton(log.getAttribute('data-button'));
@@ -4414,7 +4570,7 @@ jQuery(document).ready(function () {
             // The button of the record comes out of the form the same way the text
             // does: the shared field first, the boxes of the parts behind it.
             fillButton('');
-            setTextParts([''], [''], []);
+            setTextParts([''], [''], [], undefined, ['']);
             if (numberPartsInput) {
                 numberPartsInput.checked = false;
             }
@@ -4645,7 +4801,9 @@ jQuery(document).ready(function () {
                 if (splits) {
                     // One entity, one part: the album of every one of them lands
                     // in the field of its own part.
-                    setTextParts(threadTextParts(entities));
+                    // A thread is text alone, so it brings no heading — and leaves
+                    // none of the parts it fills with the heading of a record.
+                    setTextParts(threadTextParts(entities), undefined, undefined, undefined, ['']);
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
                         writeImages(index, raw);
                     });

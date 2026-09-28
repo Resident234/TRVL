@@ -147,4 +147,43 @@ final class MessageEntitiesTest extends Unit
             ['type' => 'text_link', 'offset' => 0, 'length' => 6, 'url' => 'javascript:alert(1)'],
         ])->assertFitsText('Привет мир');
     }
+
+    public function testAHeadingOpensTheMessageInBoldOverTheSpansItMoves(): void
+    {
+        $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 4]])
+            ->underHeading('Заголовок');
+
+        $this->assertSame([
+            ['type' => 'bold', 'offset' => 0, 'length' => 9],
+            ['type' => 'bold', 'offset' => 11, 'length' => 4],
+        ], $entities->toArray());
+    }
+
+    public function testNoHeadingLeavesTheListWhereItWas(): void
+    {
+        $entities = MessageEntities::fromArray([['type' => 'italic', 'offset' => 3, 'length' => 2]])
+            ->underHeading('');
+
+        $this->assertSame([['type' => 'italic', 'offset' => 3, 'length' => 2]], $entities->toArray());
+    }
+
+    public function testTheNumberLineTheHeadingTookOverIsNotMovedTwice(): void
+    {
+        // «Часть 1» plus the blank line is 9 of the units the stored span counts,
+        // and the heading that took it over is 18 long.
+        $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 9, 'length' => 7]])
+            ->underHeading('Заголовок. Часть 1', "\n\n", 9);
+
+        $this->assertSame([
+            ['type' => 'bold', 'offset' => 0, 'length' => 18],
+            ['type' => 'bold', 'offset' => 20, 'length' => 7],
+        ], $entities->toArray());
+    }
+
+    public function testAHeadingIsCountedInUtf16UnitsToo(): void
+    {
+        $entities = (new MessageEntities())->underHeading('Ищем✈️');
+
+        $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 6]], $entities->toArray());
+    }
 }

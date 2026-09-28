@@ -6,10 +6,13 @@
 use app\widgets\PublicationsUi;
 use yii\helpers\Html;
 
+[$heading, $body] = $record->headingAndBody();
+
 ?>
 <div class="activity-log" data-text="<?= Html::encode($record->text) ?>"
      data-formatting="<?= Html::encode($record->formatting->toJson()) ?>"
      data-button="<?= Html::encode($record->button->toJson()) ?>"
+     data-title="<?= Html::encode($record->title) ?>"
      data-source-type="draft" data-source-id="<?= $record->id ?>"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
     <div class="d-flex align-items-center gap-2 mb-1">
@@ -20,7 +23,10 @@ use yii\helpers\Html;
         <?= PublicationsUi::publishForm($record->id, 'draft') ?>
         <?= PublicationsUi::scheduleButton($record->id, 'draft') ?>
     </div>
-    <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($record->text) ?></p>
+    <?php if ($heading !== ''): ?>
+        <p class="mb-1 fw-bold"><?= Html::encode($heading) ?></p>
+    <?php endif ?>
+    <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($body) ?></p>
     <?= PublicationsUi::stackedImages($record->imageUrls) ?>
     <?= PublicationsUi::dateMeta([
         'Создано' => $record->createdAt,

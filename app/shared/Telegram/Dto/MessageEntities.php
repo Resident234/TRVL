@@ -126,6 +126,38 @@ final readonly class MessageEntities
     }
 
     /**
+     * The same list lying under a heading of its own: the whole of $heading is
+     * bold, and every span the list holds moves behind it and over the $gap that
+     * separates the two — so the offsets of an empty heading are the offsets the
+     * list already had, which is how a part without a title keeps the formatting
+     * it was saved with.
+     *
+     * $moved is how much of the heading was already standing at the head of the
+     * list's own text — the «Часть N» line a numbered part starts with, which the
+     * heading takes over instead of repeating — and the list moves by that much
+     * less.
+     */
+    public function underHeading(string $heading, string $gap = "\n\n", int $moved = 0): self
+    {
+        $units = self::utf16Length($heading);
+
+        if ($units === 0) {
+            return $this;
+        }
+
+        $entities = [['type' => 'bold', 'offset' => 0, 'length' => $units]];
+        $behind = $units + self::utf16Length($gap) - $moved;
+
+        foreach ($this->entities as $entity) {
+            $shifted = $entity;
+            $shifted['offset'] = (int) $entity['offset'] + $behind;
+            $entities[] = $shifted;
+        }
+
+        return new self($entities);
+    }
+
+    /**
      * Spans may lie over one another — a bold run inside an italic one is how the
      * editor nests the formats it offers — but the list has to keep the order of
      * the offsets, which is what the channel and the cut of a caption both walk.

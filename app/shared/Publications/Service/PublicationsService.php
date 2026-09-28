@@ -118,11 +118,12 @@ final class PublicationsService
         array $imageUrls,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
         ?ForumPublicationRef $forumRef = null,
     ): void {
-        $this->assertPartValid($text, $formatting);
+        $this->assertPartValid($title, $text, $formatting);
         $button->assertValid();
-        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $button);
+        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $button, $title);
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -140,11 +141,12 @@ final class PublicationsService
         array $imageUrls,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
         string $publishedAt,
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
     ): void {
-        $this->assertPartValid($text, $formatting);
+        $this->assertPartValid($title, $text, $formatting);
         $button->assertValid();
         $normalized = $this->normalizeDate($publishedAt, $userTimezone);
         $id = $this->publications->createPost(
@@ -154,6 +156,7 @@ final class PublicationsService
             $this->now(),
             $formatting,
             $button,
+            $title,
         );
         $this->bindForumRef($id, $forumRef);
     }
@@ -174,12 +177,16 @@ final class PublicationsService
      * same way, one entity list per part, counted from the same text the form
      * shows — the trim() below moves it along with the text it describes.
      * $buttons is the link button of every part in the same order again; a part
-     * with an empty one goes to the channel without a keyboard.
+     * with an empty one goes to the channel without a keyboard. $titles is the
+     * heading of every part in the same order again; a part with an empty one
+     * goes out as a plain message, and the heading of a numbered part takes the
+     * «Часть N» line out of its text and puts it at the end of that heading.
      *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
      * @param MessageEntities[] $formats
      * @param LinkButton[] $buttons
+     * @param string[] $titles
      * @throws InvalidArgumentException when a part is empty or longer than the
      * Telegram limit, when its formatting does not fit it, when its button is
      * half-filled or malformed, or when the date is invalid
@@ -189,6 +196,7 @@ final class PublicationsService
         array $imageGroups,
         array $formats,
         array $buttons,
+        array $titles,
         string $publishedAt,
         string $action,
         ?ForumPublicationRef $forumRef = null,
@@ -197,21 +205,23 @@ final class PublicationsService
         $parts = [];
         $formatting = [];
         $keyboard = [];
+        $headings = [];
         foreach (array_values($texts) as $index => $text) {
             $parts[] = trim($text);
             $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
             $keyboard[] = $buttons[$index] ?? LinkButton::empty();
+            $headings[] = trim((string)($titles[$index] ?? ''));
         }
         $albums = array_values($imageGroups);
 
         foreach ($parts as $index => $text) {
-            $this->assertPartValid($text, $formatting[$index]);
+            $this->assertPartValid($headings[$index], $text, $formatting[$index]);
             $keyboard[$index]->assertValid();
         }
 
         if (count($parts) === 1) {
             if ($action === 'draft') {
-                $this->saveDraft($parts[0], $albums[0] ?? [], $formatting[0], $keyboard[0], $forumRef);
+                $this->saveDraft($parts[0], $albums[0] ?? [], $formatting[0], $keyboard[0], $headings[0], $forumRef);
 
                 return;
             }
@@ -221,6 +231,7 @@ final class PublicationsService
                 $albums[0] ?? [],
                 $formatting[0],
                 $keyboard[0],
+                $headings[0],
                 $publishedAt,
                 $forumRef,
                 $userTimezone,
@@ -239,6 +250,7 @@ final class PublicationsService
                     'imageUrls' => $albums[$index] ?? [],
                     'formatting' => $formatting[$index],
                     'button' => $keyboard[$index],
+                    'title' => $headings[$index],
                 ];
             }
 
@@ -255,6 +267,7 @@ final class PublicationsService
                 'imageUrls' => $albums[$index] ?? [],
                 'formatting' => $formatting[$index],
                 'button' => $keyboard[$index],
+                'title' => $headings[$index],
                 'publishedAt' => $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes()),
             ];
         }
@@ -448,6 +461,7 @@ final class PublicationsService
                 $draft->updatedAt,
                 formatting: $draft->formatting,
                 button: $draft->button,
+                title: $draft->title,
             ),
             $now,
         );
@@ -479,6 +493,7 @@ final class PublicationsService
                 $draft->updatedAt,
                 formatting: $draft->formatting,
                 button: $draft->button,
+                title: $draft->title,
             ),
             $now,
         );
@@ -502,7 +517,7 @@ final class PublicationsService
         }
 
         $now = $this->now();
-        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting, $post->button);
+        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting, $post->button, $post->title);
     }
 
     /**
@@ -510,8 +525,10 @@ final class PublicationsService
      * with photos it goes as a photo album (the caption on the first
      * photo, the full text as a separate message when it does not fit
      * the caption limit), without photos as a plain text message. The
-     * highlighting of the text goes with it as message entities, and the
-     * link button of the record as the keyboard under the message.
+     * heading of the record, when it has one, is composed into that
+     * message as its bold first line. The highlighting goes with it as
+     * message entities, and the link button of the record as the
+     * keyboard under the message.
      *
      * @throws RuntimeException when the bot token is not configured
      * @throws TelegramApiException on API failure
@@ -521,18 +538,18 @@ final class PublicationsService
         // If we have images and forum HTTP client, download images and upload as files
         if ($post->imageUrls !== [] && $this->forumHttpClient !== null && method_exists($this->channel, 'publishPhotos')) {
             return $this->channel->publishPhotos(
-                $post->text,
+                $post->messageText(),
                 $this->prepareImageUrlsForTelegram($post->imageUrls),
-                $post->formatting,
+                $post->messageEntities(),
                 $post->button,
             );
         }
 
         if ($post->imageUrls !== [] && method_exists($this->channel, 'publishPhotos')) {
             return $this->channel->publishPhotos(
-                $post->text,
+                $post->messageText(),
                 $post->imageUrls,
-                $post->formatting,
+                $post->messageEntities(),
                 $post->button,
             );
         }
@@ -541,7 +558,7 @@ final class PublicationsService
             throw new RuntimeException('Telegram-канал не сконфигурирован.');
         }
 
-        return $this->channel->publishText($post->text, $post->formatting, $post->button);
+        return $this->channel->publishText($post->messageText(), $post->messageEntities(), $post->button);
     }
 
     /**
@@ -659,8 +676,9 @@ final class PublicationsService
     }
 
     /**
-     * Replaces an archived edit's message content in the channel
-     * with the record's text field, its formatting and its link button.
+     * Replaces an archived edit's message content in the channel with the
+     * message the record composes: its heading, when it has one, as the bold
+     * first line over its text field, with the formatting and the link button.
      *
      * @throws RuntimeException when the bot token is not configured
      * @throws TelegramApiException on API failure
@@ -677,7 +695,12 @@ final class PublicationsService
             );
         }
 
-        $this->channel->editPostText($record->telegramId, $record->text, $record->formatting, $record->button);
+        $this->channel->editPostText(
+            $record->telegramId,
+            $record->messageText(),
+            $record->messageEntities(),
+            $record->button,
+        );
     }
 
     /**
@@ -711,13 +734,14 @@ final class PublicationsService
         array $imageUrls,
         MessageEntities $formatting,
         LinkButton $button,
+        string $title,
         string $publishedAt,
         string $source,
         ?int $sourceId,
         string $action,
         ?string $userTimezone = null,
     ): void {
-        $this->assertPartValid($text, $formatting);
+        $this->assertPartValid($title, $text, $formatting);
         $button->assertValid();
         $now = $this->now();
 
@@ -738,6 +762,7 @@ final class PublicationsService
                         $record->updatedAt,
                         formatting: $formatting,
                         button: $button,
+                        title: $title,
                     ),
                     $now,
                 );
@@ -758,6 +783,7 @@ final class PublicationsService
                     $record->updatedAt,
                     formatting: $formatting,
                     button: $button,
+                    title: $title,
                 ),
                 $now,
             );
@@ -770,7 +796,7 @@ final class PublicationsService
             $this->assertDraftExists($sourceId);
             if ($action === 'draft') {
                 // 6) draft + "Сохранить": update in place.
-                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting, $button);
+                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting, $button, $title);
 
                 return;
             }
@@ -788,6 +814,7 @@ final class PublicationsService
                     $draft->updatedAt,
                     formatting: $formatting,
                     button: $button,
+                    title: $title,
                 ),
                 $now,
             );
@@ -828,6 +855,7 @@ final class PublicationsService
                 $now,
                 $formatting,
                 $button,
+                $title,
             );
 
             return;
@@ -846,6 +874,7 @@ final class PublicationsService
                 $post->updatedAt,
                 formatting: $formatting,
                 button: $button,
+                title: $title,
             ),
             $now,
         );
@@ -897,6 +926,7 @@ final class PublicationsService
                 $record->updatedAt,
                 formatting: $record->formatting,
                 button: $record->button,
+                title: $record->title,
             ),
             $now,
         );
@@ -928,6 +958,7 @@ final class PublicationsService
                 $record->updatedAt,
                 formatting: $record->formatting,
                 button: $record->button,
+                title: $record->title,
             ),
             $now,
         );
@@ -1060,16 +1091,39 @@ final class PublicationsService
      * the message limit Telegram accepts, or when its formatting does not
      * describe real spans of it
      */
-    private function assertPartValid(string $text, MessageEntities $formatting): void
+    private function assertPartValid(string $title, string $text, MessageEntities $formatting): void
     {
-        $length = mb_strlen($text);
-        if ($length === 0 || $length > ChannelService::TEXT_MAX_LENGTH) {
+        $message = self::messageOf($title, $text);
+        $what = trim($title) === '' ? 'Текст публикации' : 'Заголовок с текстом';
+
+        if (mb_strlen($text) === 0 || mb_strlen($message) > ChannelService::TEXT_MAX_LENGTH) {
             throw new InvalidArgumentException(
-                sprintf('Текст публикации должен быть от 1 до %d символов.', ChannelService::TEXT_MAX_LENGTH),
+                sprintf('%s должен быть от 1 до %d символов.', $what, ChannelService::TEXT_MAX_LENGTH),
             );
         }
 
         $formatting->assertFitsText($text);
+    }
+
+    /**
+     * The message a part goes to the channel as: composed by the record itself,
+     * so the limit here falls on exactly the text that will be sent.
+     */
+    private static function messageOf(string $title, string $text): string
+    {
+        return (new PublicationData(
+            0,
+            $text,
+            [],
+            null,
+            null,
+            '',
+            '',
+            null,
+            new MessageEntities(),
+            LinkButton::empty(),
+            $title,
+        ))->messageText();
     }
 
     /**

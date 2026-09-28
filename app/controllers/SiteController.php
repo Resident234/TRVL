@@ -865,6 +865,7 @@ class SiteController extends Controller
         $texts = $this->publicationTextsFromRequest();
         $formats = $this->publicationFormatsFromRequest(count($texts));
         $buttons = $this->publicationButtonsFromRequest(count($texts));
+        $titles = $this->publicationTitlesFromRequest(count($texts));
         $publishedAt = (string)($this->request->post('publicationAt', ''));
         $userTz = (string)($this->request->post('publicationTz', ''));
         $action = $this->request->post('action') === 'draft' ? 'draft' : 'publish';
@@ -884,6 +885,7 @@ class SiteController extends Controller
                     $imageGroups,
                     $formats,
                     $buttons,
+                    $titles,
                     $publishedAt,
                     $action,
                     $forumRef,
@@ -904,6 +906,7 @@ class SiteController extends Controller
                     $imageUrls,
                     $formats[0],
                     $buttons[0],
+                    $titles[0],
                     $publishedAt,
                     $source,
                     $sourceId,
@@ -977,8 +980,8 @@ class SiteController extends Controller
      */
     private function publicationButtonsFromRequest(int $parts): array
     {
-        $labels = $this->buttonFieldsFromRequest('publicationButtonText', 'publicationPartButtonText');
-        $urls = $this->buttonFieldsFromRequest('publicationButtonUrl', 'publicationPartButtonUrl');
+        $labels = $this->partFieldsFromRequest('publicationButtonText', 'publicationPartButtonText');
+        $urls = $this->partFieldsFromRequest('publicationButtonUrl', 'publicationPartButtonUrl');
 
         $buttons = [];
         for ($index = 0; $index < $parts; $index++) {
@@ -992,13 +995,35 @@ class SiteController extends Controller
     }
 
     /**
-     * One kind of the button fields of the form: the shared field of the first
+     * The headings of the publication form as one title per part: the shared
+     * «Заголовок» field carries the title of the first part and the cloned text
+     * blocks add one field each, so a submission brings a part's heading in the
+     * place of that part. A part whose field is missing or holds nothing but
+     * whitespace goes out without a heading, the way it did before the field
+     * existed.
+     *
+     * @return string[]
+     */
+    private function publicationTitlesFromRequest(int $parts): array
+    {
+        $fields = $this->partFieldsFromRequest('publicationTitle', 'publicationPartTitle');
+
+        $titles = [];
+        for ($index = 0; $index < $parts; $index++) {
+            $titles[] = (string)($fields[$index] ?? '');
+        }
+
+        return $titles;
+    }
+
+    /**
+     * One kind of the per-part fields of the form: the shared field of the first
      * part followed by the cloned fields of the parts that came after it, so
      * the two lists line up with the parts the way the albums do.
      *
      * @return array<int, mixed>
      */
-    private function buttonFieldsFromRequest(string $shared, string $perPart): array
+    private function partFieldsFromRequest(string $shared, string $perPart): array
     {
         $raw = $this->request->post($perPart, []);
 
