@@ -337,30 +337,3 @@ div.extension-card:hover,
 [data-bs-theme="dark"] .extension-card:not([class*="shadow"]):hover {
     box-shadow: var(--extension-card-shadow-dark-hover);
 }
-
-/* Publication Preview Alignment Fixes */
-.telegram-preview-text {
-    text-align: left;
-    display: block;
-    align-self: flex-start;
-    width: 100%;
-    padding: 0;
-}
-
-.telegram-preview-text #publicationPreview,
-#publicationPreview {
-    text-align: left;
-    margin-top: 0;
-    margin-bottom: 0;
-    padding: 0;
-    white-space: pre-wrap;
-}
-
-/* Forum Discussion Scroller */
-/* Posts of one topic: the box scrolls on its own and loads the next page of
-   the discussion when its reader reaches the bottom. */
-.thread-replies {
-    max-height: 320px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-}

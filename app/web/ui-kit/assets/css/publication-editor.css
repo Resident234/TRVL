@@ -57,3 +57,36 @@
     font-family: var(--bs-font-monospace);
     font-size: inherit;
 }
+
+/* The rest of what the publications page needs beyond the ui-kit. These rules
+   used to live in `css/site.css`, which no page of the dashboard loads: the
+   dashboard layout ships the ui-kit stylesheet instead, so anything written
+   for a portal page has to be registered by a bundle the page itself asks
+   for. */
+
+/* Publication Preview Alignment Fixes */
+.telegram-preview-text {
+    text-align: left;
+    display: block;
+    align-self: flex-start;
+    width: 100%;
+    padding: 0;
+}
+
+.telegram-preview-text #publicationPreview,
+#publicationPreview {
+    text-align: left;
+    margin-top: 0;
+    margin-bottom: 0;
+    padding: 0;
+    white-space: pre-wrap;
+}
+
+/* Forum Discussion Scroller */
+/* Posts of one topic: the box scrolls on its own and loads the next page of
+   the discussion when its reader reaches the bottom. */
+.thread-replies {
+    max-height: 320px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}

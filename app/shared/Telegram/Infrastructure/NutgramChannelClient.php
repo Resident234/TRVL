@@ -9,6 +9,7 @@ use app\shared\Telegram\Dto\ChannelInfo;
 use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
+use SergiX44\Nutgram\Configuration;
 use SergiX44\Nutgram\Nutgram;
 use SergiX44\Nutgram\Telegram\Exceptions\TelegramException;
 use SergiX44\Nutgram\Telegram\Types\Chat\Chat;
@@ -26,11 +27,22 @@ use Throwable;
  */
 final class NutgramChannelClient implements TelegramChannelClientInterface
 {
+    /**
+     * Nutgram asks for five seconds, which is not the time the API answers in
+     * but the time the connection to it takes: the first call of a run spends
+     * most of it negotiating the route, measured here at fifteen seconds. A
+     * task that never gets past that is a task that fails every five minutes.
+     */
+    private const REQUEST_TIMEOUT = 30;
+
     private Nutgram $_bot;
 
     public function __construct(string $token)
     {
-        $this->_bot = new Nutgram($token);
+        $this->_bot = new Nutgram(
+            $token,
+            Configuration::fromArray(['timeout' => self::REQUEST_TIMEOUT]),
+        );
     }
 
     public function getChannelInfo(string $channelId): ChannelInfo

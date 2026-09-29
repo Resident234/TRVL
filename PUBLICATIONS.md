@@ -227,6 +227,8 @@ The channel never sees the columns as they stand: `publishToTelegram()` and `edi
 
 All methods may throw `TelegramApiException` (API failure) and `RuntimeException` when the bot token is missing.
 
+The client waits 30 seconds for an answer (`NutgramChannelClient::REQUEST_TIMEOUT`, given to Nutgram through `Configuration::fromArray(['timeout' => …])`). The five seconds Nutgram asks for by default are not the time the API takes to answer but the time the connection to it takes — the first call of a run spends most of it negotiating the route, measured on the local portal at about fifteen seconds — and a task that never gets past that is a task that fails again every five minutes.
+
 The limits Telegram itself imposes are public constants of the class — `TEXT_MAX_LENGTH` (4096), `CAPTION_MAX_LENGTH` (1024), `DESCRIPTION_MAX_LENGTH` (255), `ALBUM_MAX_PHOTOS` (10) and `PARTS_NUMBERING_RESERVE` (16 characters the «Часть N» heading keeps out of the text budget) — and of `LinkButton`, which holds `TEXT_MAX_LENGTH` (64 bytes of a button label) and `URL_MAX_LENGTH` (2048 characters of its address) — because the publications form reads the first two to decide where a long text has to be split, and the settings page lists all of them through `PublicationSettingsService::telegramLimits()`. None of them is editable from the portal.
 
 ---

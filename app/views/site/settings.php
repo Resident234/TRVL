@@ -19,6 +19,12 @@ $schema = PublicationSettingsService::schema();
 // task, not the number written in the schema.
 $bounds = [];
 foreach ($schema as $code => $definition) {
+    // Only a number has a lower bound to show; a format or an order is
+    // picked from a list.
+    if ($definition['type'] !== 'int') {
+        continue;
+    }
+
     $bounds[$code] = $code === 'partsOffsetMinutes'
         ? $partsOffsetMin
         : (int)$definition['min'];
