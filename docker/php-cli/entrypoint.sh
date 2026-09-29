@@ -1,21 +1,28 @@
 #!/bin/sh
 set -eu
 
-schedule="${PARSER_CRON_SCHEDULE:-0 4 * * *}"
-post_schedule="${FORUM_POST_PARSER_CRON_SCHEDULE:-*/10 * * * *}"
-gallery_schedule="${GALLERY_PARSER_CRON_SCHEDULE:-*/10 * * * *}"
-member_schedule="${MEMBER_PARSER_CRON_SCHEDULE:-*/10 * * * *}"
-publish_schedule="${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}"
-delete_schedule="${TELEGRAM_DELETE_CRON_SCHEDULE:-*/5 * * * *}"
-edit_schedule="${TELEGRAM_EDIT_CRON_SCHEDULE:-*/5 * * * *}"
-crontab_file="/tmp/parser-crontab"
+# One image runs two containers: the forum parsers that fill the database, and
+# the queue that moves publications through the channel. CRON_ROLE says which
+# half of the periodic work this container is started for.
+role="${CRON_ROLE:?CRON_ROLE is not set: parser or telegram}"
+crontab_file="/tmp/cron-jobs"
 
-printf '%s php /var/www/html/yii forum-parser/scan\n' "$schedule" > "$crontab_file"
-printf '%s php /var/www/html/yii forum-post-parser/scan\n' "$post_schedule" >> "$crontab_file"
-printf '%s php /var/www/html/yii gallery-parser/scan\n' "$gallery_schedule" >> "$crontab_file"
-printf '%s php /var/www/html/yii member-parser/scan\n' "$member_schedule" >> "$crontab_file"
-printf '%s php /var/www/html/yii telegram/publish-due\n' "$publish_schedule" >> "$crontab_file"
-printf '%s php /var/www/html/yii telegram/delete-due\n' "$delete_schedule" >> "$crontab_file"
-printf '%s php /var/www/html/yii telegram/edit-due\n' "$edit_schedule" >> "$crontab_file"
+case "$role" in
+    parser)
+        printf '%s php /var/www/html/yii forum-parser/scan\n' "${PARSER_CRON_SCHEDULE:-0 4 * * *}" > "$crontab_file"
+        printf '%s php /var/www/html/yii forum-post-parser/scan\n' "${FORUM_POST_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
+        printf '%s php /var/www/html/yii gallery-parser/scan\n' "${GALLERY_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
+        printf '%s php /var/www/html/yii member-parser/scan\n' "${MEMBER_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
+        ;;
+    telegram)
+        printf '%s php /var/www/html/yii telegram/publish-due\n' "${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}" > "$crontab_file"
+        printf '%s php /var/www/html/yii telegram/delete-due\n' "${TELEGRAM_DELETE_CRON_SCHEDULE:-*/5 * * * *}" >> "$crontab_file"
+        printf '%s php /var/www/html/yii telegram/edit-due\n' "${TELEGRAM_EDIT_CRON_SCHEDULE:-*/5 * * * *}" >> "$crontab_file"
+        ;;
+    *)
+        printf 'CRON_ROLE must be parser or telegram, got: %s\n' "$role" >&2
+        exit 1
+        ;;
+esac
 
 exec supercronic -passthrough-logs "$crontab_file"

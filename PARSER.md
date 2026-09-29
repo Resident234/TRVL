@@ -354,11 +354,11 @@ SELECT max(id) FROM topic WHERE updated_at > now() - interval '2 minutes';
 
 ## Периодический запуск
 
-Отдельный cron-контейнер в Docker Compose:
+Периодические задачи живут в двух контейнерах, собранных из одного образа: `parser` делает только парсинг форума, `telegram` — только очередь публикаций (см. «Cron Scheduling» в [PUBLICATIONS.md](PUBLICATIONS.md)).
 
 - `docker/php-cli/Dockerfile` — PHP 8.4-cli, расширения intl/mbstring/pdo_pgsql/zip, supercronic v0.2.29
-- `docker/php-cli/entrypoint.sh` — генерирует crontab из переменной окружения и запускает supercronic
-- `docker-compose.yml`, сервис `parser`: тот же volume `./app`, тот же `DB_*`, зависит от healthcheck postgres
+- `docker/php-cli/entrypoint.sh` — собирает crontab по переменной `CRON_ROLE` (`parser` — четыре скана форума, `telegram` — publish-due / delete-due / edit-due) и запускает supercronic; любое другое значение роли завершает контейнер ошибкой
+- `docker-compose.yml` — оба сервиса монтируют тот же volume `./app`, читают те же `DB_*` и зависят от healthcheck postgres; `TELEGRAM_BOT_TOKEN` и расписания очереди передаются только сервису `telegram`, а `FORUM_LOGIN_*` нужны обоим: публикация, собранная из топика, читает форум тем же HTTP-клиентом
 
 Расписание задаётся в `.env`:
 

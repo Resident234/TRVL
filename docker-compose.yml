@@ -50,15 +50,47 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
       FORUM_LOGIN_USERNAME: ${FORUM_LOGIN_USERNAME:-}
       FORUM_LOGIN_PASSWORD: ${FORUM_LOGIN_PASSWORD:-}
+      # Only the four scans of the forum: the publications queue runs in the
+      # telegram service below, from the same image.
+      CRON_ROLE: parser
       PARSER_CRON_SCHEDULE: ${PARSER_CRON_SCHEDULE:-0 4 * * *}
       FORUM_POST_PARSER_CRON_SCHEDULE: ${FORUM_POST_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       GALLERY_PARSER_CRON_SCHEDULE: ${GALLERY_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       MEMBER_PARSER_CRON_SCHEDULE: ${MEMBER_PARSER_CRON_SCHEDULE:-*/10 * * * *}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - appnet
+
+  telegram:
+    build:
+      context: ./docker/php-cli
+      args:
+        UID: ${APP_UID:-1000}
+        GID: ${APP_GID:-1000}
+    volumes:
+      - ./app:/var/www/html
+      - composer-cache:/tmp/composer-cache
+    environment:
+      COMPOSER_CACHE_DIR: /tmp/composer-cache
+      YII_ENV: ${YII_ENV:-dev}
+      YII_DEBUG: ${YII_DEBUG:-1}
+      DB_DSN: pgsql:host=postgres;port=5432;dbname=${POSTGRES_DB:-yii_dev}
+      DB_USERNAME: ${POSTGRES_USER:-yii}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
+      # The queue of publications: what is due goes to the channel, what was
+      # deleted comes out of it, what was edited is replaced there.
+      CRON_ROLE: telegram
       TELEGRAM_PUBLISH_CRON_SCHEDULE: ${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}
       TELEGRAM_DELETE_CRON_SCHEDULE: ${TELEGRAM_DELETE_CRON_SCHEDULE:-*/5 * * * *}
       TELEGRAM_EDIT_CRON_SCHEDULE: ${TELEGRAM_EDIT_CRON_SCHEDULE:-*/5 * * * *}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID:-@gsu_travels}
+      # A publication of a forum topic is read back through the same HTTP client
+      # the parsers use, so the queue needs its credentials too.
+      FORUM_LOGIN_USERNAME: ${FORUM_LOGIN_USERNAME:-}
+      FORUM_LOGIN_PASSWORD: ${FORUM_LOGIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
