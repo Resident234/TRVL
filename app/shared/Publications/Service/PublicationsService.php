@@ -334,7 +334,10 @@ final class PublicationsService
      *
      * Each record is processed independently: a failure is logged and
      * does not stop the remaining records; failed records keep an
-     * empty deleted_at and are retried on the next run.
+     * empty deleted_at and are retried on the next run. A message the
+     * channel does not have any more is the removal the record asks
+     * for, so such a record is stamped like a successful delete
+     * instead of being retried for ever.
      *
      * @return array{processed: int, deleted: int, failed: int}
      */
@@ -354,15 +357,20 @@ final class PublicationsService
 
             try {
                 $this->deleteFromTelegram($record);
-                $this->publications->storeDeletedAt($record->id, $this->now());
-                $stats['deleted']++;
             } catch (TelegramApiException | RuntimeException $e) {
-                $stats['failed']++;
-                $this->logger?->error(
-                    'Deleted publication {id} failed to leave Telegram: {error}',
-                    ['id' => $record->id, 'error' => $e->getMessage()],
-                );
+                if (!($e instanceof TelegramApiException && $e->isMessageGone())) {
+                    $stats['failed']++;
+                    $this->logger?->error(
+                        'Deleted publication {id} failed to leave Telegram: {error}',
+                        ['id' => $record->id, 'error' => $e->getMessage()],
+                    );
+
+                    continue;
+                }
             }
+
+            $this->publications->storeDeletedAt($record->id, $this->now());
+            $stats['deleted']++;
         }
 
         return $stats;

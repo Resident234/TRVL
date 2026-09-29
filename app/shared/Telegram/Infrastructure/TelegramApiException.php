@@ -28,4 +28,14 @@ final class TelegramApiException extends RuntimeException
 
         return new self($e->getMessage(), $e->getCode(), $retryAfter, $e);
     }
+
+    /**
+     * A delete of a message the channel does not have answers 400 with this
+     * wording and nothing structured to test by; the capitalisation of the
+     * description is not stable either.
+     */
+    public function isMessageGone(): bool
+    {
+        return stripos($this->getMessage(), 'message to delete not found') !== false;
+    }
 }

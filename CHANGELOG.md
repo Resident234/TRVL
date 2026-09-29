@@ -97,15 +97,15 @@ docker compose exec app php yii member-parser/scan [--from=...] [--to=...] [--li
 - Сценарий `PublicationsService::editDue()`: записи из `publications_edited` с пустым `edited_at` редактируются в канале по `telegram_id` — содержимое сообщения заменяется значением поля `text` (по возрастанию id), после чего в `edited_at` ставится время фактического изменения; каждая запись обрабатывается независимо, сбой логируется и не останавливает остальные, неудачные повторяются на следующем запуске
 - Telegram-слой: `editChannelMessageText` в контракте и Nutgram-адаптере (editMessageText Bot API), `ChannelService::editPostText()`
 - Репозиторий публикаций: `findPendingChannelEdits()`, `storeEditedAt()`
-- Консольная команда `telegram/edit-due`; cron-задача в parser-контейнере с расписанием `TELEGRAM_EDIT_CRON_SCHEDULE` (по умолчанию `*/5 * * * *`)
+- Консольная команда `telegram/edit-due`; cron-задача с расписанием `TELEGRAM_EDIT_CRON_SCHEDULE` (по умолчанию `*/5 * * * *`)
 
 #### Периодическое удаление из канала
 
 - Миграция `m260912_000011`: `publications_deleted.deleted_at` становится nullable — пустое значение означает, что soft-deleted запись ещё не удалена из канала
-- Сценарий `PublicationsService::deleteDue()`: записи из `publications_deleted` с пустым `deleted_at` удаляются из канала по `telegram_id` (по возрастанию id), после чего в `deleted_at` ставится время фактического удаления; каждая запись обрабатывается независимо, сбой логируется и не останавливает остальные, неудачные повторяются на следующем запуске
+- Сценарий `PublicationsService::deleteDue()`: записи из `publications_deleted` с пустым `deleted_at` удаляются из канала по `telegram_id` (по возрастанию id), после чего в `deleted_at` ставится время фактического удаления; каждая запись обрабатывается независимо, сбой логируется и не останавливает остальные, неудачные повторяются на следующем запуске, кроме отсутствующего в канале сообщения — см. «Отсутствующее в канале сообщение закрывает запись»
 - Telegram-слой: `deleteChannelMessage` в контракте и Nutgram-адаптере (deleteMessage Bot API), `ChannelService::deletePost()`
 - Репозиторий публикаций: `findPendingChannelDeletion()`, `storeDeletedAt()`
-- Консольная команда `telegram/delete-due`; cron-задача в parser-контейнере с расписанием `TELEGRAM_DELETE_CRON_SCHEDULE` (по умолчанию `*/5 * * * *`)
+- Консольная команда `telegram/delete-due`; cron-задача с расписанием `TELEGRAM_DELETE_CRON_SCHEDULE` (по умолчанию `*/5 * * * *`)
 
 #### Модель данных публикаций
 
@@ -114,6 +114,19 @@ docker compose exec app php yii member-parser/scan [--from=...] [--to=...] [--li
 - Индекс `idx_publications_post_published_at` для выборки постов по дате публикации
 
 ### Изменено
+
+#### Отсутствующее в канале сообщение закрывает запись
+
+- `PublicationsService::deleteDue()` больше не повторяет вечно удаление сообщения, которого в канале нет: ответ `message to delete not found` означает, что нужного результата уже достигли, и запись получает `deleted_at` как обычное удаление
+- `TelegramApiException::isMessageGone()` — единственный способ это распознать: Telegram несёт в таком ответе только текст описания, регистра он не гарантирует
+- Причина разбора: строки архива 6 и 7 (тестовые публикации) падали каждые пять минут с момента появления задачи — у строки 7 `telegram_id` смещён на единицу («test-post» занимает в канале 5608, а не 5609), строка 6 получила `message can't be deleted` при полном наборе прав администратора, её `deleted_at` проставлен вручную, сообщение 5614 в канале осталось
+
+#### Очередь публикаций вынесена из контейнера парсера
+
+- В `docker-compose.yml` появился сервис `telegram`, собранный из того же `docker/php-cli`: в нём живут `telegram/publish-due`, `telegram/delete-due` и `telegram/edit-due`, а сервис `parser` остался один на четыре скана форума и Telegram-переменные больше не читает
+- `docker/php-cli/entrypoint.sh` собирает crontab по роли `CRON_ROLE` (`parser` или `telegram`); незнакомая роль завершает контейнер ошибкой вместо тишины
+- `TELEGRAM_DELETE_CRON_SCHEDULE` и `TELEGRAM_EDIT_CRON_SCHEDULE` добавлены в `.env.example` — раньше пример знал только расписание публикации
+- `FORUM_LOGIN_*` переданы обоим контейнерам: `PublicationsService` получает `ForumHttpClient`, поэтому публикация, собранная из топика, читает форум тем же клиентом и в очереди
 
 #### Название проекта — TRVL
 
