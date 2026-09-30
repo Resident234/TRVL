@@ -69,6 +69,17 @@ $this->registerCss(
     flex-direction: column;
 }
 
+/* The yellow cards are inset by their own p-3, like the red ones, so card-body
+   and card-footer must not add a second 1rem on top of it. */
+.in-progress > .card-body {
+    padding: 0;
+}
+
+.in-progress > .card-footer {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0 0;
+}
+
 #publicationPreview {
     margin-top: 0;
     padding-top: 0;
