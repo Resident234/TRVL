@@ -121,6 +121,10 @@ $config = [
                 [
                     'class' => \yii\log\FileTarget::class,
                     'levels' => ['error', 'warning'],
+                    // Same rule as in console.php: without it every export ends
+                    // with a dump of the superglobals, which for a request means
+                    // the login form password and the session cookies.
+                    'logVars' => [],
                 ],
             ],
         ],

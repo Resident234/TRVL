@@ -29,6 +29,11 @@ $config = [
                 [
                     'class' => \yii\log\FileTarget::class,
                     'levels' => ['error', 'warning'],
+                    // Yii adds a dump of the superglobals to every export, and in
+                    // a CLI process $_SERVER is the whole container environment:
+                    // the bot token and the database and forum passwords end up
+                    // in app.log. The failure reasons are in the messages.
+                    'logVars' => [],
                 ],
             ],
         ],

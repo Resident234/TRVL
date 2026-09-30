@@ -413,6 +413,8 @@ docker compose exec app sh -c "grep forum-parser runtime/logs/app.log | tail -20
 
 Формат записи: timestamp, уровень, категория `forum-parser`, сообщение и JSON-контекст (`topic_id`, `error`, счётчики финальной статистики `Forum scan finished`). Пропуск запуска из-за блокировки пишется как warning `Forum scan is already running, launch skipped.`
 
+К записи не прикладывается дамп суперглобальных: у `FileTarget` в `app/config/console.php` стоит `logVars => []`, потому что в console-процессе `$_SERVER` — это всё окружение контейнера, и в лог попали бы токен бота, пароль базы и пароль форума. Всё нужное для разбора сбоя лежит в тексте и JSON-контексте самой записи.
+
 ## Проверено
 
 - Реальный проход диапазона 441000–441025: 26 обработано, 18 сохранено, 6 not found (404), 2 login required, 0 failed; повторный проход корректно обновляет записи (saved 0, updated 18)

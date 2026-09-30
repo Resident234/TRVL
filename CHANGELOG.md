@@ -115,6 +115,13 @@ docker compose exec app php yii member-parser/scan [--from=...] [--to=...] [--li
 
 ### Изменено
 
+#### Дамп суперглобальных переменных убран из журнала
+
+- У обоих `FileTarget` (`app/config/web.php`, `app/config/console.php`) выставлен `logVars => []`: Yii дописывал к каждой выгрузке дампы `$_GET`, `$_POST`, `$_FILES`, `$_COOKIE`, `$_SESSION` и `$_SERVER`, а в console-процессе `$_SERVER` — это всё окружение контейнера, поэтому в `app/runtime/logs/app.log` лежали `TELEGRAM_BOT_TOKEN`, `DB_PASSWORD` и `FORUM_LOGIN_PASSWORD` (773 таких дампа)
+- В веб-конфиге та же настройка закрывает пароль из формы входа и cookies сессии: они попали бы в `$_POST` и `$_COOKIE` при любой ошибке запроса
+- Отладочный контекст в дампе не теряется: причины пишутся в текст записи (`{"id":24,"error":"cURL error 7: …"}`, `topic_id`, счётчики статистики), а не в суперглобальные
+- Правка не ретроактивна: записанные до неё строки остаются в `app/runtime/logs/app.log` (каталог в git не попадает), а токен бота стоит повернуть через @BotFather
+
 #### Блоки страницы публикаций собраны по разметке kanban-доски
 
 - Карточки «Фильтры» и «Форум» страницы `/publications` объединены в один блок на всю ширину: обе стоят в контейнере `kanban-items ui-sortable`, завёрнутом в белую `card mb-4 p-3`, колонка — `kanban-board`; каждая карточка — `card p-3 border border-danger to-do` с заголовком `icon-box sm … bi-list-task …` и круглым счётчиком справа; разметка взята из доски `ui-kit/tasks.html`
