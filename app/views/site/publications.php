@@ -265,25 +265,25 @@ CSS
 
                 <!-- Forum topics -->
                 <div class="card p-3 border border-danger to-do">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
                         <div class="d-flex align-items-center gap-2">
                             <span class="icon-box sm bg-danger-subtle border border-danger rounded-circle">
                                 <i class="bi bi-list-task text-danger"></i>
                             </span>
                             <h5 class="text-danger fw-semibold m-0">Форум</h5>
                         </div>
-                        <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2" id="forumTopicsTotal"><?= str_pad((string)$totals['forum'], 2, '0', STR_PAD_LEFT) ?></span>
-                    </div>
-                    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" role="switch" id="pubSortForumTopics"
-                                <?= $oldestFirst['forumTopics'] ? 'checked' : '' ?>>
-                            <label class="form-check-label" for="pubSortForumTopics">Сначала старые топики</label>
-                        </div>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" role="switch" id="pubSortForumPosts"
-                                <?= $oldestFirst['forumPosts'] ? 'checked' : '' ?>>
-                            <label class="form-check-label" for="pubSortForumPosts">Сначала старые посты</label>
+                        <div class="d-flex flex-wrap align-items-center gap-3">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" role="switch" id="pubSortForumTopics"
+                                    <?= $oldestFirst['forumTopics'] ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="pubSortForumTopics">Сначала старые топики</label>
+                            </div>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" role="switch" id="pubSortForumPosts"
+                                    <?= $oldestFirst['forumPosts'] ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="pubSortForumPosts">Сначала старые посты</label>
+                            </div>
+                            <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2" id="forumTopicsTotal"><?= str_pad((string)$totals['forum'], 2, '0', STR_PAD_LEFT) ?></span>
                         </div>
                     </div>
                     <div class="scroll350">
