@@ -9,7 +9,7 @@ declare(strict_types=1);
 /** @var array<int, array{topic: \app\shared\Forum\Dto\TopicData, posts: \app\shared\Forum\Dto\PostData[]}> $topics */
 /** @var bool $withImagesOnly */
 /** @var bool $withPostsOnly */
-/** @var array{posts: int, drafts: int, deleted: int} $totals */
+/** @var array{posts: int, drafts: int, deleted: int, forum: int} $totals */
 /** @var array<string, bool> $oldestFirst the order of every switch of the page */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
@@ -197,57 +197,73 @@ CSS
 ?>
 <!-- Row start -->
 <div class="row">
-    <div class="col-12">
+    <div class="col-12 kanban-board">
+<?php
+    // The badge of the filter card counts the filters that are on, the badge of
+    // the forum card counts the topics those filters leave.
+    $activeFilterCount = ($withImagesOnly ? 1 : 0) + ($withPostsOnly ? 1 : 0) + ($imagesCount > 0 ? 1 : 0);
+?>
+        <!-- Forum block: its filters and its topics in one white card -->
+        <div class="card mb-4 p-3">
+            <div class="kanban-items ui-sortable">
 
-        <!-- Forum filters -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title">Фильтры</h5>
-            </div>
-            <div class="card-body">
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" role="switch" id="forumFilterWithImages"
-                        <?= $withImagesOnly ? 'checked' : '' ?>>
-                    <label class="form-check-label" for="forumFilterWithImages">С изображениями</label>
+                <!-- Forum filters -->
+                <div class="card p-3 border border-danger to-do">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="icon-box sm bg-danger-subtle border border-danger rounded-circle">
+                                <i class="bi bi-list-task text-danger"></i>
+                            </span>
+                            <h5 class="text-danger fw-semibold m-0">Фильтры</h5>
+                        </div>
+                        <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2" id="forumFilterCount"><?= str_pad((string)$activeFilterCount, 2, '0', STR_PAD_LEFT) ?></span>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="forumFilterWithImages"
+                            <?= $withImagesOnly ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="forumFilterWithImages">С изображениями</label>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="forumFilterWithPosts"
+                            <?= $withPostsOnly ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="forumFilterWithPosts">С привязанными постами</label>
+                    </div>
+                    <div class="mb-0">
+                        <label for="forumFilterImagesCount" class="form-label small">
+                            Кол-во изображений
+                            <span id="forumFilterImagesCountValue" class="ms-2 fw-bold text-primary"><?= $imagesCount > 0 ? (int)$imagesCount : '∞' ?></span>
+                        </label>
+                        <input type="range" class="form-range" id="forumFilterImagesCount"
+                               min="0" max="<?= (int)$settings['imagesCountFilterMax'] ?>" value="<?= $imagesCount > 0 ? (int)$imagesCount : 0 ?>">
+                        <div class="form-text">0 — без ограничения</div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center pt-2">
+                        <small class="text-muted">
+                            <i class="bi bi-funnel me-1"></i>
+                            Фильтры применяются к топикам ниже
+                        </small>
+                        <?php
+                            $clearUrl = \yii\helpers\Url::to(['site/forum-filter-clear']);
+                        ?>
+                        <a href="<?= $clearUrl ?>" class="btn btn-sm btn-outline-secondary" id="forumFilterClearBtn"
+                           title="Очистить все фильтры">
+                            <i class="bi bi-x-circle me-1"></i>Очистить
+                        </a>
+                    </div>
                 </div>
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" role="switch" id="forumFilterWithPosts"
-                        <?= $withPostsOnly ? 'checked' : '' ?>>
-                    <label class="form-check-label" for="forumFilterWithPosts">С привязанными постами</label>
-                </div>
-                <div class="mb-0">
-                    <label for="forumFilterImagesCount" class="form-label small">
-                        Кол-во изображений
-                        <span id="forumFilterImagesCountValue" class="ms-2 fw-bold text-primary"><?= $imagesCount > 0 ? (int)$imagesCount : '∞' ?></span>
-                    </label>
-                    <input type="range" class="form-range" id="forumFilterImagesCount"
-                           min="0" max="<?= (int)$settings['imagesCountFilterMax'] ?>" value="<?= $imagesCount > 0 ? (int)$imagesCount : 0 ?>">
-                    <div class="form-text">0 — без ограничения</div>
-                </div>
-            </div>
-            <div class="card-footer bg-transparent">
-                <div class="d-flex justify-content-between align-items-center">
-                    <small class="text-muted">
-                        <i class="bi bi-funnel me-1"></i>
-                        Фильтры применяются к блоку «Форум»
-                    </small>
-                    <?php
-                        $clearUrl = \yii\helpers\Url::to(['site/forum-filter-clear']);
-                    ?>
-                    <a href="<?= $clearUrl ?>" class="btn btn-sm btn-outline-secondary" id="forumFilterClearBtn"
-                       title="Очистить все фильтры">
-                        <i class="bi bi-x-circle me-1"></i>Очистить
-                    </a>
-                </div>
-            </div>
-        </div>
 
-        <!-- Forum topics -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <div class="d-flex align-items-center justify-content-between gap-3">
-                    <h5 class="card-title mb-0">Форум</h5>
-                    <div class="d-flex align-items-center gap-3">
+                <!-- Forum topics -->
+                <div class="card p-3 border border-danger to-do">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="icon-box sm bg-danger-subtle border border-danger rounded-circle">
+                                <i class="bi bi-list-task text-danger"></i>
+                            </span>
+                            <h5 class="text-danger fw-semibold m-0">Форум</h5>
+                        </div>
+                        <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2" id="forumTopicsTotal"><?= str_pad((string)$totals['forum'], 2, '0', STR_PAD_LEFT) ?></span>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" role="switch" id="pubSortForumTopics"
                                 <?= $oldestFirst['forumTopics'] ? 'checked' : '' ?>>
@@ -259,340 +275,352 @@ CSS
                             <label class="form-check-label" for="pubSortForumPosts">Сначала старые посты</label>
                         </div>
                     </div>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="scroll350">
+                    <div class="scroll350">
 
-                    <!-- Forum topics widget start -->
-                    <div class="notification-center h-100">
-                        <div class="threads" id="pub-forum-list"><?= $this->render('_block_forum', ['topics' => $topics]) ?></div>
+                        <!-- Forum topics widget start -->
+                        <div class="notification-center h-100">
+                            <div class="threads" id="pub-forum-list"><?= $this->render('_block_forum', ['topics' => $topics]) ?></div>
+                        </div>
+                        <!-- Forum topics widget end -->
+
                     </div>
-                    <!-- Forum topics widget end -->
-
                 </div>
+
             </div>
         </div>
 
     </div>
-    <div class="col-sm-6 col-6">
+    <div class="col-12 kanban-board">
 
-        <!-- Publication preview -->
-        <div class="card mb-4 preview-card">
-            <div class="card-header">
-                <h5 class="card-title text-primary">Предпросмотр публикации</h5>
-            </div>
-            <div class="card-img">
-                <img src="" class="card-img-top img-fluid d-none" alt="Превью" id="previewCardImgEl">
-            </div>
-            <div class="card-body">
-                <div class="d-flex flex-column gap-2 w-100" id="publicationPreview"
-                     data-source="publicationTextInput"
-                     data-placeholder="Введите текст публикации — он отобразится здесь до отправки в канал TRVL."></div>
-                <div class="stacked-images publication-preview-images d-none" id="publicationPreviewImages"></div>
-            </div>
-            <div class="card-footer bg-transparent">
-                <div class="d-flex justify-content-between align-items-center">
-                    <small class="text-muted">
-                        <i class="bi bi-eye me-1"></i>
-                        Текст обновляется по мере ввода
-                    </small>
-                    <span id="previewPublicationAt" class="badge bg-primary-subtle text-primary rounded-pill px-3"></span>
-                    <span class="badge bg-primary-subtle text-primary rounded-pill px-3">
-                        до <?= $textLimit ?> символов на часть
-                    </span>
+        <!-- Preview and form: one full-width block, the preview above the form -->
+        <div class="card mb-4 p-3">
+            <div class="kanban-items ui-sortable">
+
+                <div class="card p-3 border border-warning in-progress preview-card">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="icon-box sm bg-warning-subtle border border-warning rounded-circle">
+                                <i class="bi bi-hourglass-split text-warning"></i>
+                            </span>
+                            <h5 class="text-warning fw-semibold m-0">Предпросмотр публикации</h5>
+                        </div>
+                    </div>
+                    <div class="card-img">
+                        <img src="" class="card-img-top img-fluid d-none" alt="Превью" id="previewCardImgEl">
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex flex-column gap-2 w-100" id="publicationPreview"
+                             data-source="publicationTextInput"
+                             data-placeholder="Введите текст публикации — он отобразится здесь до отправки в канал TRVL."></div>
+                        <div class="stacked-images publication-preview-images d-none" id="publicationPreviewImages"></div>
+                    </div>
+                    <div class="card-footer bg-transparent">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="bi bi-eye me-1"></i>
+                                Текст обновляется по мере ввода
+                            </small>
+                            <span id="previewPublicationAt" class="badge bg-primary-subtle text-primary rounded-pill px-3"></span>
+                            <span class="badge bg-primary-subtle text-primary rounded-pill px-3">
+                                до <?= $textLimit ?> символов на часть
+                            </span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
 
-    </div>
-    <div class="col-sm-6 col-6">
+                <!-- New post form -->
+                <div class="card p-3 border border-warning in-progress">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="icon-box sm bg-warning-subtle border border-warning rounded-circle">
+                                <i class="bi bi-hourglass-split text-warning"></i>
+                            </span>
+                            <h5 class="text-warning fw-semibold m-0">Новая публикация</h5>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="<?= \yii\helpers\Url::to(['site/publication-create']) ?>"
+                              data-ajax data-clear-editing>
+                            <input type="hidden" name="<?= Yii::$app->request->csrfParam ?>"
+                                   value="<?= Yii::$app->request->csrfToken ?>">
+                            <input type="hidden" name="publicationSource" id="publicationSource" value="new">
+                            <input type="hidden" name="publicationSourceId" id="publicationSourceId" value="">
+                            <input type="hidden" name="forumEntityType" id="forumEntityType" value="">
+                            <input type="hidden" name="forumEntityId" id="forumEntityId" value="">
+                            <input type="hidden" name="publicationTz" id="publicationTz" value="">
+                            
 
-        <!-- New post form -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="card-title">Новая публикация</h5>
-            </div>
-            <div class="card-body">
-                <form method="post" action="<?= \yii\helpers\Url::to(['site/publication-create']) ?>"
-                      data-ajax data-clear-editing>
-                    <input type="hidden" name="<?= Yii::$app->request->csrfParam ?>"
-                           value="<?= Yii::$app->request->csrfToken ?>">
-                    <input type="hidden" name="publicationSource" id="publicationSource" value="new">
-                    <input type="hidden" name="publicationSourceId" id="publicationSourceId" value="">
-                    <input type="hidden" name="forumEntityType" id="forumEntityType" value="">
-                    <input type="hidden" name="forumEntityId" id="forumEntityId" value="">
-                    <input type="hidden" name="publicationTz" id="publicationTz" value="">
-                    
+                            <!-- Textarea: cloned into one field per part once a text goes past the limit -->
+                            <div id="publicationTextParts">
+                                <div class="mb-3 publication-text-block">
+                                    <?php /* The heading of a part: an optional first line the channel
+                                            draws bold over the text under it. A numbered part moves
+                                            its «Часть N» line in here, to the end of the heading. */ ?>
+                                    <div class="mb-2">
+                                        <label class="form-label mb-1 publication-title-label" for="publicationTitleInput">Заголовок</label>
+                                        <input type="text" class="form-control publication-title-field"
+                                               id="publicationTitleInput" name="publicationTitle"
+                                               placeholder="Жирная первая строка публикации">
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-baseline">
+                                        <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
+                                        <small class="text-muted publication-text-count"></small>
+                                    </div>
+                                    <?php /* The plain text of a part lives in this field: every split,
+                                                merge and counter of the page reads it, and it is what the
+                                                form submits. The editor below paints the highlighting over
+                                                it and keeps the two in step, so it stays hidden. */ ?>
+                                    <div class="publication-editor">
+                                        <textarea class="form-control publication-text-part d-none" id="publicationTextInput"
+                                                  name="publicationText[]" tabindex="-1" aria-hidden="true"
+                                                  placeholder="Введите текст публикации"></textarea>
+                                        <div class="publication-editor-field"></div>
+                                        <input type="hidden" class="publication-format-field"
+                                               name="publicationFormatting[]" value="[]">
+                                    </div>
 
-                    <!-- Textarea: cloned into one field per part once a text goes past the limit -->
-                    <div id="publicationTextParts">
-                        <div class="mb-3 publication-text-block">
-                            <?php /* The heading of a part: an optional first line the channel
-                                    draws bold over the text under it. A numbered part moves
-                                    its «Часть N» line in here, to the end of the heading. */ ?>
-                            <div class="mb-2">
-                                <label class="form-label mb-1 publication-title-label" for="publicationTitleInput">Заголовок</label>
-                                <input type="text" class="form-control publication-title-field"
-                                       id="publicationTitleInput" name="publicationTitle"
-                                       placeholder="Жирная первая строка публикации">
-                            </div>
-                            <div class="d-flex justify-content-between align-items-baseline">
-                                <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
-                                <small class="text-muted publication-text-count"></small>
-                            </div>
-                            <?php /* The plain text of a part lives in this field: every split,
-                                        merge and counter of the page reads it, and it is what the
-                                        form submits. The editor below paints the highlighting over
-                                        it and keeps the two in step, so it stays hidden. */ ?>
-                            <div class="publication-editor">
-                                <textarea class="form-control publication-text-part d-none" id="publicationTextInput"
-                                          name="publicationText[]" tabindex="-1" aria-hidden="true"
-                                          placeholder="Введите текст публикации"></textarea>
-                                <div class="publication-editor-field"></div>
-                                <input type="hidden" class="publication-format-field"
-                                       name="publicationFormatting[]" value="[]">
-                            </div>
+                                    <?php /* The album of a part. The first block never shows its own:
+                                            its album is the shared «Изображения публикации» field under the
+                                            list, so this one stays hidden and disabled — a disabled field
+                                            is not submitted and cannot shift the parts of the list. */ ?>
+                                    <div class="publication-part-album d-none mt-2">
+                                        <label class="form-label mb-1" for="publicationPartImages">
+                                            <i class="bi bi-images me-1"></i>Изображения этой части
+                                        </label>
+                                        <textarea class="form-control publication-part-album-field" id="publicationPartImages"
+                                                  name="publicationPartImages[]" rows="2" disabled
+                                                  placeholder="По одному URL изображения в строке"></textarea>
 
-                            <?php /* The album of a part. The first block never shows its own:
-                                    its album is the shared «Изображения публикации» field under the
-                                    list, so this one stays hidden and disabled — a disabled field
-                                    is not submitted and cannot shift the parts of the list. */ ?>
-                            <div class="publication-part-album d-none mt-2">
-                                <label class="form-label mb-1" for="publicationPartImages">
-                                    <i class="bi bi-images me-1"></i>Изображения этой части
-                                </label>
-                                <textarea class="form-control publication-part-album-field" id="publicationPartImages"
-                                          name="publicationPartImages[]" rows="2" disabled
-                                          placeholder="По одному URL изображения в строке"></textarea>
+                                        <?php /* The companion of the links field: the same album filled from a
+                                                computer instead of from addresses. One picker per part, so the
+                                                files a part holds move and merge with the links of that part. */ ?>
+                                        <label class="form-label mb-1 mt-2 publication-part-album-files-label"
+                                               for="publicationPartImageFiles">
+                                            <i class="bi bi-file-earmark-image me-1"></i>Файлы этой части
+                                        </label>
+                                        <input type="file" class="form-control publication-part-album-files"
+                                               id="publicationPartImageFiles" name="publicationPartImageFiles0[]"
+                                               accept="image/*" multiple disabled>
 
-                                <?php /* The companion of the links field: the same album filled from a
-                                        computer instead of from addresses. One picker per part, so the
-                                        files a part holds move and merge with the links of that part. */ ?>
-                                <label class="form-label mb-1 mt-2 publication-part-album-files-label"
-                                       for="publicationPartImageFiles">
-                                    <i class="bi bi-file-earmark-image me-1"></i>Файлы этой части
-                                </label>
-                                <input type="file" class="form-control publication-part-album-files"
-                                       id="publicationPartImageFiles" name="publicationPartImageFiles0[]"
-                                       accept="image/*" multiple disabled>
+                                        <?php /* The album goes to a neighbour and comes in behind what that field
+                                                already holds — the links and the files alike; the field it left
+                                                stands empty. */ ?>
+                                        <div class="d-flex flex-wrap gap-2 mt-1 publication-album-move">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                    data-move-album="-1"
+                                                    title="Ссылки и файлы этого поля переедут в предыдущую часть и встанут после тех, что в ней уже есть">
+                                                <i class="bi bi-arrow-left-short me-1"></i>Переместить изображения в предыдущую часть
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                    data-move-album="1"
+                                                    title="Ссылки и файлы этого поля переедут в следующую часть и встанут после тех, что в ней уже есть">
+                                                <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
+                                            </button>
+                                        </div>
+                                        <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
+                                             role="status"></div>
+                                        <?php /* A file the album will not take is named here: the pick stays out
+                                                of the form, and the album keeps what it already held. */ ?>
+                                        <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
+                                             role="status"></div>
+                                        <div class="stacked-images mt-2 d-none publication-part-images"></div>
+                                    </div>
 
-                                <?php /* The album goes to a neighbour and comes in behind what that field
-                                        already holds — the links and the files alike; the field it left
-                                        stands empty. */ ?>
-                                <div class="d-flex flex-wrap gap-2 mt-1 publication-album-move">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm"
-                                            data-move-album="-1"
-                                            title="Ссылки и файлы этого поля переедут в предыдущую часть и встанут после тех, что в ней уже есть">
-                                        <i class="bi bi-arrow-left-short me-1"></i>Переместить изображения в предыдущую часть
-                                    </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm"
-                                            data-move-album="1"
-                                            title="Ссылки и файлы этого поля переедут в следующую часть и встанут после тех, что в ней уже есть">
-                                        <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
-                                    </button>
+                                    <?php /* The button of a part. It comes out of the switch
+                                            under the shared «Кнопка-ссылка» field and starts
+                                            with the button of that field; the first block
+                                            never shows its own, its button is the shared
+                                            one. A hidden box is disabled, so it submits
+                                            nothing and the part goes without a button. */ ?>
+                                    <div class="publication-part-button d-none mt-2">
+                                        <label class="form-label mb-1" for="publicationPartButtonText">
+                                            <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка этой части
+                                        </label>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <input type="text" class="form-control publication-part-button-text"
+                                                   id="publicationPartButtonText" name="publicationPartButtonText[]"
+                                                   disabled placeholder="Надпись кнопки">
+                                            <input type="text" class="form-control publication-part-button-url"
+                                                   id="publicationPartButtonUrl" name="publicationPartButtonUrl[]"
+                                                   disabled placeholder="https://example.com/poll">
+                                        </div>
+                                    </div>
+
+                                    <!-- The row a part is merged with the one under it by;
+                                         the last part of the form has none. -->
+                                    <div class="text-end mt-2 d-none publication-merge-row">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                title="Слить эту часть со следующей в одно поле">
+                                            <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
+                                        </button>
+                                    </div>
                                 </div>
-                                <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
-                                     role="status"></div>
-                                <?php /* A file the album will not take is named here: the pick stays out
-                                        of the form, and the album keeps what it already held. */ ?>
-                                <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
-                                     role="status"></div>
-                                <div class="stacked-images mt-2 d-none publication-part-images"></div>
                             </div>
 
-                            <?php /* The button of a part. It comes out of the switch
-                                    under the shared «Кнопка-ссылка» field and starts
-                                    with the button of that field; the first block
-                                    never shows its own, its button is the shared
-                                    one. A hidden box is disabled, so it submits
-                                    nothing and the part goes without a button. */ ?>
-                            <div class="publication-part-button d-none mt-2">
-                                <label class="form-label mb-1" for="publicationPartButtonText">
-                                    <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка этой части
+                            <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
+                            <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
+                                        title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
+                                    <i class="bi bi-paragraph me-1"></i>По абзацам
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
+                                        title="Разбить весь текст по переносам строк: каждая строка становится частью">
+                                    <i class="bi bi-list-nested me-1"></i>По строкам
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
+                                        title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
+                                    <i class="bi bi-chat-left-text me-1"></i>По предложениям
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
+                                        title="Разделить часть по курсору, а без курсора — примерно посередине">
+                                    <i class="bi bi-scissors me-1"></i>Разделить
+                                </button>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="publicationNumberParts">
+                                <label class="form-check-label" for="publicationNumberParts">
+                                    <i class="bi bi-list-ol me-1"></i>Нумерация частей
+                                </label>
+                                <small class="text-muted d-block">
+                                    Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации
+                                </small>
+                            </div>
+
+                            <!-- The part albums are the submitted fields already, so this one
+                                 never travels to the server: it hands the images of the shared
+                                 field out to the fields of the parts inside the form. -->
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="publicationDistributeImages">
+                                <label class="form-check-label" for="publicationDistributeImages">
+                                    <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
+                                </label>
+                                <small class="text-muted d-block">
+                                    Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал
+                                    со своей группой
+                                </small>
+                            </div>
+
+                            <!-- Attached images -->
+                            <div class="mb-3">
+                                <label for="publicationImages" class="form-label">
+                                    <i class="bi bi-images me-1"></i>Изображения публикации
+                                </label>
+                                <textarea class="form-control" id="publicationImages" name="publicationImages"
+                                          rows="3"
+                                          placeholder="По одному URL изображения в строке&#10;https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
+
+                                <?php /* The companion of the links field for the first part of the
+                                        publication: the album of that part is this block, so its
+                                        picker carries the name of the field, not of a part. The
+                                        brackets make PHP keep every file of a `multiple` input
+                                        instead of only the last one. */ ?>
+                                <label class="form-label mb-1 mt-2" for="publicationImageFiles">
+                                    <i class="bi bi-file-earmark-image me-1"></i>Файлы публикации
+                                </label>
+                                <input type="file" class="form-control" id="publicationImageFiles"
+                                       name="publicationImageFiles[]" accept="image/*" multiple>
+
+                                <?php /* Named here are the links a fill left out: the shape is the
+                                        one the ui-kit gives a day divider inside a chat column. */ ?>
+                                <div class="bg-primary-subtle px-3 py-2 m-3 mb-1 rounded-2 text-break d-none publication-images-notice"
+                                     id="publicationImagesNotice" role="status"></div>
+                                <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
+                                     id="publicationImageFilesNotice" role="status"></div>
+                                <div class="stacked-images mt-2 d-none" id="publicationImagesPreview"></div>
+                                <small class="text-muted">
+                                    Изображения отправляются в канал вместе с текстом публикации (первое — с подписью);
+                                    у разбитой публикации это изображения её первой части. Файл, выбранный здесь,
+                                    сохраняется на сервере и становится ссылкой этого же альбома.
+                                </small>
+                            </div>
+
+                            <!-- Link button -->
+                            <div class="mb-3">
+                                <label class="form-label mb-1" for="publicationButtonText">
+                                    <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка
                                 </label>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <input type="text" class="form-control publication-part-button-text"
-                                           id="publicationPartButtonText" name="publicationPartButtonText[]"
-                                           disabled placeholder="Надпись кнопки">
-                                    <input type="text" class="form-control publication-part-button-url"
-                                           id="publicationPartButtonUrl" name="publicationPartButtonUrl[]"
-                                           disabled placeholder="https://example.com/poll">
+                                    <input type="text" class="form-control" id="publicationButtonText"
+                                           name="publicationButtonText" placeholder="Надпись кнопки">
+                                    <input type="text" class="form-control" id="publicationButtonUrl"
+                                           name="publicationButtonUrl" maxlength="2048"
+                                           placeholder="https://example.com/poll">
+                                </div>
+
+                                <?php /* The switch of the button to every part of a split
+                                        publication: it stands in the form only while the
+                                        publication really has parts. */ ?>
+                                <div class="form-check mt-2 d-none" id="publicationButtonEveryPartRow">
+                                    <input class="form-check-input" type="checkbox" id="publicationButtonEveryPart">
+                                    <label class="form-check-label" for="publicationButtonEveryPart">
+                                        Кнопка-ссылка в каждой части
+                                    </label>
+                                    <small class="text-muted d-block">
+                                        Показывает поле кнопки у каждой части и заполняет её этой же кнопкой;
+                                        надпись и адрес одной части можно поправить после этого
+                                    </small>
+                                </div>
+
+                                <small class="text-muted d-block mt-2">
+                                    Кнопка появляется под сообщением в канале и ведёт по своему адресу: надпись длиной
+                                    до 64 байт, адрес — с http://, https:// или tg://. Пустые поля означают публикацию
+                                    без кнопки; у разбитой публикации это кнопка её первой части.
+                                </small>
+                            </div>
+
+                            <!-- Publication date & time -->
+                            <div class="mb-3">
+                                <label class="form-label" for="publicationAt">Дата и время публикации</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="bi bi-calendar4"></i>
+                                    </span>
+                                    <input type="text" id="publicationAt" name="publicationAt"
+                                           class="form-control publication-datepicker-time"
+                                           autocomplete="off">
                                 </div>
                             </div>
 
-                            <!-- The row a part is merged with the one under it by;
-                                 the last part of the form has none. -->
-                            <div class="text-end mt-2 d-none publication-merge-row">
-                                <button type="button" class="btn btn-outline-secondary btn-sm"
-                                        title="Слить эту часть со следующей в одно поле">
-                                    <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
+                            <div class="d-flex gap-2">
+                                <button type="submit" name="action" value="publish" class="btn btn-primary">
+                                    <i class="bi bi-send me-1"></i>Опубликовать
+                                </button>
+                                <button type="submit" name="action" value="draft" class="btn btn-outline-secondary">
+                                    <i class="bi bi-save me-1"></i>Сохранить
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Shown over a selection of text inside one of the parts. The
+                             script moves the node to the body, where nothing can shadow
+                             the viewport it is placed against. -->
+                        <div class="publication-selection-actions d-none" id="publicationSelectionActions">
+                            <div class="btn-group shadow" role="group" aria-label="Перемещение выделенного текста">
+                                <button type="button" class="btn btn-primary btn-sm" id="publicationMovePrevPart"
+                                        title="Перенести выделенный текст в конец предыдущей части">
+                                    <i class="bi bi-arrow-left-short me-1"></i>Переместить в предыдущую часть
+                                </button>
+                                <button type="button" class="btn btn-primary btn-sm" id="publicationMoveNextPart"
+                                        title="Перенести выделенный текст в начало следующей части">
+                                    <i class="bi bi-arrow-right-short me-1"></i>Переместить в следующую часть
                                 </button>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
-                    <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
-                                title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
-                            <i class="bi bi-paragraph me-1"></i>По абзацам
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
-                                title="Разбить весь текст по переносам строк: каждая строка становится частью">
-                            <i class="bi bi-list-nested me-1"></i>По строкам
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
-                                title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
-                            <i class="bi bi-chat-left-text me-1"></i>По предложениям
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
-                                title="Разделить часть по курсору, а без курсора — примерно посередине">
-                            <i class="bi bi-scissors me-1"></i>Разделить
-                        </button>
-                    </div>
-
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="publicationNumberParts">
-                        <label class="form-check-label" for="publicationNumberParts">
-                            <i class="bi bi-list-ol me-1"></i>Нумерация частей
-                        </label>
-                        <small class="text-muted d-block">
-                            Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации
-                        </small>
-                    </div>
-
-                    <!-- The part albums are the submitted fields already, so this one
-                         never travels to the server: it hands the images of the shared
-                         field out to the fields of the parts inside the form. -->
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="publicationDistributeImages">
-                        <label class="form-check-label" for="publicationDistributeImages">
-                            <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
-                        </label>
-                        <small class="text-muted d-block">
-                            Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал
-                            со своей группой
-                        </small>
-                    </div>
-
-                    <!-- Attached images -->
-                    <div class="mb-3">
-                        <label for="publicationImages" class="form-label">
-                            <i class="bi bi-images me-1"></i>Изображения публикации
-                        </label>
-                        <textarea class="form-control" id="publicationImages" name="publicationImages"
-                                  rows="3"
-                                  placeholder="По одному URL изображения в строке&#10;https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
-
-                        <?php /* The companion of the links field for the first part of the
-                                publication: the album of that part is this block, so its
-                                picker carries the name of the field, not of a part. The
-                                brackets make PHP keep every file of a `multiple` input
-                                instead of only the last one. */ ?>
-                        <label class="form-label mb-1 mt-2" for="publicationImageFiles">
-                            <i class="bi bi-file-earmark-image me-1"></i>Файлы публикации
-                        </label>
-                        <input type="file" class="form-control" id="publicationImageFiles"
-                               name="publicationImageFiles[]" accept="image/*" multiple>
-
-                        <?php /* Named here are the links a fill left out: the shape is the
-                                one the ui-kit gives a day divider inside a chat column. */ ?>
-                        <div class="bg-primary-subtle px-3 py-2 m-3 mb-1 rounded-2 text-break d-none publication-images-notice"
-                             id="publicationImagesNotice" role="status"></div>
-                        <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
-                             id="publicationImageFilesNotice" role="status"></div>
-                        <div class="stacked-images mt-2 d-none" id="publicationImagesPreview"></div>
-                        <small class="text-muted">
-                            Изображения отправляются в канал вместе с текстом публикации (первое — с подписью);
-                            у разбитой публикации это изображения её первой части. Файл, выбранный здесь,
-                            сохраняется на сервере и становится ссылкой этого же альбома.
-                        </small>
-                    </div>
-
-                    <!-- Link button -->
-                    <div class="mb-3">
-                        <label class="form-label mb-1" for="publicationButtonText">
-                            <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка
-                        </label>
-                        <div class="d-flex flex-wrap gap-2">
-                            <input type="text" class="form-control" id="publicationButtonText"
-                                   name="publicationButtonText" placeholder="Надпись кнопки">
-                            <input type="text" class="form-control" id="publicationButtonUrl"
-                                   name="publicationButtonUrl" maxlength="2048"
-                                   placeholder="https://example.com/poll">
-                        </div>
-
-                        <?php /* The switch of the button to every part of a split
-                                publication: it stands in the form only while the
-                                publication really has parts. */ ?>
-                        <div class="form-check mt-2 d-none" id="publicationButtonEveryPartRow">
-                            <input class="form-check-input" type="checkbox" id="publicationButtonEveryPart">
-                            <label class="form-check-label" for="publicationButtonEveryPart">
-                                Кнопка-ссылка в каждой части
-                            </label>
-                            <small class="text-muted d-block">
-                                Показывает поле кнопки у каждой части и заполняет её этой же кнопкой;
-                                надпись и адрес одной части можно поправить после этого
+                    <div class="card-footer bg-transparent">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Запись сохраняется в БД и будет отправлена в канал TRVL в заданное время
                             </small>
-                        </div>
-
-                        <small class="text-muted d-block mt-2">
-                            Кнопка появляется под сообщением в канале и ведёт по своему адресу: надпись длиной
-                            до 64 байт, адрес — с http://, https:// или tg://. Пустые поля означают публикацию
-                            без кнопки; у разбитой публикации это кнопка её первой части.
-                        </small>
-                    </div>
-
-                    <!-- Publication date & time -->
-                    <div class="mb-3">
-                        <label class="form-label" for="publicationAt">Дата и время публикации</label>
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <i class="bi bi-calendar4"></i>
+                            <span class="badge bg-primary-subtle text-primary rounded-pill px-3">
+                                до <?= $textLimit ?> символов на часть
                             </span>
-                            <input type="text" id="publicationAt" name="publicationAt"
-                                   class="form-control publication-datepicker-time"
-                                   autocomplete="off">
                         </div>
                     </div>
-
-                    <div class="d-flex gap-2">
-                        <button type="submit" name="action" value="publish" class="btn btn-primary">
-                            <i class="bi bi-send me-1"></i>Опубликовать
-                        </button>
-                        <button type="submit" name="action" value="draft" class="btn btn-outline-secondary">
-                            <i class="bi bi-save me-1"></i>Сохранить
-                        </button>
-                    </div>
-                </form>
-
-                <!-- Shown over a selection of text inside one of the parts. The
-                     script moves the node to the body, where nothing can shadow
-                     the viewport it is placed against. -->
-                <div class="publication-selection-actions d-none" id="publicationSelectionActions">
-                    <div class="btn-group shadow" role="group" aria-label="Перемещение выделенного текста">
-                        <button type="button" class="btn btn-primary btn-sm" id="publicationMovePrevPart"
-                                title="Перенести выделенный текст в конец предыдущей части">
-                            <i class="bi bi-arrow-left-short me-1"></i>Переместить в предыдущую часть
-                        </button>
-                        <button type="button" class="btn btn-primary btn-sm" id="publicationMoveNextPart"
-                                title="Перенести выделенный текст в начало следующей части">
-                            <i class="bi bi-arrow-right-short me-1"></i>Переместить в следующую часть
-                        </button>
-                    </div>
                 </div>
-            </div>
-            <div class="card-footer bg-transparent">
-                <div class="d-flex justify-content-between align-items-center">
-                    <small class="text-muted">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Запись сохраняется в БД и будет отправлена в канал TRVL в заданное время
-                    </small>
-                    <span class="badge bg-primary-subtle text-primary rounded-pill px-3">
-                        до <?= $textLimit ?> символов на часть
-                    </span>
-                </div>
+
             </div>
         </div>
 
@@ -1441,8 +1469,22 @@ jQuery(document).ready(function () {
         container.appendChild(alertBox);
     }
 
+    // Both badges of the forum block are printed by the server padded to two
+    // digits; a number refreshed by AJAX keeps that shape.
+    function paddedCount(value) {
+        var text = String(value);
+
+        return text.length < 2 ? '0' + text : text;
+    }
+
     function applyBlocks(payload) {
         var blocks = payload.blocks || {};
+        var totals = payload.totals || {};
+        var forumTotalBadge = document.getElementById('forumTopicsTotal');
+
+        if (typeof totals.forum === 'number' && forumTotalBadge) {
+            forumTotalBadge.textContent = paddedCount(totals.forum);
+        }
         Object.keys(__BLOCK_TARGETS).forEach(function (name) {
             if (typeof blocks[name] !== 'string') {
                 return;
@@ -1696,15 +1738,29 @@ jQuery(document).ready(function () {
         setupDateTimePicker(publicationAtJq);
         setupDateTimePicker(scheduleAtJq);
 
+        // The badge of the filter card counts how many of the three filters
+        // are on, the same number the page was rendered with.
+        var filterCountBadge = document.getElementById('forumFilterCount');
+        function updateFilterCount(count) {
+            if (filterCountBadge) {
+                filterCountBadge.textContent = paddedCount(count);
+            }
+        }
+
         var applyFiltersDirect = function () {
             var imagesSwitch = document.getElementById('forumFilterWithImages');
             var postsSwitch = document.getElementById('forumFilterWithPosts');
             var imagesCountInput = document.getElementById('forumFilterImagesCount');
+            var imagesCount = imagesCountInput ? (parseInt(imagesCountInput.value, 10) || 0) : 0;
+            var active = (imagesSwitch && imagesSwitch.checked ? 1 : 0)
+                + (postsSwitch && postsSwitch.checked ? 1 : 0)
+                + (imagesCount > 0 ? 1 : 0);
 
+            updateFilterCount(active);
             postForBlocks(__FILTER_SAVE_URL, {
                 withImages: imagesSwitch && imagesSwitch.checked ? 1 : 0,
                 withPosts: postsSwitch && postsSwitch.checked ? 1 : 0,
-                imagesCount: imagesCountInput ? (parseInt(imagesCountInput.value, 10) || 0) : 0
+                imagesCount: imagesCount
             });
         };
 
@@ -4892,6 +4948,7 @@ jQuery(document).ready(function () {
                 if (postsSwitch) postsSwitch.checked = false;
                 if (imagesCountSlider) imagesCountSlider.value = 0;
                 if (imagesCountValue) imagesCountValue.textContent = '∞';
+                updateFilterCount(0);
                 postForBlocks(clearFiltersBtn.getAttribute('href'), {});
             });
         }

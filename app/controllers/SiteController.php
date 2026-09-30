@@ -587,11 +587,13 @@ class SiteController extends Controller
             'forumFilters',
             $this->normalizeForumFilters($this->request->post()),
         );
+        $data = $this->publicationsData();
 
         return $this->asJson([
             'ok' => true,
             'url' => Url::to($this->publicationsUrl()),
-            'blocks' => ['forum' => $this->renderPartial('_block_forum', $this->publicationsData())],
+            'blocks' => ['forum' => $this->renderPartial('_block_forum', $data)],
+            'totals' => $data['totals'],
         ]);
     }
 
@@ -607,10 +609,13 @@ class SiteController extends Controller
         Yii::$app->session->remove('forumFilters');
 
         if ($this->request->getIsAjax()) {
+            $data = $this->publicationsData();
+
             return $this->asJson([
                 'ok' => true,
                 'url' => Url::to($this->publicationsUrl()),
-                'blocks' => ['forum' => $this->renderPartial('_block_forum', $this->publicationsData())],
+                'blocks' => ['forum' => $this->renderPartial('_block_forum', $data)],
+                'totals' => $data['totals'],
             ]);
         }
 
