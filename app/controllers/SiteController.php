@@ -127,6 +127,8 @@ class SiteController extends Controller
                     'publication-schedule' => ['post'],
                     'publication-page' => ['post'],
                     'publication-sort' => ['post'],
+                    'title-from-first-line-save' => ['post'],
+                    'forum-text-order-save' => ['post'],
                     'forum-viewed' => ['post'],
                     'forum-post-page' => ['post'],
                     'forum-thread' => ['post'],
@@ -268,10 +270,10 @@ class SiteController extends Controller
 
     /**
      * Displays the channel publications page. The session holds the forum
-     * filters and the reading order of the three lists, and the address bar is
-     * kept as their mirror image, so a page that was opened on a URL
-     * disagreeing with the session is redirected onto the address the session
-     * describes.
+     * filters, the reading order of the lists, the length order of the topics
+     * and the heading switch of the form, and the address bar is kept as their
+     * mirror image, so a page that was opened on a URL disagreeing with the
+     * session is redirected onto the address the session describes.
      *
      * @return Response|string
      */
@@ -281,12 +283,28 @@ class SiteController extends Controller
 
         $this->syncForumFilters();
         $this->syncPublicationsSort();
-        if ($this->normalizeForumFilters($this->request->get()) !== $this->forumFilters()
-            || $this->publicationsSortFromQuery($this->request->get()) !== $this->publicationsSort()) {
+        $this->syncForumTextOrder();
+        $this->syncTitleFromFirstLine();
+        if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
 
         return $this->render('publications', $this->publicationsData());
+    }
+
+    /**
+     * Whether the address the page was opened on says something else than the
+     * session does — of the forum filters, of the reading order of the lists,
+     * of the length order of the topics or of the heading switch of the form.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function viewStateDisagreesWithSession(array $query): bool
+    {
+        return $this->normalizeForumFilters($query) !== $this->forumFilters()
+            || $this->publicationsSortFromQuery($query) !== $this->publicationsSort()
+            || $this->forumTextOrderFromQuery($query) !== $this->forumTextOrder()
+            || $this->titleFromFirstLineFromQuery($query) !== $this->titleFromFirstLine();
     }
 
     /**
@@ -370,8 +388,9 @@ class SiteController extends Controller
     }
 
     /**
-     * The address the whole view state of the page deserves: the forum filters
-     * plus the reading order of every block that was switched.
+     * The address the whole view state of the page deserves: the forum filters,
+     * the reading order of every block that was switched, the length order of
+     * the topics and the heading switch of the form.
      *
      * @return array<int|string, string>
      */
@@ -389,6 +408,14 @@ class SiteController extends Controller
             }
         }
 
+        if ($this->forumTextOrder() !== '') {
+            $url['forumTextOrder'] = $this->forumTextOrder();
+        }
+
+        if ($this->titleFromFirstLine()) {
+            $url['titleFromFirstLine'] = '1';
+        }
+
         return $url;
     }
 
@@ -398,6 +425,16 @@ class SiteController extends Controller
     private function forumFilters(): array
     {
         return $this->normalizeForumFilters((array)Yii::$app->session->get('forumFilters', []));
+    }
+
+    /**
+     * Whether the fill of the forum block cuts the first line of its text into
+     * the heading field — the state of the switch of the form header, kept in
+     * the session so a reload reads the form the way the reader left it.
+     */
+    private function titleFromFirstLine(): bool
+    {
+        return $this->normalizeTitleFromFirstLine(Yii::$app->session->get('titleFromFirstLine'));
     }
 
     /**
@@ -446,6 +483,95 @@ class SiteController extends Controller
             'publicationsSort',
             $this->publicationsSortFromQuery($this->request->get()),
         );
+    }
+
+    /**
+     * Which of the two buttons of the forum header stands the topics up by the
+     * length of their own text: 'asc' the shortest first, 'desc' the longest,
+     * '' the dates.
+     */
+    private function forumTextOrder(): string
+    {
+        return $this->normalizeForumTextOrder(Yii::$app->session->get('forumTextOrder'));
+    }
+
+    /**
+     * The length order the address of the page asks for: `?forumTextOrder=asc`
+     * or `?forumTextOrder=desc`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function forumTextOrderFromQuery(array $query): string
+    {
+        return $this->normalizeForumTextOrder($query['forumTextOrder'] ?? null);
+    }
+
+    /**
+     * A state the session keeps is the word it was stored with, a state the
+     * address carries is its parameter. Anything else, and the absence of both,
+     * is the empty string: the topics read themselves by their dates.
+     *
+     * @param mixed $state
+     */
+    private function normalizeForumTextOrder(mixed $state): string
+    {
+        return is_string($state) && in_array($state, ['asc', 'desc'], true) ? $state : '';
+    }
+
+    /**
+     * Resolves the length order the way the heading switch of the form does: a
+     * list can honestly be left unsorted, so it is a session that has never
+     * held an order which adopts the parameter of the request — reloading or
+     * following a link cannot take the sort away from the reader who set it.
+     */
+    private function syncForumTextOrder(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('forumTextOrder')) {
+            return;
+        }
+
+        $session->set('forumTextOrder', $this->forumTextOrderFromQuery($this->request->get()));
+    }
+
+    /**
+     * The state of the heading switch the address of the page asks for:
+     * `?titleFromFirstLine=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function titleFromFirstLineFromQuery(array $query): bool
+    {
+        return $this->normalizeTitleFromFirstLine($query['titleFromFirstLine'] ?? null);
+    }
+
+    /**
+     * Resolves the heading switch the way the forum filters do, with one change:
+     * a switch has a state of its own when it is off, so it is a session that
+     * has never held one which adopts the parameter of the request — reloading
+     * or following a link cannot change what the reader left.
+     */
+    private function syncTitleFromFirstLine(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('titleFromFirstLine')) {
+            return;
+        }
+
+        $session->set('titleFromFirstLine', $this->titleFromFirstLineFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizeTitleFromFirstLine(mixed $state): bool
+    {
+        return $state === true || $state === '1';
     }
 
     /**
@@ -498,6 +624,7 @@ class SiteController extends Controller
     {
         $filters = $this->forumFilters();
         $sorts = $this->publicationsSort();
+        $textOrder = $this->forumTextOrder();
         $settings = $this->publicationSettings();
         $postsSize = (int)$settings['publicationPageSize'];
         $topicsSize = (int)$settings['forumTopicsPageSize'];
@@ -525,6 +652,8 @@ class SiteController extends Controller
                 $filters['linksCount'],
                 $sorts['forumTopics'],
                 $sorts['forumPosts'],
+                0,
+                $textOrder,
             ),
             'withImagesOnly' => $filters['withImages'],
             'withPostsOnly' => $filters['withPosts'],
@@ -533,6 +662,8 @@ class SiteController extends Controller
             'linksCount' => $filters['linksCount'],
             'totals' => $totals,
             'oldestFirst' => $sorts,
+            'forumTextOrder' => $textOrder,
+            'titleFromFirstLine' => $this->titleFromFirstLine(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -674,6 +805,53 @@ class SiteController extends Controller
     }
 
     /**
+     * Stores the heading switch of the form and answers with the address that
+     * mirrors it. Nothing is redrawn along with it: the switch says how a fill
+     * of the forum block reads, which is a thing of the form, not of a list.
+     *
+     * @return Response
+     */
+    public function actionTitleFromFirstLineSave(): Response
+    {
+        Yii::$app->session->set(
+            'titleFromFirstLine',
+            $this->normalizeTitleFromFirstLine($this->request->post('titleFromFirstLine')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the length order of the topic list and answers with the forum block
+     * redrawn from its beginning: the two buttons of the header stand the topics
+     * up by the text each of them carries, so the reader gets its first page in
+     * the new order. The order the posts of a discussion read in is none of its
+     * business, and the block keeps showing the very same set of topics — only
+     * another end of it.
+     *
+     * @return Response
+     */
+    public function actionForumTextOrderSave(): Response
+    {
+        Yii::$app->session->set(
+            'forumTextOrder',
+            $this->normalizeForumTextOrder($this->request->post('forumTextOrder')),
+        );
+        $data = $this->publicationsData();
+
+        return $this->asJson([
+            'ok' => true,
+            'block' => 'forum',
+            'url' => Url::to($this->publicationsUrl()),
+            'blocks' => ['forum' => $this->renderPartial('_block_forum', $data)],
+            'totals' => $data['totals'],
+        ]);
+    }
+
+    /**
      * One page of a publications list, for the scroll of the block that asks
      * for it: the items alone, without the empty-state line, so the caller can
      * append them under the rows already on screen.
@@ -723,6 +901,7 @@ class SiteController extends Controller
         $size = (int)$settings['publicationPageSize'];
         $sorts = $this->publicationsSort();
         $filters = $this->forumFilters();
+        $textOrder = $this->forumTextOrder();
 
         return match ($block) {
             'posts' => ['_item_post', $this->publications->posts($size, $offset, $sorts['posts']), $this->publications->countPosts()],
@@ -741,6 +920,7 @@ class SiteController extends Controller
                     $sorts['forumTopics'],
                     $sorts['forumPosts'],
                     $offset,
+                    $textOrder,
                 ),
                 $this->forum->countTopics(
                     $filters['withImages'],

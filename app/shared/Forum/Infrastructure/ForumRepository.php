@@ -222,6 +222,17 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
         return (int)preg_match_all('~https?://~', $text);
     }
 
+    /**
+     * How many characters the text of a record counts — the number the sort of
+     * the block orders its topics by. The database counts the same way
+     * (char_length over the text), so a row the parser wrote and a row the
+     * migration of the column filled land in the same place of the list.
+     */
+    private function textLengthOf(string $text): int
+    {
+        return mb_strlen($text);
+    }
+
     private function savePost(PostData $post, string $now): void
     {
         $this->db->createCommand()->upsert(
@@ -270,6 +281,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 'content_text' => $topic->contentText,
                 'image_urls' => new JsonExpression($topic->imageUrls),
                 'links_count' => $this->linksCountOf($topic->contentText),
+                'text_length' => $this->textLengthOf($topic->contentText),
                 'author_id' => $topic->author?->id,
                 'login_required' => $topic->loginRequired,
                 'created_at' => $now,
@@ -283,6 +295,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 'content_text' => $topic->contentText,
                 'image_urls' => new JsonExpression($topic->imageUrls),
                 'links_count' => $this->linksCountOf($topic->contentText),
+                'text_length' => $this->textLengthOf($topic->contentText),
                 'author_id' => $topic->author?->id,
                 'login_required' => $topic->loginRequired,
                 'updated_at' => $now,
@@ -421,9 +434,15 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * posts is taken in the same order, reversing it hands over the oldest
      * $postLimit posts of the discussion instead of the newest ones.
      *
+     * $textOrder of 'asc' or 'desc' stands the topics up by the length of
+     * their own text — 'asc' the shortest first, 'desc' the longest — and
+     * takes the list out of the date order, so $oldestTopicFirst keeps
+     * saying only in which order the posts of each discussion read. Any
+     * other value leaves the topics in the order of their dates.
+     *
      * @return array<int, array{topic: TopicData, posts: PostData[], postsTotal: int}>
      */
-    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0): array
+    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0, string $textOrder = ''): array
     {
         $topicOrder = $oldestTopicFirst ? 'ASC' : 'DESC';
         $postOrder = $oldestPostFirst ? 'ASC' : 'DESC';
@@ -437,7 +456,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' LEFT JOIN {{%member}} m ON m.id = t.author_id'
                 . ' LEFT JOIN {{%publications_topic_map}} ptm ON ptm.topic_id = t.id'
                 . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount)
-                . ' ORDER BY t.published_at ' . $topicOrder . ' NULLS LAST, t.id ' . $topicOrder
+                . ' ORDER BY ' . $this->topicOrderSql($topicOrder, $textOrder)
                 . ' LIMIT :limit OFFSET :offset'
             )
             ->bindValue(':limit', $topicLimit)
@@ -593,6 +612,26 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
         }
 
         return $posts;
+    }
+
+    /**
+     * The order of the topic list. By default the list reads itself by dates;
+     * the length switch of the header puts the text of each topic in front of
+     * them and breaks ties on the row id, in the direction it was asked for.
+     * The stored text_length is what it orders, so no topic text is counted
+     * while the page is read.
+     */
+    private function topicOrderSql(string $topicOrder, string $textOrder): string
+    {
+        $lengthOrder = match ($textOrder) {
+            'asc' => 'ASC',
+            'desc' => 'DESC',
+            default => '',
+        };
+
+        return $lengthOrder === ''
+            ? 't.published_at ' . $topicOrder . ' NULLS LAST, t.id ' . $topicOrder
+            : 't.text_length ' . $lengthOrder . ', t.id ' . $lengthOrder;
     }
 
     /**

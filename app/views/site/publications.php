@@ -14,6 +14,8 @@ declare(strict_types=1);
 /** @var int $linksCount the exact number of addresses a record's text has to carry, 0 — без ограничения */
 /** @var array{posts: int, drafts: int, deleted: int, forum: int} $totals */
 /** @var array<string, bool> $oldestFirst the order of every switch of the page */
+/** @var string $forumTextOrder '' | 'asc' | 'desc' — the length order of the topics */
+/** @var bool $titleFromFirstLine whether a fill of the forum cuts its first line into the heading */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -343,6 +345,22 @@ CSS
                                     <?= $oldestFirst['forumPosts'] ? 'checked' : '' ?>>
                                 <label class="form-check-label" for="pubSortForumPosts">Сначала старые посты</label>
                             </div>
+                            <?php /* The two buttons stand the topics up by the length of their
+                                   own text instead of by their dates: the first puts the
+                                   shortest on top, the second the longest. Only one of them is
+                                   ever active — pressing the other takes the order over, and
+                                   pressing the active one again leaves the list to its dates.
+                                   The state lives in the session, like the filters above and
+                                   the two switches beside it, so a reload reads the list the
+                                   way the reader left it and the address says it too. */ ?>
+                            <div class="btn-group mb-0" role="group" aria-label="Сортировка топиков по длине текста">
+                                <input type="checkbox" class="btn-check" id="pubForumTextAsc" autocomplete="off"
+                                    <?= $forumTextOrder === 'asc' ? 'checked' : '' ?>>
+                                <label class="btn btn-outline-primary btn-sm" for="pubForumTextAsc">Сначала короткий текст</label>
+                                <input type="checkbox" class="btn-check" id="pubForumTextDesc" autocomplete="off"
+                                    <?= $forumTextOrder === 'desc' ? 'checked' : '' ?>>
+                                <label class="btn btn-outline-primary btn-sm" for="pubForumTextDesc">Сначала длинный текст</label>
+                            </div>
                             <span class="badge rounded-pill bg-danger-subtle text-danger px-3 py-2" id="forumTopicsTotal"><?= str_pad((string)$totals['forum'], 2, '0', STR_PAD_LEFT) ?></span>
                         </div>
                     </div>
@@ -401,12 +419,31 @@ CSS
 
                 <!-- New post form -->
                 <div class="card p-3 border border-warning in-progress">
-                    <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
                         <div class="d-flex align-items-center gap-2">
                             <span class="icon-box sm bg-warning-subtle border border-warning rounded-circle">
                                 <i class="bi bi-hourglass-split text-warning"></i>
                             </span>
                             <h5 class="text-warning fw-semibold m-0">Новая публикация</h5>
+                        </div>
+                        <?php /* A fill of the forum block brings one run of text. With this
+                               switch its first line goes to the heading field of the part it
+                               fills, so the line a topic stands in front of its own text — or
+                               the line an author opened a post with — is drawn bold over that
+                               text instead of being its first words. The state of the switch
+                               lives in the session, like the filters of the block above and the
+                               order of the lists, so a reload reads the form the way the reader
+                               left it and the address of the page says it too. */ ?>
+                        <div class="form-check form-switch mb-0"
+                             data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                             data-bs-custom-class="popover-info"
+                             data-bs-content="При подгрузке из блока «Форум» первую строку текста пишет в поле «Заголовок», а остальное оставляет в тексте. У тофика первой строкой стоит его название, у поста — первая набранная им строка. Текст из одной строки не режет: поле «Текст публикации» тогда осталось бы пустым.">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                   id="publicationTitleFromFirstLine"
+                                   <?= $titleFromFirstLine ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="publicationTitleFromFirstLine">
+                                <i class="bi bi-card-heading me-1"></i>Первая строка — в заголовок
+                            </label>
                         </div>
                     </div>
                     <div class="card-body">
@@ -957,6 +994,8 @@ $pageUrl = \yii\helpers\Url::to(['site/publication-page']);
 $postPageUrl = \yii\helpers\Url::to(['site/forum-post-page']);
 $threadUrl = \yii\helpers\Url::to(['site/forum-thread']);
 $sortUrl = \yii\helpers\Url::to(['site/publication-sort']);
+$titleSwitchSaveUrl = \yii\helpers\Url::to(['site/title-from-first-line-save']);
+$textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
 // scroll waits for, how long a picture may think, which step the minutes of
@@ -978,6 +1017,8 @@ var __PAGE_URL = '{$pageUrl}';
 var __POST_PAGE_URL = '{$postPageUrl}';
 var __THREAD_URL = '{$threadUrl}';
 var __SORT_URL = '{$sortUrl}';
+var __TITLE_SWITCH_URL = '{$titleSwitchSaveUrl}';
+var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
 var __CSRF_TOKEN = '{$csrfToken}';
@@ -1790,6 +1831,13 @@ jQuery(document).ready(function () {
         forumTopics: 'pubSortForumTopics',
         forumPosts: 'pubSortForumPosts'
     };
+    // The two buttons that stand the topics up by the length of their text
+    // instead of their dates. They are one control with three states, so they
+    // are not part of the switches above.
+    var __TEXT_ORDER_BUTTON_IDS = {
+        asc: 'pubForumTextAsc',
+        desc: 'pubForumTextDesc'
+    };
     var paging = {};
 
     function pagingState(name) {
@@ -1939,6 +1987,78 @@ jQuery(document).ready(function () {
         });
     }
 
+    // Which of the two buttons is pressed: the order the pair stands for, or
+    // none of them when the list reads itself by its dates.
+    function textOrderState(buttons) {
+        if (buttons.asc && buttons.asc.checked) {
+            return 'asc';
+        }
+        if (buttons.desc && buttons.desc.checked) {
+            return 'desc';
+        }
+
+        return '';
+    }
+
+    // The pair of buttons of the forum header is one control with three states:
+    // pressing the idle button takes the order over from its neighbour, pressing
+    // the active one leaves the list to the order of the dates. The answer comes
+    // back as the first page of the new order, so the block restarts where the
+    // reader asked to look.
+    function watchTextOrderButtons() {
+        var buttons = {
+            asc: document.getElementById(__TEXT_ORDER_BUTTON_IDS.asc),
+            desc: document.getElementById(__TEXT_ORDER_BUTTON_IDS.desc)
+        };
+        if (!buttons.asc || !buttons.desc) {
+            return;
+        }
+        // What the list on the screen is ordered by: the state a request that
+        // failed has to put the pair back into.
+        var shown = textOrderState(buttons);
+
+        ['asc', 'desc'].forEach(function (name) {
+            buttons[name].addEventListener('change', function () {
+                buttons[name === 'asc' ? 'desc' : 'asc'].checked = false;
+                var order = textOrderState(buttons);
+
+                postForJson(__TEXT_ORDER_URL, { forumTextOrder: order }).then(function (payload) {
+                    shown = order;
+                    applyBlocks(payload);
+                    mirrorUrl(payload);
+                }).catch(function (error) {
+                    buttons.asc.checked = shown === 'asc';
+                    buttons.desc.checked = shown === 'desc';
+                    showFlash('error', 'Не удалось изменить порядок: '
+                        + (error && error.message ? error.message : error));
+                });
+            });
+        });
+    }
+
+    // The heading switch of the form changes none of the lists: it says how a
+    // fill of the forum block reads, so the server only stores its state and
+    // answers with the address that mirrors it.
+    function watchHeadingSwitch() {
+        var input = document.getElementById('publicationTitleFromFirstLine');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            postForJson(__TITLE_SWITCH_URL, { titleFromFirstLine: input.checked ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                })
+                .catch(function (error) {
+                    // The session kept the state it was asked with, so the
+                    // switch has to keep the one it was rendered with.
+                    input.checked = !input.checked;
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
     var runOnce = false;
     function initAll() {
         if (runOnce) return;
@@ -2031,6 +2151,7 @@ jQuery(document).ready(function () {
         var numberPartsInput = document.getElementById('publicationNumberParts');
         var distributeImagesInput = document.getElementById('publicationDistributeImages');
         var linksToButtonsInput = document.getElementById('publicationLinksToButtons');
+        var titleFromFirstLineInput = document.getElementById('publicationTitleFromFirstLine');
         var splitButton = document.getElementById('publicationSplitPart');
         var splitModesBox = document.getElementById('publicationSplitModes');
         var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
@@ -3596,6 +3717,23 @@ jQuery(document).ready(function () {
         // in the attribute of its row, in the same shape the form submits it.
         function parseFormatting(raw) {
             return raw ? JSON.parse(raw) : [];
+        }
+
+        // The first line of a forum fill is the heading of the publication when the
+        // switch of the form header asks for it: a topic stands its own name in
+        // front of its text, and a post opens with a line its author wrote as one.
+        // A text that leaves nothing behind its first line is handed over whole —
+        // the heading of a part is optional, its text is not.
+        function firstLineAsHeading(text) {
+            var body = (titleFromFirstLineInput && titleFromFirstLineInput.checked)
+                ? String(text).replace(/^\s+/, '') : '';
+            var cut = body.indexOf("\n");
+            var heading = (cut < 0 ? body : body.slice(0, cut)).trim();
+            var rest = cut < 0 ? '' : body.slice(cut).replace(/^\s+/, '');
+
+            return heading === '' || rest === ''
+                ? { title: '', text: text }
+                : { title: heading, text: rest };
         }
 
         // The text of a record or a forum post arrives as one run of it, and the
@@ -5191,7 +5329,8 @@ jQuery(document).ready(function () {
             if (title !== '') {
                 text = title + "\n\n" + text;
             }
-            loadText(text);
+            var heading = firstLineAsHeading(text);
+            loadText(heading.text, undefined, heading.title);
             fillImages(btn.getAttribute('data-image-urls') || '');
             if (sourceTypeInput && sourceIdInput) {
                 sourceTypeInput.value = 'new';
@@ -5325,15 +5464,21 @@ jQuery(document).ready(function () {
                     // One entity, one part: the album of every one of them lands
                     // in the field of its own part.
                     // A thread is text alone, so it brings no heading — and leaves
-                    // none of the parts it fills with the heading of a record.
-                    setTextParts(threadTextParts(entities), undefined, undefined, undefined, ['']);
+                    // none of the parts it fills with the heading of a record. The
+                    // first line of its first part goes to the heading only while
+                    // the switch of the form header asks for that.
+                    var parts = threadTextParts(entities);
+                    var heading = firstLineAsHeading(parts[0]);
+                    setTextParts([heading.text].concat(parts.slice(1)),
+                        undefined, undefined, undefined, [heading.title]);
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
                         writeImages(index, raw);
                     });
                 } else {
                     // The thread is one text here, so its pictures are one album
                     // of the first part.
-                    loadText(threadTexts(entities).join("\n\n"));
+                    var whole = firstLineAsHeading(threadTexts(entities).join("\n\n"));
+                    loadText(whole.text, undefined, whole.title);
                     fillImages(threadImages(entities));
                 }
                 if (sourceTypeInput && sourceIdInput) {
@@ -5443,6 +5588,11 @@ jQuery(document).ready(function () {
         // of the list both the redrawn block and its later pages are read
         // from.
         watchSortSwitches();
+        watchTextOrderButtons();
+
+        // The heading switch of the form is remembered the same way, although
+        // nothing of the page has to be redrawn for it.
+        watchHeadingSwitch();
 
         // Scroll does not bubble, so one capture listener on the document sees
         // the viewport of every block, whenever OverlayScrollbars rebuilt it.
