@@ -12,7 +12,7 @@ use app\shared\Forum\Service\ParserSettingsService;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Service\PublicationsService;
 use app\shared\Settings\Service\PublicationSettingsService;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
@@ -309,28 +309,34 @@ class SiteController extends Controller
 
     /**
      * @param array<string, mixed> $raw
-     * @return array{withImages: bool, withPosts: bool, imagesCount: int}
+     * @return array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int}
      */
     private function normalizeForumFilters(array $raw): array
     {
         $imagesCount = (int)($raw['imagesCount'] ?? 0);
+        $linksCount = (int)($raw['linksCount'] ?? 0);
         $ceiling = (int)$this->publicationSettings()['imagesCountFilterMax'];
+        $linksCeiling = (int)$this->publicationSettings()['linksCountFilterMax'];
 
         return [
             'withImages' => (string)($raw['withImages'] ?? '') === '1',
             'withPosts' => (string)($raw['withPosts'] ?? '') === '1',
             'imagesCount' => $imagesCount > 0 ? min($imagesCount, $ceiling) : 0,
+            'withLinks' => (string)($raw['withLinks'] ?? '') === '1',
+            'linksCount' => $linksCount > 0 ? min($linksCount, $linksCeiling) : 0,
         ];
     }
 
     /**
-     * @param array{withImages: bool, withPosts: bool, imagesCount: int} $filters
+     * @param array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int} $filters
      */
     private function hasActiveForumFilter(array $filters): bool
     {
         return $filters['withImages']
             || $filters['withPosts']
-            || $filters['imagesCount'] > 0;
+            || $filters['imagesCount'] > 0
+            || $filters['withLinks']
+            || $filters['linksCount'] > 0;
     }
 
     /**
@@ -352,6 +358,12 @@ class SiteController extends Controller
         }
         if ($filters['imagesCount'] > 0) {
             $url['imagesCount'] = (string)$filters['imagesCount'];
+        }
+        if ($filters['withLinks']) {
+            $url['withLinks'] = '1';
+        }
+        if ($filters['linksCount'] > 0) {
+            $url['linksCount'] = (string)$filters['linksCount'];
         }
 
         return $url;
@@ -381,7 +393,7 @@ class SiteController extends Controller
     }
 
     /**
-     * @return array{withImages: bool, withPosts: bool, imagesCount: int}
+     * @return array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int}
      */
     private function forumFilters(): array
     {
@@ -495,6 +507,8 @@ class SiteController extends Controller
             $filters['withImages'],
             $filters['withPosts'],
             $filters['imagesCount'],
+            $filters['withLinks'],
+            $filters['linksCount'],
         );
 
         return [
@@ -507,12 +521,16 @@ class SiteController extends Controller
                 $filters['withImages'],
                 $filters['withPosts'],
                 $filters['imagesCount'],
+                $filters['withLinks'],
+                $filters['linksCount'],
                 $sorts['forumTopics'],
                 $sorts['forumPosts'],
             ),
             'withImagesOnly' => $filters['withImages'],
             'withPostsOnly' => $filters['withPosts'],
             'imagesCount' => $filters['imagesCount'],
+            'withLinksOnly' => $filters['withLinks'],
+            'linksCount' => $filters['linksCount'],
             'totals' => $totals,
             'oldestFirst' => $sorts,
             'settings' => $settings,
@@ -718,11 +736,19 @@ class SiteController extends Controller
                     $filters['withImages'],
                     $filters['withPosts'],
                     $filters['imagesCount'],
+                    $filters['withLinks'],
+                    $filters['linksCount'],
                     $sorts['forumTopics'],
                     $sorts['forumPosts'],
                     $offset,
                 ),
-                $this->forum->countTopics($filters['withImages'], $filters['withPosts'], $filters['imagesCount']),
+                $this->forum->countTopics(
+                    $filters['withImages'],
+                    $filters['withPosts'],
+                    $filters['imagesCount'],
+                    $filters['withLinks'],
+                    $filters['linksCount'],
+                ),
             ],
             default => null,
         };
@@ -754,6 +780,8 @@ class SiteController extends Controller
             $filters['withImages'],
             $filters['withPosts'],
             $filters['imagesCount'],
+            $filters['withLinks'],
+            $filters['linksCount'],
             $sorts['forumPosts'],
         );
         $html = '';
@@ -974,26 +1002,23 @@ class SiteController extends Controller
     }
 
     /**
-     * The link buttons of the publication form as one button per part: the
-     * shared «Кнопка-ссылка» field carries the button of the first part, the
-     * cloned text blocks add one pair of fields each while the «Кнопка-ссылка в
-     * каждой части» switch is on, so a submission brings a part's button in the
-     * place of that part. A part whose fields are missing — its box stayed
-     * switched off — goes to the channel without a button.
+     * The link buttons of the publication form as one keyboard per part: the
+     * rows of the shared «Кнопки-ссылки» field carry the buttons of the first
+     * part, the cloned text blocks add a block of rows each while the
+     * «Кнопка-ссылка в каждой части» switch is on, so a submission brings the rows
+     * of a part in the place of that part. A part whose rows are missing — its box
+     * stayed switched off — goes to the channel without a keyboard.
      *
-     * @return LinkButton[]
+     * @return LinkButtons[]
      */
     private function publicationButtonsFromRequest(int $parts): array
     {
-        $labels = $this->partFieldsFromRequest('publicationButtonText', 'publicationPartButtonText');
-        $urls = $this->partFieldsFromRequest('publicationButtonUrl', 'publicationPartButtonUrl');
+        $labels = $this->partRowGroupsFromRequest('publicationButtonText', 'publicationPartButtonText', $parts);
+        $urls = $this->partRowGroupsFromRequest('publicationButtonUrl', 'publicationPartButtonUrl', $parts);
 
         $buttons = [];
         for ($index = 0; $index < $parts; $index++) {
-            $buttons[] = LinkButton::fromArray([
-                'text' => $labels[$index] ?? null,
-                'url' => $urls[$index] ?? null,
-            ]);
+            $buttons[] = LinkButtons::fromPairs($labels[$index], $urls[$index]);
         }
 
         return $buttons;
@@ -1036,6 +1061,32 @@ class SiteController extends Controller
             [$this->request->post($shared, '')],
             is_array($raw) ? array_values($raw) : [$raw],
         );
+    }
+
+    /**
+     * One kind of the per-part row lists of the form: the rows of the shared
+     * field of the first part, then the rows of every part that came after it. A
+     * part's own field is named after its place in the list of parts the way the
+     * album picker is, so the first part is served by the shared field and the
+     * names run one behind the parts. The rows of a part come back in the order
+     * they stand in, so the labels and the addresses pair up by position.
+     *
+     * @return array<int, array<int, mixed>>
+     */
+    private function partRowGroupsFromRequest(string $shared, string $perPart, int $parts): array
+    {
+        $names = [$shared];
+        for ($index = 1; $index < $parts; $index++) {
+            $names[] = $perPart . ($index - 1);
+        }
+
+        $groups = [];
+        foreach ($names as $name) {
+            $raw = $this->request->post($name, []);
+            $groups[] = is_array($raw) ? array_values($raw) : [$raw];
+        }
+
+        return $groups;
     }
 
     /**

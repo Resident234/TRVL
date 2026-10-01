@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace app\shared\Telegram\Contract;
 
 use app\shared\Telegram\Dto\ChannelInfo;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
 
@@ -21,15 +21,15 @@ interface TelegramChannelClientInterface
     /**
      * @param MessageEntities $entities inline formatting of the text; an empty
      *        list sends plain text
-     * @param LinkButton $button the link button drawn under the message; an
-     *        empty one sends the message without a keyboard
+     * @param LinkButtons $buttons the link buttons drawn under the message, one
+     *        to a row; an empty list sends the message without a keyboard
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
      */
     public function sendTextMessage(
         string $channelId,
         string $text,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): PostResult;
 
     /**
@@ -40,7 +40,7 @@ interface TelegramChannelClientInterface
         string $photoPath,
         string $caption,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): PostResult;
 
     /**
@@ -56,7 +56,7 @@ interface TelegramChannelClientInterface
         array $photoUrls,
         string $caption,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): PostResult;
 
     /**
@@ -77,6 +77,6 @@ interface TelegramChannelClientInterface
         int $messageId,
         string $text,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): void;
 }

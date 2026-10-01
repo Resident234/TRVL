@@ -6,7 +6,7 @@ namespace app\shared\Telegram\Infrastructure;
 
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
 use app\shared\Telegram\Dto\ChannelInfo;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
 use SergiX44\Nutgram\Configuration;
@@ -67,14 +67,14 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         string $channelId,
         string $text,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): PostResult {
         $message = $this->call(
             static fn (Nutgram $bot): ?Message => $bot->sendMessage(
                 chat_id: $channelId,
                 text: $text,
                 entities: self::toMessageEntities($entities),
-                reply_markup: self::toKeyboard($button),
+                reply_markup: self::toKeyboard($buttons),
             ),
         );
 
@@ -86,7 +86,7 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         string $photoPath,
         string $caption,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): PostResult {
         // Check if it's a local file path
         $photo = $this->isLocalFile($photoPath) ? new InputFile($photoPath) : $photoPath;
@@ -97,7 +97,7 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
                 photo: $photo,
                 caption: $caption,
                 caption_entities: self::toMessageEntities($entities),
-                reply_markup: self::toKeyboard($button),
+                reply_markup: self::toKeyboard($buttons),
             ),
         );
 
@@ -114,7 +114,7 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         array $photoUrls,
         string $caption,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): PostResult {
         $media = [];
         foreach (array_values($photoUrls) as $index => $url) {
@@ -127,7 +127,7 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
             );
         }
 
-        $keyboard = self::toKeyboard($button);
+        $keyboard = self::toKeyboard($buttons);
 
         $messages = $this->call(
             static fn (Nutgram $bot): ?array => $bot->sendMediaGroup(
@@ -188,7 +188,7 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         int $messageId,
         string $text,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): void {
         $this->call(
             static fn (Nutgram $bot): bool => $bot->editMessageText(
@@ -196,34 +196,40 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
                 chat_id: $channelId,
                 message_id: $messageId,
                 entities: self::toMessageEntities($entities),
-                reply_markup: self::toReplacementKeyboard($button),
+                reply_markup: self::toReplacementKeyboard($buttons),
             ) !== null,
         );
     }
 
     /**
-     * An edit replaces the keyboard of the message, so a post whose button
-     * was removed has to send an empty markup: Telegram takes it as "drop
+     * An edit replaces the keyboard of the message, so a post whose buttons
+     * were removed has to send an empty markup: Telegram takes it as "drop
      * the keyboard", while an omitted parameter leaves the old one in place.
      */
-    private static function toReplacementKeyboard(LinkButton $button): InlineKeyboardMarkup
+    private static function toReplacementKeyboard(LinkButtons $buttons): InlineKeyboardMarkup
     {
-        return self::toKeyboard($button) ?? InlineKeyboardMarkup::make();
+        return self::toKeyboard($buttons) ?? InlineKeyboardMarkup::make();
     }
 
     /**
      * Our DTO in, SDK types out: no Nutgram class leaks above this adapter.
-     * An empty button gives no keyboard at all, which is how a message
-     * without one reaches the API.
+     * An empty list gives no keyboard at all, which is how a message without
+     * buttons reaches the API. Every button takes a row of its own: a client
+     * draws a row across the whole width of the message, which is how the one
+     * button of a message used to look.
      */
-    private static function toKeyboard(LinkButton $button): ?InlineKeyboardMarkup
+    private static function toKeyboard(LinkButtons $buttons): ?InlineKeyboardMarkup
     {
-        if ($button->isEmpty()) {
+        if ($buttons->isEmpty()) {
             return null;
         }
 
-        return InlineKeyboardMarkup::make()
-            ->addRow(InlineKeyboardButton::make(text: $button->text, url: $button->url));
+        $keyboard = InlineKeyboardMarkup::make();
+        foreach ($buttons->all() as $button) {
+            $keyboard->addRow(InlineKeyboardButton::make(text: $button->text, url: $button->url));
+        }
+
+        return $keyboard;
     }
 
     /**

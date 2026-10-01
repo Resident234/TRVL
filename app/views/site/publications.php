@@ -8,7 +8,10 @@ declare(strict_types=1);
 /** @var \app\shared\Publications\Dto\PublicationData[] $deleted */
 /** @var array<int, array{topic: \app\shared\Forum\Dto\TopicData, posts: \app\shared\Forum\Dto\PostData[]}> $topics */
 /** @var bool $withImagesOnly */
+/** @var int $imagesCount the exact number of image links a record carries, 0 — без ограничения */
 /** @var bool $withPostsOnly */
+/** @var bool $withLinksOnly */
+/** @var int $linksCount the exact number of addresses a record's text has to carry, 0 — без ограничения */
 /** @var array{posts: int, drafts: int, deleted: int, forum: int} $totals */
 /** @var array<string, bool> $oldestFirst the order of every switch of the page */
 /** @var array<string, string> $settings the tunables of the publications page */
@@ -16,6 +19,8 @@ declare(strict_types=1);
 
 use app\assets\PublicationEditorAsset;
 use app\shared\Settings\Service\PublicationSettingsService;
+use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Service\ChannelService;
 use yii\helpers\Html;
 
@@ -26,6 +31,12 @@ PublicationEditorAsset::register($this);
 // One message of the channel carries at most this many characters, so a longer
 // text is broken into parts, each in its own field of the form.
 $textLimit = ChannelService::TEXT_MAX_LENGTH;
+// How many link buttons one message may carry: a bound the portal gives a post,
+// so the form stops adding rows at it instead of refusing them on submit.
+$buttonLimit = LinkButtons::MAX_BUTTONS;
+// How long the label of one of those buttons may be: the portal counts it in
+// bytes, so a label the form writes on its own is cut to this.
+$buttonLabelBytes = LinkButton::TEXT_MAX_LENGTH;
 
 $this->registerCss(
     <<<CSS
@@ -116,6 +127,40 @@ $this->registerCss(
     line-height: 1.25;
     text-align: center;
     overflow-wrap: anywhere;
+}
+
+/* The frame of the button fields borrows the border of a board card, but it is
+   not a card of a board: standing inside `.kanban-items` it would catch the
+   dashed orange hover and the move cursor of a draggable item while the form is
+   being filled. The three classes of the board rule are repeated here so this
+   one wins on specificity, not on the order the sheets were loaded in. */
+.kanban-board .kanban-items .kanban-item.publication-button-frame:hover {
+    border: 1px solid #dfe5ea;
+    cursor: auto;
+}
+
+/* The icon that adds a button floats at the right of its fields and the notice
+   under them runs past it, so both boxes that hold a float own a block
+   formatting context: a float only counts towards the height of such a box, and
+   without it the icon would hang out of the bottom of the white card. A float
+   still shortens the line boxes of the text in the same context, which is the
+   wrapping the notice wants. The vendored sheet has no `d-flow-root` utility, so
+   the two boxes name the display themselves. */
+.publication-button-frame,
+.publication-part-button {
+    display: flow-root;
+}
+
+/* A hint belongs to the control that carries it, not to the row of the card the
+   control stands in, so the box holding the hint is as wide as that control:
+   Bootstrap centres a popover over the box of its trigger, and a full-width
+   checkbox group or field label both dragged the hint to the middle of the card
+   and answered a hover over the empty right half of the row. The box may not
+   grow past the card, though: a hint of a long label would then run out of it
+   instead of wrapping the way it does on a narrow screen. */
+[data-bs-toggle="popover"] {
+    width: max-content;
+    max-width: 100%;
 }
 
 /* The buttons that move a selection sit next to it, in viewport coordinates. */
@@ -212,7 +257,8 @@ CSS
 <?php
     // The badge of the filter card counts the filters that are on, the badge of
     // the forum card counts the topics those filters leave.
-    $activeFilterCount = ($withImagesOnly ? 1 : 0) + ($withPostsOnly ? 1 : 0) + ($imagesCount > 0 ? 1 : 0);
+    $activeFilterCount = ($withImagesOnly ? 1 : 0) + ($withPostsOnly ? 1 : 0) + ($imagesCount > 0 ? 1 : 0)
+        + ($withLinksOnly ? 1 : 0) + ($linksCount > 0 ? 1 : 0);
 ?>
         <!-- Forum block: its filters and its topics in one white card -->
         <div class="card mb-4 p-3">
@@ -239,13 +285,27 @@ CSS
                             <?= $withPostsOnly ? 'checked' : '' ?>>
                         <label class="form-check-label" for="forumFilterWithPosts">С привязанными постами</label>
                     </div>
-                    <div class="mb-0">
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="forumFilterWithLinks"
+                            <?= $withLinksOnly ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="forumFilterWithLinks">С ссылками</label>
+                    </div>
+                    <div class="mb-3">
                         <label for="forumFilterImagesCount" class="form-label small">
                             Кол-во изображений
                             <span id="forumFilterImagesCountValue" class="ms-2 fw-bold text-primary"><?= $imagesCount > 0 ? (int)$imagesCount : '∞' ?></span>
                         </label>
                         <input type="range" class="form-range" id="forumFilterImagesCount"
                                min="0" max="<?= (int)$settings['imagesCountFilterMax'] ?>" value="<?= $imagesCount > 0 ? (int)$imagesCount : 0 ?>">
+                        <div class="form-text">0 — без ограничения</div>
+                    </div>
+                    <div class="mb-0">
+                        <label for="forumFilterLinksCount" class="form-label small">
+                            Кол-во ссылок
+                            <span id="forumFilterLinksCountValue" class="ms-2 fw-bold text-primary"><?= $linksCount > 0 ? (int)$linksCount : '∞' ?></span>
+                        </label>
+                        <input type="range" class="form-range" id="forumFilterLinksCount"
+                               min="0" max="<?= (int)$settings['linksCountFilterMax'] ?>" value="<?= $linksCount > 0 ? (int)$linksCount : 0 ?>">
                         <div class="form-text">0 — без ограничения</div>
                     </div>
                     <div class="d-flex justify-content-between align-items-center pt-2">
@@ -437,24 +497,55 @@ CSS
                                         <div class="stacked-images mt-2 d-none publication-part-images"></div>
                                     </div>
 
-                                    <?php /* The button of a part. It comes out of the switch
-                                            under the shared «Кнопка-ссылка» field and starts
-                                            with the button of that field; the first block
-                                            never shows its own, its button is the shared
-                                            one. A hidden box is disabled, so it submits
-                                            nothing and the part goes without a button. */ ?>
-                                    <div class="publication-part-button d-none mt-2">
-                                        <label class="form-label mb-1" for="publicationPartButtonText">
-                                            <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка этой части
+                                    <?php /* The buttons of a part. They come out of the switch
+                                            under the shared «Кнопки-ссылки» field and start
+                                            with the buttons of that field; the first block
+                                            never shows its own, its buttons are the shared
+                                            ones. A hidden box is disabled, so it submits
+                                            nothing and the part goes without a keyboard.
+                                            Every row is one button with the same two fields;
+                                            the rows of a box share one name, so the form
+                                            submits them as the list of buttons of that part.
+                                            The two attributes below are the bases of those
+                                            names: a row gains its name from a base and its own
+                                            id from the row number, both rewritten when the box
+                                            moves to another part. */ ?>
+                                    <div class="publication-part-button publication-button-box d-none mt-2">
+                                        <label class="form-label mb-1" for="publicationPartButtonText0-0">
+                                            <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки этой части
                                         </label>
-                                        <div class="d-flex flex-wrap gap-2">
-                                            <input type="text" class="form-control publication-part-button-text"
-                                                   id="publicationPartButtonText" name="publicationPartButtonText[]"
-                                                   disabled placeholder="Надпись кнопки">
-                                            <input type="text" class="form-control publication-part-button-url"
-                                                   id="publicationPartButtonUrl" name="publicationPartButtonUrl[]"
-                                                   disabled placeholder="https://example.com/poll">
+                                        <div class="d-flex flex-column gap-2 publication-button-rows"
+                                             data-text="publicationPartButtonText0"
+                                             data-url="publicationPartButtonUrl0">
+                                            <div class="row gx-2 gy-2 align-items-center publication-button-row">
+                                                <div class="col-sm-4">
+                                                    <input type="text" class="form-control publication-button-text"
+                                                           id="publicationPartButtonText0-0"
+                                                           name="publicationPartButtonText0[]" disabled
+                                                           placeholder="Надпись кнопки">
+                                                </div>
+                                                <div class="col-sm">
+                                                    <input type="text" class="form-control publication-button-url"
+                                                           id="publicationPartButtonUrl0-0"
+                                                           name="publicationPartButtonUrl0[]" maxlength="2048" disabled
+                                                           placeholder="https://example.com/poll">
+                                                </div>
+                                                <div class="col-sm-auto d-none">
+                                                    <button type="button"
+                                                            class="btn btn-danger btn-icon publication-button-remove"
+                                                            aria-label="Убрать кнопку-ссылку" disabled
+                                                            title="Убрать эту кнопку">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
+                                        <button type="button"
+                                                class="btn btn-primary btn-icon mt-2 float-end ms-3 publication-button-add"
+                                                aria-label="Добавить кнопку-ссылку" disabled
+                                                title="Добавить ещё одну кнопку под это сообщение">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
                                     </div>
 
                                     <!-- The row a part is merged with the one under it by;
@@ -488,33 +579,33 @@ CSS
                                 </button>
                             </div>
 
-                            <div class="form-check mb-3">
+                            <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                 data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                 data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
                                 <input class="form-check-input" type="checkbox" id="publicationNumberParts">
                                 <label class="form-check-label" for="publicationNumberParts">
                                     <i class="bi bi-list-ol me-1"></i>Нумерация частей
                                 </label>
-                                <small class="text-muted d-block">
-                                    Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации
-                                </small>
                             </div>
 
                             <!-- The part albums are the submitted fields already, so this one
                                  never travels to the server: it hands the images of the shared
                                  field out to the fields of the parts inside the form. -->
-                            <div class="form-check mb-3">
+                            <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                 data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                 data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
                                 <input class="form-check-input" type="checkbox" id="publicationDistributeImages">
                                 <label class="form-check-label" for="publicationDistributeImages">
                                     <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
                                 </label>
-                                <small class="text-muted d-block">
-                                    Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал
-                                    со своей группой
-                                </small>
                             </div>
 
                             <!-- Attached images -->
                             <div class="mb-3">
-                                <label for="publicationImages" class="form-label">
+                                <label for="publicationImages" class="form-label"
+                                       data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                       data-bs-custom-class="popover-info"
+                                       data-bs-content="Изображения отправляются в канал вместе с текстом публикации (первое — с подписью); у разбитой публикации это изображения её первой части. Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома.">
                                     <i class="bi bi-images me-1"></i>Изображения публикации
                                 </label>
                                 <textarea class="form-control" id="publicationImages" name="publicationImages"
@@ -539,45 +630,96 @@ CSS
                                 <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
                                      id="publicationImageFilesNotice" role="status"></div>
                                 <div class="stacked-images mt-2 d-none" id="publicationImagesPreview"></div>
-                                <small class="text-muted">
-                                    Изображения отправляются в канал вместе с текстом публикации (первое — с подписью);
-                                    у разбитой публикации это изображения её первой части. Файл, выбранный здесь,
-                                    сохраняется на сервере и становится ссылкой этого же альбома.
-                                </small>
                             </div>
 
-                            <!-- Link button -->
+                            <!-- Link buttons -->
                             <div class="mb-3">
-                                <label class="form-label mb-1" for="publicationButtonText">
-                                    <i class="bi bi-link-45deg me-1"></i>Кнопка-ссылка
-                                </label>
-                                <div class="d-flex flex-wrap gap-2">
-                                    <input type="text" class="form-control" id="publicationButtonText"
-                                           name="publicationButtonText" placeholder="Надпись кнопки">
-                                    <input type="text" class="form-control" id="publicationButtonUrl"
-                                           name="publicationButtonUrl" maxlength="2048"
-                                           placeholder="https://example.com/poll">
-                                </div>
+                                <?php /* The frame of the buttons: the same bordered card a column of the
+                                        board in ui-kit/tasks.html puts under each of its items. */ ?>
+                                <div class="kanban-item publication-button-frame p-3 rounded-2 bg-white">
+                                    <?php /* The switch that reads the addresses of the text into the
+                                            buttons of the same part. It never travels to the server:
+                                            the rows it adds are the fields that do. It stands at the top
+                                            left of the frame in the shape the vendored sheet draws it:
+                                            the group is padded by the width of its toggle and the toggle
+                                            is pulled back by the same amount, so the knob itself lands on
+                                            the left edge of the frame and the text of the label keeps its
+                                            own line. A float of this group would let the button rows run
+                                            out under it. What the switch does is written in the popover
+                                            of this same group, so the hover that asks for it covers the
+                                            toggle and its text alike. */ ?>
+                                    <div class="form-check form-switch mb-3"
+                                         data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                         data-bs-custom-class="popover-info"
+                                         data-bs-content="Через 10 секунд после того, как текст перестали править, дописывает в «Кнопки-ссылки» адреса этого текста, кроме ссылок на изображения. Набранные вручную кнопки оставляет, адрес, который в кнопках уже есть, не повторяет. У разбитой публикации каждая часть берёт адреса своего текста, поэтому её поля кнопок включаются сами.">
+                                        <input class="form-check-input" type="checkbox"
+                                               role="switch" id="publicationLinksToButtons">
+                                        <label class="form-check-label" for="publicationLinksToButtons">
+                                            <i class="bi bi-link-45deg me-1"></i>Ссылки из текста в кнопки-ссылки
+                                        </label>
+                                    </div>
 
-                                <?php /* The switch of the button to every part of a split
-                                        publication: it stands in the form only while the
-                                        publication really has parts. */ ?>
-                                <div class="form-check mt-2 d-none" id="publicationButtonEveryPartRow">
-                                    <input class="form-check-input" type="checkbox" id="publicationButtonEveryPart">
-                                    <label class="form-check-label" for="publicationButtonEveryPart">
-                                        Кнопка-ссылка в каждой части
-                                    </label>
-                                    <small class="text-muted d-block">
-                                        Показывает поле кнопки у каждой части и заполняет её этой же кнопкой;
-                                        надпись и адрес одной части можно поправить после этого
-                                    </small>
-                                </div>
+                                    <?php /* The box of the buttons of the first part: the same shape the box of
+                                            any later part has, so one rule names its rows and one icon adds them. */ ?>
+                                    <div class="publication-button-box" id="publicationButtonBox">
+                                        <label class="form-label mb-1" for="publicationButtonText-0"
+                                               data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                               data-bs-custom-class="popover-info"
+                                               data-bs-content="Каждая кнопка появляется под сообщением в канале своей строкой и ведёт по своему адресу: надпись длиной до 64 байт, адрес — с http://, https:// или tg://. Под одним сообщением не больше <?= $buttonLimit ?> кнопок. Пустые поля означают публикацию без кнопок; у разбитой публикации это кнопки её первой части.">
+                                            <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки
+                                        </label>
 
-                                <small class="text-muted d-block mt-2">
-                                    Кнопка появляется под сообщением в канале и ведёт по своему адресу: надпись длиной
-                                    до 64 байт, адрес — с http://, https:// или tg://. Пустые поля означают публикацию
-                                    без кнопки; у разбитой публикации это кнопка её первой части.
-                                </small>
+                                        <?php /* Every row is one button of the same message: the two fields the
+                                                row holds are the label and the address of it, and the rows of this
+                                                box share one name, so the form submits them as the list of buttons
+                                                of the first part. */ ?>
+                                        <div class="d-flex flex-column gap-2 publication-button-rows"
+                                             data-text="publicationButtonText"
+                                             data-url="publicationButtonUrl">
+                                            <div class="row gx-2 gy-2 align-items-center publication-button-row">
+                                                <div class="col-sm-4">
+                                                    <input type="text" class="form-control publication-button-text"
+                                                           id="publicationButtonText-0" name="publicationButtonText[]"
+                                                           placeholder="Надпись кнопки">
+                                                </div>
+                                                <div class="col-sm">
+                                                    <input type="text" class="form-control publication-button-url"
+                                                           id="publicationButtonUrl-0" name="publicationButtonUrl[]"
+                                                           maxlength="2048" placeholder="https://example.com/poll">
+                                                </div>
+                                                <div class="col-sm-auto d-none">
+                                                    <button type="button"
+                                                            class="btn btn-danger btn-icon publication-button-remove"
+                                                            aria-label="Убрать кнопку-ссылку" title="Убрать эту кнопку">
+                                                        <i class="bi bi-x-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <button type="button"
+                                                class="btn btn-primary btn-icon mt-2 float-end ms-3 publication-button-add"
+                                                aria-label="Добавить кнопку-ссылку"
+                                                title="Добавить ещё одну кнопку под это сообщение">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
+                                    </div>
+
+                                    <?php /* The switch of the buttons to every part of a split
+                                            publication: it stands in the form only while the
+                                            publication really has parts. The popover of the box
+                                            above it says what a button is; this one says what
+                                            the switch does to the boxes of the parts. */ ?>
+                                    <div class="form-check mt-2 d-none" id="publicationButtonEveryPartRow"
+                                         data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                         data-bs-custom-class="popover-info"
+                                         data-bs-content="Показывает поля кнопок у каждой части и заполняет их этими же кнопками; надпись и адрес одной части можно поправить после этого.">
+                                        <input class="form-check-input" type="checkbox" id="publicationButtonEveryPart">
+                                        <label class="form-check-label" for="publicationButtonEveryPart">
+                                            Кнопки-ссылки в каждой части
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Publication date & time -->
@@ -774,13 +916,12 @@ CSS
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <label class="form-label" for="publicationLinkAddress">Адрес ссылки</label>
+                <label class="form-label" for="publicationLinkAddress"
+                       data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                       data-bs-custom-class="popover-info"
+                       data-bs-content="Протокол можно не писать — адрес http:// или https:// принимается и так, а в тексте ссылки остаётся только то, что стоит за ним.">Адрес ссылки</label>
                 <input type="text" class="form-control" id="publicationLinkAddress"
                        autocomplete="off" placeholder="https://example.com/page">
-                <small class="text-muted d-block mt-2">
-                    Протокол можно не писать — адрес http:// или https:// принимается и так,
-                    а в тексте ссылки остаётся только то, что стоит за ним.
-                </small>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-danger d-none" id="publicationLinkRemove">
@@ -841,6 +982,8 @@ var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
 var __CSRF_TOKEN = '{$csrfToken}';
 var __TEXT_PART_LIMIT = {$textLimit};
+var __BUTTON_LIMIT = {$buttonLimit};
+var __BUTTON_LABEL_BYTES = {$buttonLabelBytes};
 var __NUMBERING_RESERVE = {$numberingReserve};
 var __SCROLL_EDGE = {$scrollEdge};
 var __IMAGE_PROBE_TIMEOUT = {$probeTimeout};
@@ -1214,6 +1357,62 @@ function findLinks(text, list) {
     });
 
     return found;
+}
+
+// The addresses a button is not worth: a link that points at a picture, by the
+// same suffixes an album of a part takes and a forum page cuts out of a post.
+// Such an address already travels with the message as one of its photos.
+var IMAGE_ADDRESS = /\.(?:gif|jpe?g|png|webp)(?:[?#]|$)/i;
+
+// The addresses a text carries: written out in the open and standing over a word
+// alike, an address the text names twice counted once.
+function addressesInText(text, entities) {
+    var found = findLinks(text, []).map(function (link) {
+        return link.url;
+    });
+
+    (entities || []).forEach(function (entity) {
+        if (entity.type === 'text_link' && typeof entity.url === 'string' && entity.url !== '') {
+            found.push(entity.url);
+        }
+    });
+
+    return found.filter(function (address, index) {
+        return !IMAGE_ADDRESS.test(address) && found.indexOf(address) === index;
+    });
+}
+
+// The label a button of an address gets: the host with the first piece of its
+// path, the way the channel names a link it has no words for. The portal counts
+// a label in bytes, so the cut stops before a letter that would not fit whole.
+function buttonLabelOf(address, bound) {
+    var rest = address.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    var slash = rest.indexOf('/');
+    var host = slash < 0 ? rest : rest.slice(0, slash);
+    var first = slash < 0 ? '' : rest.slice(slash + 1).split('/')[0].split('?')[0].split('#')[0];
+    var label = first === '' ? host : host + '/' + first;
+    var encoder = new TextEncoder();
+
+    if (encoder.encode(label).length <= bound) {
+        return label;
+    }
+
+    var taken = '';
+    var used = 0;
+
+    Array.from(label).every(function (letter) {
+        var cost = encoder.encode(letter).length;
+
+        if (used + cost > bound) {
+            return false;
+        }
+        taken += letter;
+        used += cost;
+
+        return true;
+    });
+
+    return taken;
 }
 
 // --- the emoji the editor searches ---------------------------------------------
@@ -1749,7 +1948,37 @@ jQuery(document).ready(function () {
         setupDateTimePicker(publicationAtJq);
         setupDateTimePicker(scheduleAtJq);
 
-        // The badge of the filter card counts how many of the three filters
+        // What a control does is written in the popover of that control — of its
+        // group for a checkbox, of its label for a field — rather than in a line
+        // of text under it. Bootstrap draws a popover inside its container, so a
+        // page-level container keeps the hint out of the clipping of the box that
+        // holds the field; the hint of the link dialog is the one that wants to
+        // stay inside its dialog, which opens over the page and hides with it.
+        if (window.bootstrap && window.bootstrap.Popover) {
+            var Popover = window.bootstrap.Popover;
+            document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+                // The script of the kit hands a popover to every trigger like this
+                // one, with its own settings, and it runs before this page does;
+                // an instance that already exists keeps the settings it was built
+                // with and drops the ones asked for now, so it is let go first.
+                var built = Popover.getInstance(el);
+                if (built) {
+                    built.dispose();
+                }
+                var dialog = el.closest('.modal');
+                Popover.getOrCreateInstance(el, {
+                    container: dialog || document.body,
+                    // The placement of the markup goes to Popper by hand: the map
+                    // Bootstrap looks a placement up in knows only the four sides
+                    // and `auto`, so a side with an alignment (`top-start`) is
+                    // missing from it, and the popover of such a trigger is left
+                    // standing at the top left of the page.
+                    popperConfig: { placement: el.dataset.bsPlacement }
+                });
+            });
+        }
+
+        // The badge of the filter card counts how many of the five filters
         // are on, the same number the page was rendered with.
         var filterCountBadge = document.getElementById('forumFilterCount');
         function updateFilterCount(count) {
@@ -1761,39 +1990,49 @@ jQuery(document).ready(function () {
         var applyFiltersDirect = function () {
             var imagesSwitch = document.getElementById('forumFilterWithImages');
             var postsSwitch = document.getElementById('forumFilterWithPosts');
+            var linksSwitch = document.getElementById('forumFilterWithLinks');
             var imagesCountInput = document.getElementById('forumFilterImagesCount');
+            var linksCountInput = document.getElementById('forumFilterLinksCount');
             var imagesCount = imagesCountInput ? (parseInt(imagesCountInput.value, 10) || 0) : 0;
+            var linksCount = linksCountInput ? (parseInt(linksCountInput.value, 10) || 0) : 0;
             var active = (imagesSwitch && imagesSwitch.checked ? 1 : 0)
                 + (postsSwitch && postsSwitch.checked ? 1 : 0)
-                + (imagesCount > 0 ? 1 : 0);
+                + (imagesCount > 0 ? 1 : 0)
+                + (linksSwitch && linksSwitch.checked ? 1 : 0)
+                + (linksCount > 0 ? 1 : 0);
 
             updateFilterCount(active);
             postForBlocks(__FILTER_SAVE_URL, {
                 withImages: imagesSwitch && imagesSwitch.checked ? 1 : 0,
                 withPosts: postsSwitch && postsSwitch.checked ? 1 : 0,
-                imagesCount: imagesCount
+                imagesCount: imagesCount,
+                withLinks: linksSwitch && linksSwitch.checked ? 1 : 0,
+                linksCount: linksCount
             });
         };
 
-        ['forumFilterWithImages', 'forumFilterWithPosts'].forEach(function (id) {
+        ['forumFilterWithImages', 'forumFilterWithPosts', 'forumFilterWithLinks'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', applyFiltersDirect);
         });
 
         var partsBox = document.getElementById('publicationTextParts');
         var source = document.getElementById('publicationTextInput');
-        if (!partsBox || !source) {
+        var sharedButtonBox = document.getElementById('publicationButtonBox');
+        if (!partsBox || !source || !sharedButtonBox) {
             return;
         }
         // The first field is the template the extra parts are cloned from. It is
         // never replaced itself, so `source` stays a valid reference.
         var partTemplate = partsBox.querySelector('.publication-text-block').cloneNode(true);
+        // The row of the shared field is the template of a new button: the markup
+        // draws it blank, and a clone of it is what adding appends to a box.
+        var buttonRowTemplate = buttonRowsOf(sharedButtonBox)[0].cloneNode(true);
         var numberPartsInput = document.getElementById('publicationNumberParts');
         var distributeImagesInput = document.getElementById('publicationDistributeImages');
+        var linksToButtonsInput = document.getElementById('publicationLinksToButtons');
         var splitButton = document.getElementById('publicationSplitPart');
         var splitModesBox = document.getElementById('publicationSplitModes');
-        var buttonTextInput = document.getElementById('publicationButtonText');
-        var buttonUrlInput = document.getElementById('publicationButtonUrl');
         var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
         var buttonEveryPartRow = document.getElementById('publicationButtonEveryPartRow');
         var linkModal = document.getElementById('publicationLinkModal');
@@ -2836,12 +3075,14 @@ jQuery(document).ready(function () {
                 });
         }
 
-        // --- the link button of a part ------------------------------------------
+        // --- the link buttons of a part -------------------------------------------
 
-        // The shared «Кнопка-ссылка» field of the form carries the button of the
+        // The shared «Кнопки-ссылки» field of the form carries the buttons of the
         // first part, so the box of that part stays hidden and disabled the same
         // way the album box does. The switch of the field shows the box of every
-        // part after it and puts the button of the shared field into each one.
+        // part after it and puts the buttons of the shared field into each one.
+        // A box holds one row per button: the two fields of it and the icon that
+        // takes the row out of the form again.
 
         function buttonBoxes() {
             return Array.prototype.slice
@@ -2849,36 +3090,128 @@ jQuery(document).ready(function () {
                 .slice(1);
         }
 
-        function buttonFieldsOf(box) {
+        function rowsBoxOf(box) {
+            return box.querySelector('.publication-button-rows');
+        }
+
+        function buttonRowsOf(box) {
+            return Array.prototype.slice.call(rowsBoxOf(box).querySelectorAll('.publication-button-row'));
+        }
+
+        function buttonFieldsOf(row) {
             return [
-                box.querySelector('.publication-part-button-text'),
-                box.querySelector('.publication-part-button-url'),
+                row.querySelector('.publication-button-text'),
+                row.querySelector('.publication-button-url'),
             ];
         }
 
-        // The button of the first part: half a pair is as good as none, and both
-        // the preview and the switch read it the same way.
-        function sharedButton() {
+        function addButtonOf(box) {
+            return box.querySelector('.publication-button-add');
+        }
+
+        function readButtonRow(row) {
+            var fields = buttonFieldsOf(row);
+
             return {
-                text: buttonTextInput ? buttonTextInput.value.trim() : '',
-                url: buttonUrlInput ? buttonUrlInput.value.trim() : '',
+                text: fields[0].value.trim(),
+                url: fields[1].value.trim(),
             };
         }
 
-        // One button per part, the shared field taking the first of them.
+        function isEmptyButton(button) {
+            return button.text === '' && button.url === '';
+        }
+
+        // The buttons a box holds. An empty row is no button and drops out of the
+        // list; a half row stays, so that the preview shows none of it and the
+        // server refuses it the way it refused a half button before.
+        function buttonsOf(box) {
+            return buttonRowsOf(box).map(readButtonRow).filter(function (button) {
+                return !isEmptyButton(button);
+            });
+        }
+
+        // Every row of a box carries the name of that box, so the form submits the
+        // rows of one part as one list, and an id of its own, so the label of the
+        // box points at one field. The bases of the names move with the box.
+        function nameButtonRows(box) {
+            var bases = [
+                rowsBoxOf(box).getAttribute('data-text'),
+                rowsBoxOf(box).getAttribute('data-url'),
+            ];
+
+            buttonRowsOf(box).forEach(function (row, index) {
+                buttonFieldsOf(row).forEach(function (field, column) {
+                    field.name = bases[column] + '[]';
+                    field.id = bases[column] + '-' + index;
+                });
+            });
+            box.querySelector('label').setAttribute('for', bases[0] + '-0');
+        }
+
+        // A box holds one row per button and always at least one row: the blank
+        // field the form starts with is how a part goes without a button.
+        function writeButtons(box, buttons) {
+            var rowsBox = rowsBoxOf(box);
+            var rows = buttonRowsOf(box);
+            var count = Math.max(1, Math.min(buttons.length, __BUTTON_LIMIT));
+
+            while (rows.length > count) {
+                rowsBox.removeChild(rows.pop());
+            }
+            for (var added = rows.length; added < count; added++) {
+                rowsBox.appendChild(buttonRowTemplate.cloneNode(true));
+            }
+
+            buttonRowsOf(box).forEach(function (row, index) {
+                var fields = buttonFieldsOf(row);
+                var button = buttons[index] || {text: '', url: ''};
+                fields[0].value = button.text;
+                fields[1].value = button.url;
+            });
+            nameButtonRows(box);
+        }
+
+        function addButtonRow(box) {
+            if (buttonRowsOf(box).length >= __BUTTON_LIMIT) {
+                return;
+            }
+            rowsBoxOf(box).appendChild(buttonRowTemplate.cloneNode(true));
+            nameButtonRows(box);
+        }
+
+        function removeButtonRow(button) {
+            var row = button.closest('.publication-button-row');
+            var box = row.closest('.publication-button-box');
+
+            if (buttonRowsOf(box).length < 2) {
+                return;
+            }
+            rowsBoxOf(box).removeChild(row);
+            nameButtonRows(box);
+        }
+
+        // A row goes out by its own icon, and the one row of a box keeps its icon
+        // hidden; the icon of adding stops at the bound the portal gives a message.
+        // The icon goes out with its column, so that the address field of a row
+        // without an icon reaches the same right edge the icon stands at.
+        function updateButtonRows(box, enabled) {
+            var rows = buttonRowsOf(box);
+
+            rows.forEach(function (row) {
+                var remove = row.querySelector('.publication-button-remove');
+                remove.parentElement.classList.toggle('d-none', rows.length < 2);
+                remove.disabled = !enabled;
+            });
+            addButtonOf(box).disabled = !enabled || rows.length >= __BUTTON_LIMIT;
+        }
+
+        // The buttons of every part, the shared field taking the first of them.
         function readButtonGroups() {
             var boxes = buttonBoxes();
 
             return textParts().map(function (field, index) {
-                if (index === 0) {
-                    return sharedButton();
-                }
-                var parts = buttonFieldsOf(boxes[index - 1]);
-
-                return {
-                    text: parts[0].value.trim(),
-                    url: parts[1].value.trim(),
-                };
+                return buttonsOf(index === 0 ? sharedButtonBox : boxes[index - 1]);
             });
         }
 
@@ -2887,22 +3220,20 @@ jQuery(document).ready(function () {
                 && textParts().length > 1;
         }
 
-        // The boxes hold the button of the shared field while the switch is on and
+        // The boxes hold the buttons of the shared field while the switch is on and
         // stand empty while it is off: what a hidden box keeps must not reach the
-        // form or the preview. A rebuild of the parts puts the button in again.
+        // form or the preview. A rebuild of the parts puts the buttons in again.
         function syncPartButtons() {
-            var button = isEveryPartButton() ? sharedButton() : {text: '', url: ''};
+            var buttons = isEveryPartButton() ? buttonsOf(sharedButtonBox) : [];
 
             buttonBoxes().forEach(function (box) {
-                var parts = buttonFieldsOf(box);
-                parts[0].value = button.text;
-                parts[1].value = button.url;
+                writeButtons(box, buttons);
             });
         }
 
         // The switch of the parts is a field of a split publication only, and a
         // box answers for the form just while it shows: a disabled field is not
-        // submitted, so a part with no box goes to the channel with no button.
+        // submitted, so a part with no box goes to the channel with no buttons.
         function updateButtonBoxes() {
             var shown = isEveryPartButton();
 
@@ -2911,10 +3242,82 @@ jQuery(document).ready(function () {
             }
             buttonBoxes().forEach(function (box) {
                 box.classList.toggle('d-none', !shown);
-                buttonFieldsOf(box).forEach(function (field) {
-                    field.disabled = !shown;
+                buttonRowsOf(box).forEach(function (row) {
+                    buttonFieldsOf(row).forEach(function (field) {
+                        field.disabled = !shown;
+                    });
                 });
+                updateButtonRows(box, shown);
             });
+            updateButtonRows(sharedButtonBox, true);
+        }
+
+        // The addresses of the text handed to the buttons of the same part. This
+        // only ever appends: a row the person filled by hand stays where it stands,
+        // and an address a box already carries is not added a second time.
+        function fillButtonsFromText() {
+            var fields = textParts();
+            var boxes = buttonBoxes();
+            var changed = false;
+
+            if (fields.length > 1 && buttonEveryPartInput && !buttonEveryPartInput.checked) {
+                // A part submits buttons only while its own box shows, so the parts
+                // take their own fields along with the addresses of their own text.
+                buttonEveryPartInput.checked = true;
+                updateButtonBoxes();
+            }
+
+            fields.forEach(function (field, index) {
+                var box = index === 0 ? sharedButtonBox : boxes[index - 1];
+                var buttons = buttonsOf(box);
+                var known = buttons.map(function (button) {
+                    return linkAddressOf(button.url);
+                });
+                var fresh = [];
+
+                addressesInText(field.value, formattingOf(field)).forEach(function (address) {
+                    var value = linkAddressOf(address);
+
+                    if (value === null || value === '' || known.indexOf(value) !== -1) {
+                        return;
+                    }
+                    known.push(value);
+                    fresh.push({ text: buttonLabelOf(value, __BUTTON_LABEL_BYTES), url: value });
+                });
+
+                if (fresh.length === 0) {
+                    return;
+                }
+                writeButtons(box, buttons.concat(fresh));
+                changed = true;
+            });
+
+            if (!changed) {
+                return;
+            }
+            updateButtonBoxes();
+            update();
+        }
+
+        // Ten seconds of the text left alone: long enough that a pause between two
+        // sentences is not a finished draft, short enough to answer to the one it is.
+        var __LINKS_TO_BUTTONS_IDLE = 10000;
+        var linksToButtonsTimer = null;
+
+        // The fill comes after the last keystroke, not with every one of them, so
+        // each change of a text field puts the waiting off again.
+        function armLinksToButtons() {
+            if (linksToButtonsTimer) {
+                clearTimeout(linksToButtonsTimer);
+                linksToButtonsTimer = null;
+            }
+            if (!linksToButtonsInput || !linksToButtonsInput.checked) {
+                return;
+            }
+            linksToButtonsTimer = setTimeout(function () {
+                linksToButtonsTimer = null;
+                fillButtonsFromText();
+            }, __LINKS_TO_BUTTONS_IDLE);
         }
 
         // A rebuild of the parts rewrites every album, so a notice about links a
@@ -3116,14 +3519,13 @@ jQuery(document).ready(function () {
 
                 block.querySelector('.publication-part-album').classList.remove('d-none');
 
-                // The box of a part is named after its place in the list too: the
+                // The rows of a part are named after its place in the list too: the
                 // first part is served by the shared field, so the names run one
                 // behind the parts.
-                var buttonFields = block.querySelectorAll('.publication-part-button input');
-                buttonFields[0].id = 'publicationPartButtonText' + (index + 1);
-                buttonFields[1].id = 'publicationPartButtonUrl' + (index + 1);
-                block.querySelector('.publication-part-button label')
-                    .setAttribute('for', buttonFields[0].id);
+                var groupBoxes = block.querySelector('.publication-part-button .publication-button-rows');
+                groupBoxes.setAttribute('data-text', 'publicationPartButtonText' + (index - 1));
+                groupBoxes.setAttribute('data-url', 'publicationPartButtonUrl' + (index - 1));
+                nameButtonRows(block.querySelector('.publication-part-button'));
 
                 partsBox.appendChild(block);
                 field.value = value;
@@ -3158,6 +3560,7 @@ jQuery(document).ready(function () {
             updateCounters();
             updateImages();
             writeFormattingFields();
+            armLinksToButtons();
         }
 
         // Splitting runs when a text arrives from outside — a forum post, a
@@ -3211,40 +3614,45 @@ jQuery(document).ready(function () {
                 [title || '']);
         }
 
-        // The button a record was saved with: the jsonb object of its row keeps
-        // the two fields of the form apart, so a fill reads them by name.
-        function parseButton(raw) {
+        // The buttons a record was saved with: the jsonb column of its row holds
+        // the list the form writes, and a record saved before the list existed
+        // holds the one object of its single button.
+        function parseButtons(raw) {
             if (!raw) {
-                return {text: '', url: ''};
+                return [];
             }
 
             try {
                 var stored = JSON.parse(raw);
             } catch (e) {
-                return {text: '', url: ''};
+                return [];
             }
             if (!stored || typeof stored !== 'object') {
-                return {text: '', url: ''};
+                return [];
             }
 
-            return {
-                text: typeof stored.text === 'string' ? stored.text : '',
-                url: typeof stored.url === 'string' ? stored.url : '',
-            };
+            var buttons = [];
+            (Array.isArray(stored) ? stored : [stored]).forEach(function (item) {
+                if (!item || typeof item !== 'object') {
+                    return;
+                }
+                var button = {
+                    text: typeof item.text === 'string' ? item.text : '',
+                    url: typeof item.url === 'string' ? item.url : '',
+                };
+                if (!isEmptyButton(button)) {
+                    buttons.push(button);
+                }
+            });
+
+            return buttons;
         }
 
-        // The record is one part, and its button is the shared field of the form.
+        // The record is one part, and its buttons are the shared field of the form.
         // A long text fills several parts from it, so the boxes of those parts
-        // come back to the button the record really holds.
-        function fillButton(raw) {
-            var button = parseButton(raw);
-
-            if (buttonTextInput) {
-                buttonTextInput.value = button.text;
-            }
-            if (buttonUrlInput) {
-                buttonUrlInput.value = button.url;
-            }
+        // come back to the buttons the record really holds.
+        function fillButtons(raw) {
+            writeButtons(sharedButtonBox, parseButtons(raw));
             syncPartButtons();
             updateButtonBoxes();
             update();
@@ -4166,18 +4574,27 @@ jQuery(document).ready(function () {
             node.appendChild(fragment);
         }
 
-        // The keyboard of a message is one button across its whole width. Half a
-        // pair is no button: the form refuses it, and the preview shows none.
-        function renderPreviewButton(button) {
-            if (!button || button.text === '' || button.url === '') {
+        // The keyboard of a message: every button takes a row of its own across its
+        // whole width, in the order the form holds them. Half a pair is no button:
+        // the form refuses it, and the preview shows none.
+        function renderPreviewKeyboard(buttons) {
+            var whole = (buttons || []).filter(function (button) {
+                return button.text !== '' && button.url !== '';
+            });
+
+            if (whole.length === 0) {
                 return null;
             }
 
-            var node = document.createElement('span');
-            node.className = 'telegram-preview-button';
-            node.textContent = button.text;
+            var keyboard = document.createElement('div');
+            whole.forEach(function (button) {
+                var node = document.createElement('span');
+                node.className = 'telegram-preview-button';
+                node.textContent = button.text;
+                keyboard.appendChild(node);
+            });
 
-            return node;
+            return keyboard;
         }
 
         var update = function () {
@@ -4201,7 +4618,7 @@ jQuery(document).ready(function () {
                         text: message.text,
                         pictures: albums[index] || [],
                         entities: message.entities,
-                        button: buttons[index],
+                        buttons: buttons[index] || [],
                     });
                 }
             });
@@ -4212,7 +4629,7 @@ jQuery(document).ready(function () {
                     text: placeholder,
                     pictures: albums[0] || [],
                     entities: [],
-                    button: buttons[0],
+                    buttons: buttons[0] || [],
                 });
             }
 
@@ -4235,7 +4652,7 @@ jQuery(document).ready(function () {
                 body.className = 'publication-preview-part';
                 renderFormattedText(body, one.text, one.entities);
                 part.appendChild(body);
-                var keyboard = renderPreviewButton(one.button);
+                var keyboard = renderPreviewKeyboard(one.buttons);
                 if (keyboard) {
                     part.appendChild(keyboard);
                 }
@@ -4261,6 +4678,7 @@ jQuery(document).ready(function () {
             writeFormattingFields();
             updateCounters();
             update();
+            armLinksToButtons();
             if (textParts().length === 1) {
                 splitIfNeeded();
             }
@@ -4310,16 +4728,48 @@ jQuery(document).ready(function () {
         if (distributeImagesInput) {
             distributeImagesInput.addEventListener('change', distributeImages);
         }
-        // The preview answers to the button of the first part as it does to its
-        // text: the shared field is read on every keystroke.
-        if (buttonTextInput) {
-            buttonTextInput.addEventListener('input', update);
+        // The switch of the addresses: turning it on starts the waiting over the
+        // text as it stands, turning it off stops the fill that had not come yet.
+        if (linksToButtonsInput) {
+            linksToButtonsInput.addEventListener('change', armLinksToButtons);
         }
-        if (buttonUrlInput) {
-            buttonUrlInput.addEventListener('input', update);
+        // The preview answers to the buttons of the first part as it does to its
+        // text: a row of the shared field is read on every keystroke, and the parts
+        // that were handed these buttons follow it there.
+        sharedButtonBox.addEventListener('input', function (event) {
+            if (event.target.closest('.publication-button-row')) {
+                syncPartButtons();
+                update();
+            }
+        });
+        // An icon of a box of the parts adds a row to that box or takes the row its
+        // own icon stands in out of the form, the cloned boxes included.
+        function takeButtonClick(box, event) {
+            if (event.target.closest('.publication-button-add')) {
+                addButtonRow(box);
+            } else if (event.target.closest('.publication-button-remove')) {
+                removeButtonRow(event.target.closest('.publication-button-remove'));
+            } else {
+                return;
+            }
+            if (box === sharedButtonBox) {
+                syncPartButtons();
+            }
+            updateButtonBoxes();
+            update();
         }
-        // The switch hands the button of the shared field out to the parts, and
-        // takes it back from them when it goes off.
+
+        sharedButtonBox.addEventListener('click', function (event) {
+            takeButtonClick(sharedButtonBox, event);
+        });
+        partsBox.addEventListener('click', function (event) {
+            var box = event.target.closest('.publication-part-button');
+            if (box) {
+                takeButtonClick(box, event);
+            }
+        });
+        // The switch hands the buttons of the shared field out to the parts, and
+        // takes them back from the parts when it goes off.
         if (buttonEveryPartInput) {
             buttonEveryPartInput.addEventListener('change', function () {
                 syncPartButtons();
@@ -4570,7 +5020,7 @@ jQuery(document).ready(function () {
                 log.getAttribute('data-title') || ''
             );
             fillImages(log.getAttribute('data-image-urls') || '');
-            fillButton(log.getAttribute('data-button'));
+            fillButtons(log.getAttribute('data-button'));
             scrollToMiddle(log);
 
             if (sourceTypeInput && sourceIdInput) {
@@ -4634,9 +5084,9 @@ jQuery(document).ready(function () {
             if (buttonEveryPartInput) {
                 buttonEveryPartInput.checked = false;
             }
-            // The button of the record comes out of the form the same way the text
+            // The buttons of the record come out of the form the same way the text
             // does: the shared field first, the boxes of the parts behind it.
-            fillButton('');
+            fillButtons('');
             setTextParts([''], [''], [], undefined, ['']);
             if (numberPartsInput) {
                 numberPartsInput.checked = false;
@@ -4644,6 +5094,12 @@ jQuery(document).ready(function () {
             if (distributeImagesInput) {
                 distributeImagesInput.checked = false;
             }
+            // The record just saved has its addresses in the rows already; the next
+            // one starts from a blank text, so the waiting for them starts over.
+            if (linksToButtonsInput) {
+                linksToButtonsInput.checked = false;
+            }
+            armLinksToButtons();
             writeImages(0, '');
             if (sourceTypeInput) sourceTypeInput.value = 'new';
             if (sourceIdInput) sourceIdInput.value = '';
@@ -4931,23 +5387,32 @@ jQuery(document).ready(function () {
             });
         }
 
-        var imagesCountSlider = document.getElementById('forumFilterImagesCount');
-        var imagesCountValue = document.getElementById('forumFilterImagesCountValue');
-        if (imagesCountSlider && imagesCountValue) {
-            function updateImagesCountDisplay(value) {
-                imagesCountValue.textContent = value == 0 ? '∞' : value;
-            }
-            updateImagesCountDisplay(imagesCountSlider.value);
-            // Apply filters on change (when user releases the slider)
-            imagesCountSlider.addEventListener('change', function () {
-                updateImagesCountDisplay(this.value);
-                applyFiltersDirect();
+        // Both count sliders of the card behave the same: the label follows the
+        // thumb while dragging, ∞ says the filter is off, and the lists refresh
+        // when the reader releases the slider.
+        var countSliders = [];
+        [['forumFilterImagesCount', 'forumFilterImagesCountValue'],
+            ['forumFilterLinksCount', 'forumFilterLinksCountValue']].forEach(function (pair) {
+                var slider = document.getElementById(pair[0]);
+                var label = document.getElementById(pair[1]);
+                if (!slider || !label) {
+                    return;
+                }
+                var showCount = function (value) {
+                    label.textContent = value == 0 ? '∞' : value;
+                };
+                showCount(slider.value);
+                // Apply filters on change (when user releases the slider)
+                slider.addEventListener('change', function () {
+                    showCount(this.value);
+                    applyFiltersDirect();
+                });
+                // The label follows the thumb while dragging; the lists refresh on release
+                slider.addEventListener('input', function () {
+                    showCount(this.value);
+                });
+                countSliders.push({ slider: slider, label: label });
             });
-            // The label follows the thumb while dragging; the lists refresh on release
-            imagesCountSlider.addEventListener('input', function () {
-                updateImagesCountDisplay(this.value);
-            });
-        }
 
         var clearFiltersBtn = document.getElementById('forumFilterClearBtn');
         if (clearFiltersBtn) {
@@ -4955,10 +5420,14 @@ jQuery(document).ready(function () {
                 event.preventDefault();
                 var imagesSwitch = document.getElementById('forumFilterWithImages');
                 var postsSwitch = document.getElementById('forumFilterWithPosts');
+                var linksSwitch = document.getElementById('forumFilterWithLinks');
                 if (imagesSwitch) imagesSwitch.checked = false;
                 if (postsSwitch) postsSwitch.checked = false;
-                if (imagesCountSlider) imagesCountSlider.value = 0;
-                if (imagesCountValue) imagesCountValue.textContent = '∞';
+                if (linksSwitch) linksSwitch.checked = false;
+                countSliders.forEach(function (bound) {
+                    bound.slider.value = 0;
+                    bound.label.textContent = '∞';
+                });
                 updateFilterCount(0);
                 postForBlocks(clearFiltersBtn.getAttribute('href'), {});
             });

@@ -6,7 +6,7 @@ namespace app\tests\Unit\shared\Telegram\Service;
 
 use app\shared\Telegram\Contract\PublishedDescriptionRepositoryInterface;
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
 use app\shared\Telegram\Service\ChannelService;
@@ -34,7 +34,7 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoMessage')
-            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст', new MessageEntities(), new LinkButton())
+            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст', new MessageEntities(), new LinkButtons())
             ->willReturn(new PostResult(11, 123));
 
         $this->_client->expects($this->never())->method('sendPhotoGroupMessage');
@@ -54,7 +54,7 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoGroupMessage')
-            ->with(self::CHANNEL_ID, $urls, 'Текст', new MessageEntities(), new LinkButton())
+            ->with(self::CHANNEL_ID, $urls, 'Текст', new MessageEntities(), new LinkButtons())
             ->willReturn(new PostResult(12, 123));
 
         $this->_client->expects($this->never())->method('sendPhotoMessage');
@@ -81,9 +81,12 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->assertSame(110, $this->_service->publishPhotos('Текст', $urls));
     }
 
-    public function testButtonTravelsWithTheAlbumCarryingTheCaption(): void
+    public function testKeyboardTravelsWithTheAlbumCarryingTheCaption(): void
     {
-        $button = new LinkButton('Пройти опрос', 'https://example.com/poll');
+        $buttons = LinkButtons::fromPairs(
+            ['Пройти опрос', 'Открыть'],
+            ['https://example.com/poll', 'https://example.com/open'],
+        );
         $urls = [];
         for ($i = 1; $i <= 12; $i++) {
             $urls[] = "https://example.com/{$i}.jpg";
@@ -99,19 +102,25 @@ final class ChannelServicePublishPhotosTest extends Unit
                     array $photoUrls,
                     string $caption,
                     MessageEntities $entities,
-                    LinkButton $button,
+                    LinkButtons $buttons,
                 ) use (&$sent): PostResult {
-                    $sent[] = $button->toArray();
+                    $sent[] = $buttons->toArray();
 
                     return new PostResult(100 + count($photoUrls), 123);
                 },
             );
 
-        $this->assertSame(110, $this->_service->publishPhotos('Текст', $urls, new MessageEntities(), $button));
+        $this->assertSame(110, $this->_service->publishPhotos('Текст', $urls, new MessageEntities(), $buttons));
         $this->assertSame(
-            [['text' => 'Пройти опрос', 'url' => 'https://example.com/poll'], ['text' => '', 'url' => '']],
+            [
+                [
+                    ['text' => 'Пройти опрос', 'url' => 'https://example.com/poll'],
+                    ['text' => 'Открыть', 'url' => 'https://example.com/open'],
+                ],
+                [],
+            ],
             $sent,
-            'Only the first album carries the caption, so only that one gets the button.',
+            'Only the first album carries the caption, so only that one gets the keyboard.',
         );
     }
 
@@ -128,7 +137,7 @@ final class ChannelServicePublishPhotosTest extends Unit
                 'https://example.com/a.jpg',
                 implode("\n", array_fill(0, 10, $line)),
                 new MessageEntities(),
-                new LinkButton(),
+                new LinkButtons(),
             )
             ->willReturn(new PostResult(13, 123));
         $this->_client
@@ -138,7 +147,7 @@ final class ChannelServicePublishPhotosTest extends Unit
                 self::CHANNEL_ID,
                 implode("\n", array_fill(0, 2, $line)),
                 new MessageEntities(),
-                new LinkButton(),
+                new LinkButtons(),
             )
             ->willReturn(new PostResult(14, 123));
 
@@ -167,7 +176,7 @@ final class ChannelServicePublishPhotosTest extends Unit
                     ['type' => 'bold', 'offset' => 50, 'length' => 100],
                     ['type' => 'code', 'offset' => 1005, 'length' => 4],
                 ]),
-                new LinkButton(),
+                new LinkButtons(),
             )
             ->willReturn(new PostResult(13, 123));
         $this->_client
@@ -180,7 +189,7 @@ final class ChannelServicePublishPhotosTest extends Unit
                     ['type' => 'code', 'offset' => 0, 'length' => 15],
                     ['type' => 'italic', 'offset' => 5, 'length' => 5],
                 ]),
-                new LinkButton(),
+                new LinkButtons(),
             )
             ->willReturn(new PostResult(14, 123));
 
@@ -199,13 +208,13 @@ final class ChannelServicePublishPhotosTest extends Unit
                 'https://example.com/a.jpg',
                 str_repeat('а', 1024),
                 new MessageEntities(),
-                new LinkButton(),
+                new LinkButtons(),
             )
             ->willReturn(new PostResult(13, 123));
         $this->_client
             ->expects($this->once())
             ->method('sendTextMessage')
-            ->with(self::CHANNEL_ID, str_repeat('а', 976), new MessageEntities(), new LinkButton())
+            ->with(self::CHANNEL_ID, str_repeat('а', 976), new MessageEntities(), new LinkButtons())
             ->willReturn(new PostResult(14, 123));
 
         $this->assertSame(13, $this->_service->publishPhotos($text, ['https://example.com/a.jpg']));
@@ -230,7 +239,7 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->_client
             ->expects($this->once())
             ->method('sendPhotoMessage')
-            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст', new MessageEntities(), new LinkButton())
+            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', 'Текст', new MessageEntities(), new LinkButtons())
             ->willReturn(new PostResult(15, 123));
 
         $this->assertSame(

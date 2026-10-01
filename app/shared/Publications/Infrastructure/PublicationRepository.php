@@ -6,7 +6,7 @@ namespace app\shared\Publications\Infrastructure;
 
 use app\shared\Publications\Contract\PublicationRepositoryInterface;
 use app\shared\Publications\Dto\PublicationData;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use InvalidArgumentException;
 use PDO;
@@ -59,14 +59,14 @@ final class PublicationRepository implements PublicationRepositoryInterface
         array $imageUrls,
         string $now,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
     ): int {
         return $this->insertReturningId('{{%publications_draft}}', [
             'text' => $text,
             'image_urls' => $imageUrls,
             'formatting' => $formatting->toArray(),
-            'button' => $button->toArray(),
+            'button' => $buttons->toArray(),
             'title' => $title,
             'created_at' => $now,
             'updated_at' => $now,
@@ -79,14 +79,14 @@ final class PublicationRepository implements PublicationRepositoryInterface
         string $publishedAt,
         string $now,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
     ): int {
         return $this->insertReturningId('{{%publications_post}}', [
             'text' => $text,
             'image_urls' => $imageUrls,
             'formatting' => $formatting->toArray(),
-            'button' => $button->toArray(),
+            'button' => $buttons->toArray(),
             'title' => $title,
             'published_at' => $publishedAt,
             'created_at' => $now,
@@ -95,7 +95,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     }
 
     /**
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, title: string, publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
      */
     public function createPosts(array $parts, string $now): int
     {
@@ -103,7 +103,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     }
 
     /**
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, title: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string}> $parts
      */
     public function createDrafts(array $parts, string $now): int
     {
@@ -158,7 +158,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         string $publishedAt,
         string $now,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
     ): void {
         $this->db
@@ -167,7 +167,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 'text' => $text,
                 'image_urls' => $imageUrls,
                 'formatting' => $formatting->toArray(),
-                'button' => $button->toArray(),
+                'button' => $buttons->toArray(),
                 'title' => $title,
                 'published_at' => $publishedAt,
                 'updated_at' => $now,
@@ -181,7 +181,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         array $imageUrls,
         string $now,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
     ): void {
         $this->db
@@ -190,7 +190,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 'text' => $text,
                 'image_urls' => $imageUrls,
                 'formatting' => $formatting->toArray(),
-                'button' => $button->toArray(),
+                'button' => $buttons->toArray(),
                 'title' => $title,
                 'updated_at' => $now,
             ], ['id' => $id])
@@ -234,7 +234,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'text' => $post->text,
             'image_urls' => $post->imageUrls,
             'formatting' => $post->formatting->toArray(),
-            'button' => $post->button->toArray(),
+            'button' => $post->buttons->toArray(),
             'title' => $post->title,
             'published_at' => $post->publishedAt ?? $now,
             'created_at' => $post->createdAt,
@@ -248,7 +248,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'text' => $draft->text,
             'image_urls' => $draft->imageUrls,
             'formatting' => $draft->formatting->toArray(),
-            'button' => $draft->button->toArray(),
+            'button' => $draft->buttons->toArray(),
             'title' => $draft->title,
             'created_at' => $draft->createdAt,
             'updated_at' => $now,
@@ -264,7 +264,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 'text' => $post->text,
                 'image_urls' => $post->imageUrls,
                 'formatting' => $post->formatting->toArray(),
-                'button' => $post->button->toArray(),
+                'button' => $post->buttons->toArray(),
                 'title' => $post->title,
                 'published_at' => $post->publishedAt ?? $now,
                 'created_at' => $post->createdAt,
@@ -331,7 +331,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'text' => $record->text,
             'image_urls' => $record->imageUrls,
             'formatting' => $record->formatting->toArray(),
-            'button' => $record->button->toArray(),
+            'button' => $record->buttons->toArray(),
             'title' => $record->title,
             'published_at' => $record->publishedAt,
             'created_at' => $record->createdAt,
@@ -371,7 +371,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
      * transaction, so a failure halfway through the list gives back an
      * empty table rather than a publication cut in pieces.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, button: LinkButton, title: string, publishedAt?: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt?: string}> $parts
      */
     private function insertParts(string $table, array $parts, string $now, bool $scheduled): int
     {
@@ -383,7 +383,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                     'text' => $part['text'],
                     'image_urls' => $part['imageUrls'],
                     'formatting' => $part['formatting']->toArray(),
-                    'button' => $part['button']->toArray(),
+                    'button' => $part['buttons']->toArray(),
                     'title' => $part['title'],
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -455,7 +455,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 ? ($row['deleted_at'] === null ? null : (string)$row['deleted_at'])
                 : null,
             MessageEntities::fromStored($row['formatting']),
-            LinkButton::fromStored($row['button']),
+            LinkButtons::fromStored($row['button']),
             (string)$row['title'],
         );
     }
@@ -484,7 +484,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                     ? ($row['deleted_at'] === null ? null : (string)$row['deleted_at'])
                     : null,
                 MessageEntities::fromStored($row['formatting']),
-                LinkButton::fromStored($row['button']),
+                LinkButtons::fromStored($row['button']),
                 (string)$row['title'],
             ),
             $rows,

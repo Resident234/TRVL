@@ -7,7 +7,7 @@ namespace app\shared\Telegram\Service;
 use app\shared\Telegram\Contract\PublishedDescriptionRepositoryInterface;
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
 use app\shared\Telegram\Dto\ChannelInfo;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PublishedDescriptionData;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
@@ -95,7 +95,7 @@ final class ChannelService
     public function publishText(
         string $text,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): int {
         if (mb_strlen($text) === 0 || mb_strlen($text) > self::TEXT_MAX_LENGTH) {
             throw new InvalidArgumentException(
@@ -103,7 +103,7 @@ final class ChannelService
             );
         }
 
-        return $this->client()->sendTextMessage($this->channelId, $text, $entities, $button)->messageId;
+        return $this->client()->sendTextMessage($this->channelId, $text, $entities, $buttons)->messageId;
     }
 
     /**
@@ -114,7 +114,7 @@ final class ChannelService
         string $photoPath,
         string $caption,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): int {
         if (!is_file($photoPath)) {
             throw new InvalidArgumentException(sprintf('Файл изображения не найден: %s', $photoPath));
@@ -127,7 +127,7 @@ final class ChannelService
         }
 
         return $this->client()
-            ->sendPhotoMessage($this->channelId, $photoPath, $caption, $entities, $button)
+            ->sendPhotoMessage($this->channelId, $photoPath, $caption, $entities, $buttons)
             ->messageId;
     }
 
@@ -141,8 +141,8 @@ final class ChannelService
      * continuation message, never as a repeat of the whole text. The
      * formatting follows the same cut: entities are clipped to whatever
      * survived in the caption and re-based on the continuation. The link
-     * button goes under the message that carries the caption, so a part
-     * gets one button whatever the album is made of. The
+     * buttons go under the message that carries the caption, so a part
+     * gets its whole keyboard whatever the album is made of. The
      * message id of the first photo message is returned.
      *
      * @param string[] $photoUrls
@@ -153,7 +153,7 @@ final class ChannelService
         string $text,
         array $photoUrls,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): int {
         if (mb_strlen($text) === 0) {
             throw new InvalidArgumentException('Текст поста не может быть пустым.');
@@ -196,18 +196,18 @@ final class ChannelService
         $firstMessageId = 0;
 
         foreach (array_chunk($photoUrls, self::ALBUM_MAX_PHOTOS) as $chunk) {
-            // The button belongs to the message the caption went into, which is
-            // the first photo of the first album: a publication gets one button,
-            // not one per ten pictures.
-            $chunkButton = $firstMessageId === 0 ? $button : LinkButton::empty();
+            // The keyboard belongs to the message the caption went into, which is
+            // the first photo of the first album: a publication gets its buttons
+            // once, not once per ten pictures.
+            $chunkButtons = $firstMessageId === 0 ? $buttons : LinkButtons::empty();
 
             if (count($chunk) === 1) {
                 $messageId = $this->client()
-                    ->sendPhotoMessage($this->channelId, $chunk[0], $caption, $captionEntities, $chunkButton)
+                    ->sendPhotoMessage($this->channelId, $chunk[0], $caption, $captionEntities, $chunkButtons)
                     ->messageId;
             } else {
                 $messageId = $this->client()
-                    ->sendPhotoGroupMessage($this->channelId, $chunk, $caption, $captionEntities, $chunkButton)
+                    ->sendPhotoGroupMessage($this->channelId, $chunk, $caption, $captionEntities, $chunkButtons)
                     ->messageId;
             }
 
@@ -221,7 +221,7 @@ final class ChannelService
                 $this->channelId,
                 $continuation,
                 $continuationEntities,
-                LinkButton::empty(),
+                LinkButtons::empty(),
             );
         }
 
@@ -254,7 +254,7 @@ final class ChannelService
         int $messageId,
         string $text,
         MessageEntities $entities = new MessageEntities(),
-        LinkButton $button = new LinkButton(),
+        LinkButtons $buttons = new LinkButtons(),
     ): void {
         if (mb_strlen($text) === 0 || mb_strlen($text) > self::TEXT_MAX_LENGTH) {
             throw new InvalidArgumentException(
@@ -262,7 +262,7 @@ final class ChannelService
             );
         }
 
-        $this->client()->editChannelMessageText($this->channelId, $messageId, $text, $entities, $button);
+        $this->client()->editChannelMessageText($this->channelId, $messageId, $text, $entities, $buttons);
     }
 
     /**

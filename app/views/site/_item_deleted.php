@@ -15,7 +15,7 @@ $wasPublished = $record->telegramId !== null
 ?>
 <div class="activity-log" data-text="<?= Html::encode($record->text) ?>"
      data-formatting="<?= Html::encode($record->formatting->toJson()) ?>"
-     data-button="<?= Html::encode($record->button->toJson()) ?>"
+     data-button="<?= Html::encode($record->buttons->toJson()) ?>"
      data-title="<?= Html::encode($record->title) ?>"
      data-source-type="deleted" data-source-id="<?= $record->id ?>"
      data-published-at-utc="<?= Html::encode($record->publishedAt ?? '') ?>"

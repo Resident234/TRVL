@@ -212,6 +212,16 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
         return array_map(intval(...), $rows);
     }
 
+    /**
+     * How many addresses the text of a record carries. The same notion the
+     * page filter reads the stored number by: a bare http(s) address of the
+     * text, so an anchor hidden under a word is not one.
+     */
+    private function linksCountOf(string $text): int
+    {
+        return (int)preg_match_all('~https?://~', $text);
+    }
+
     private function savePost(PostData $post, string $now): void
     {
         $this->db->createCommand()->upsert(
@@ -227,6 +237,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 'content_text' => $post->contentText,
                 'source_url' => $post->sourceUrl,
                 'image_urls' => new JsonExpression($post->imageUrls),
+                'links_count' => $this->linksCountOf($post->contentText),
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -240,6 +251,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 'content_text' => $post->contentText,
                 'source_url' => $post->sourceUrl,
                 'image_urls' => new JsonExpression($post->imageUrls),
+                'links_count' => $this->linksCountOf($post->contentText),
                 'updated_at' => $now,
             ]
         )->execute();
@@ -257,6 +269,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 'content_html' => $topic->contentHtml,
                 'content_text' => $topic->contentText,
                 'image_urls' => new JsonExpression($topic->imageUrls),
+                'links_count' => $this->linksCountOf($topic->contentText),
                 'author_id' => $topic->author?->id,
                 'login_required' => $topic->loginRequired,
                 'created_at' => $now,
@@ -269,6 +282,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 'content_html' => $topic->contentHtml,
                 'content_text' => $topic->contentText,
                 'image_urls' => new JsonExpression($topic->imageUrls),
+                'links_count' => $this->linksCountOf($topic->contentText),
                 'author_id' => $topic->author?->id,
                 'login_required' => $topic->loginRequired,
                 'updated_at' => $now,
@@ -391,6 +405,16 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      *
      * With $imagesCount > 0 only topics/posts having exactly $imagesCount images are returned.
      *
+     * With $withLinksOnly = true only topics whose own text carries an address
+     * or that have at least one post whose text does are returned; their post
+     * lists are also reduced to the posts that carry an address. A link is an
+     * address counted by links_count, which the database keeps over
+     * content_text: an address a post only links to with its own words is not
+     * part of its text and is not counted.
+     *
+     * With $linksCount > 0 only topics/posts whose text carries exactly
+     * $linksCount addresses are returned.
+     *
      * $oldestTopicFirst and $oldestPostFirst read their own date field from
      * the other end. Both orders keep a record without a date at the very
      * end and break ties on the row id, and because the limit of a topic's
@@ -399,7 +423,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      *
      * @return array<int, array{topic: TopicData, posts: PostData[], postsTotal: int}>
      */
-    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0): array
+    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0): array
     {
         $topicOrder = $oldestTopicFirst ? 'ASC' : 'DESC';
         $postOrder = $oldestPostFirst ? 'ASC' : 'DESC';
@@ -412,7 +436,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' FROM {{%topic}} t'
                 . ' LEFT JOIN {{%member}} m ON m.id = t.author_id'
                 . ' LEFT JOIN {{%publications_topic_map}} ptm ON ptm.topic_id = t.id'
-                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount)
+                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount)
                 . ' ORDER BY t.published_at ' . $topicOrder . ' NULLS LAST, t.id ' . $topicOrder
                 . ' LIMIT :limit OFFSET :offset'
             )
@@ -439,6 +463,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' WHERE bp.topic_id IN (' . implode(',', $topicIds) . ')'
                 . $this->unprocessedPostFilterSql($withPostsOnly)
                 . $this->postImageFilterSql($withImagesOnly, $imagesCount)
+                . $this->postLinkFilterSql($withLinksOnly, $linksCount)
                 . ' ) p'
                 . ' LEFT JOIN {{%member}} m ON m.id = p.author_id'
                 . ' LEFT JOIN {{%publications_post_map}} ppm ON ppm.post_id = p.id'
@@ -474,13 +499,13 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * very selection latestTopicsWithPosts pages through, counted without its
      * limit, so the scroll knows when the list has run out.
      */
-    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0): int
+    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0): int
     {
         return (int)$this->db
             ->createCommand(
                 'SELECT COUNT(*) FROM {{%topic}} t'
                 . ' LEFT JOIN {{%publications_topic_map}} ptm ON ptm.topic_id = t.id'
-                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount)
+                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount)
             )
             ->queryScalar();
     }
@@ -494,7 +519,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      *
      * @return array{posts: PostData[], total: int}
      */
-    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $oldestPostFirst = false): array
+    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestPostFirst = false): array
     {
         $postOrder = $oldestPostFirst ? 'ASC' : 'DESC';
         $from = max(0, $offset);
@@ -512,6 +537,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' WHERE bp.topic_id = :topicId'
                 . $this->unprocessedPostFilterSql($withPostsOnly)
                 . $this->postImageFilterSql($withImagesOnly, $imagesCount)
+                . $this->postLinkFilterSql($withLinksOnly, $linksCount)
                 . ' ) p'
                 . ' LEFT JOIN {{%member}} m ON m.id = p.author_id'
                 . ' LEFT JOIN {{%publications_post_map}} ppm ON ppm.post_id = p.id'
@@ -574,7 +600,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * one of its posts still is, plus the filters of the block header. Shared
      * by the list of topics and by the count that pages it.
      */
-    private function topicFilterSql(bool $withImagesOnly, bool $withPostsOnly, int $imagesCount): string
+    private function topicFilterSql(bool $withImagesOnly, bool $withPostsOnly, int $imagesCount, bool $withLinksOnly, int $linksCount): string
     {
         return ($withImagesOnly
             ? ' AND (t.image_urls != \'[]\'::jsonb OR EXISTS (SELECT 1 FROM {{%post}} fp WHERE fp.topic_id = t.id AND fp.image_urls != \'[]\'::jsonb))'
@@ -585,11 +611,18 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
             . ($imagesCount > 0
                 ? ' AND COALESCE(jsonb_array_length(t.image_urls), 0) = ' . $imagesCount
                 : '')
+            . ($withLinksOnly
+                ? ' AND (t.links_count > 0 OR EXISTS (SELECT 1 FROM {{%post}} lp WHERE lp.topic_id = t.id AND lp.links_count > 0))'
+                : '')
+            . ($linksCount > 0
+                ? ' AND t.links_count = ' . $linksCount
+                : '')
             . ' AND (ptm.topic_id IS NULL OR EXISTS ('
             . 'SELECT 1 FROM {{%post}} fp'
             . ' WHERE fp.topic_id = t.id'
             . ' AND NOT EXISTS (SELECT 1 FROM {{%publications_post_map}} fpm WHERE fpm.post_id = fp.id)'
             . ($withImagesOnly ? ' AND fp.image_urls != \'[]\'::jsonb' : '')
+            . ($withLinksOnly ? ' AND fp.links_count > 0' : '')
             . '))';
     }
 
@@ -614,6 +647,17 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
     {
         return ($withImagesOnly ? ' AND bp.image_urls != \'[]\'::jsonb' : '')
             . ($imagesCount > 0 ? ' AND jsonb_array_length(bp.image_urls) = ' . $imagesCount : '');
+    }
+
+    /**
+     * The link filters of the header. They count the addresses of a post's own
+     * text, the same links_count the topic rule of topicFilterSql() reads, so
+     * a discussion that reached the page is made of posts that answer to it.
+     */
+    private function postLinkFilterSql(bool $withLinksOnly, int $linksCount): string
+    {
+        return ($withLinksOnly ? ' AND bp.links_count > 0' : '')
+            . ($linksCount > 0 ? ' AND bp.links_count = ' . $linksCount : '');
     }
 
     /**

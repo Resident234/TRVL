@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace app\shared\Publications\Dto;
 
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 
 /**
@@ -14,7 +14,7 @@ use app\shared\Telegram\Dto\MessageEntities;
  * publications_deleted rows: null means the record is still awaiting
  * removal from the channel, a value means the channel message is
  * already gone. formatting holds the inline highlighting of the text,
- * which the text column keeps plain, button the link button drawn
+ * which the text column keeps plain, buttons the link buttons drawn
  * under the message, and title the heading of the part — the three of
  * them describe the same text, which is what the form holds, while the
  * channel gets the message this record composes out of them.
@@ -45,7 +45,7 @@ final readonly class PublicationData
         public string $updatedAt,
         public ?string $deletedAt = null,
         public MessageEntities $formatting = new MessageEntities(),
-        public LinkButton $button = new LinkButton(),
+        public LinkButtons $buttons = new LinkButtons(),
         public string $title = '',
     ) {
     }

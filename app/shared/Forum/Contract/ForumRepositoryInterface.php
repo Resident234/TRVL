@@ -78,7 +78,11 @@ interface ForumRepositoryInterface extends ForumPublicationMapGatewayInterface
      * topic has is returned along with it, processed ones included;
      * otherwise the post lists keep only the unprocessed ones. With
      * $imagesCount > 0 only topics/posts having exactly $imagesCount
-     * images are returned.
+     * images are returned. A link is an address of the record's own text:
+     * with $withLinksOnly = true only topics that carry one themselves or
+     * have a post that does are returned, and their post lists keep those
+     * posts; with $linksCount > 0 only topics/posts whose text carries
+     * exactly $linksCount addresses are returned.
      *
      * $oldestTopicFirst and $oldestPostFirst read their own field from
      * the other end: the limit then cuts the oldest topics / the oldest
@@ -86,13 +90,13 @@ interface ForumRepositoryInterface extends ForumPublicationMapGatewayInterface
      *
      * @return array<int, array{topic: \app\shared\Forum\Dto\TopicData, posts: \app\shared\Forum\Dto\PostData[], postsTotal: int}>
      */
-    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0): array;
+    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0): array;
 
     /**
      * How many topics the forum block of these filters is made of, which is
      * how far its scroll may keep loading.
      */
-    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0): int;
+    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0): int;
 
     /**
      * The next page of one discussion: $limit posts read from $offset in the
@@ -103,7 +107,7 @@ interface ForumRepositoryInterface extends ForumPublicationMapGatewayInterface
      *
      * @return array{posts: \app\shared\Forum\Dto\PostData[], total: int}
      */
-    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $oldestPostFirst = false): array;
+    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestPostFirst = false): array;
 
     /**
      * Every post the table holds for one topic, in the order the block shows

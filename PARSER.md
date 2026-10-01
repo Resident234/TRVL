@@ -46,11 +46,12 @@
 | `content_html` | text | Полный HTML содержимого |
 | `content_text` | text | Текстовая версия содержимого |
 | `image_urls` | jsonb | Массив ссылок на изображения |
+| `links_count` | int, default 0 | Сколько адресов в тексте — считает и пишет парсер |
 | `author_id` | FK → member.id | Автор темы (`SET NULL` при удалении) |
 | `login_required` | bool, default false | Тема в разделе только для авторизованных |
 | `created_at` / `updated_at` | datetime | Метки времени |
 
-Миграция: `m260904_000002_add_topic_login_required` добавляет столбец `login_required`.
+Миграции: `m260904_000002_add_topic_login_required` добавляет столбец `login_required`, `m260930_000001_add_links_count_to_forum_tables` — `links_count` (одновременно у `topic` и `post`). Миграция только заводит столбец и считает им тот текст, что уже лежит в таблице; дальше число пишет парсер на каждой записи строки (`ForumRepository::saveTopic()` / `savePost()`), база над ним ничего не вычисляет.
 
 **Login-required темы**: страницы с текстом «вы должны быть авторизованы» тоже сохраняются в `topic` — только `id` и `source_url`, все остальные поля пустые (`title` = `''`), `login_required = true`. Если тема позже становится доступной, обычный upsert обновляет запись полными данными и сбрасывает флаг. Заглушки не создают записей в `member`.
 
@@ -92,10 +93,14 @@
 | `posted_at` | datetime, NULL | Дата поста из `p.author` |
 | `content_html` | text | HTML содержимого `div.content` |
 | `content_text` | text | Текстовая версия содержимого |
+| `image_urls` | jsonb | Массив ссылок на изображения (как у `topic`) |
+| `links_count` | int, default 0 | Сколько адресов в тексте — считает и пишет парсер |
 | `source_url` | string(1000) | `https://forum.awd.ru/viewtopic.php?p=11861699#p11861699` |
 | `created_at` / `updated_at` | datetime | Метки времени |
 
 Индексы: `idx_post_topic_id`, `idx_post_author_id`. FK `fk_post_topic` → `topic.id`, `fk_post_author` → `member.id`.
+
+Столбцы добавлены миграциями после создания таблицы: `image_urls` — `m260913_000014_add_image_urls_to_post`, `links_count` — `m260930_000001_add_links_count_to_forum_tables`.
 
 ### parser_config для постов
 
@@ -309,6 +314,8 @@ MEMBER_PARSER_CRON_SCHEDULE=*/10 * * * *           # member-parser/scan (про�
 5. Существующие записи обновляются; `save()` возвращает признак новой записи для статистики
 6. Ошибка одной ссылки (404, таймаут, битый HTML) не останавливает проход — логируется и учитывается в счётчиках; login-required — не ошибка: сохраняется заглушка и инкрементируется `login_required` (запись также идёт в `saved`/`updated`)
 7. По завершении обновляет `parser_config.last_run_at` и снимает блокировку
+
+Каждая сохранённая строка `topic` и `post` уносит и `links_count` — число адресов в том `content_text`, который пишется рядом (`ForumRepository::linksCountOf()`). Его считает парсер, а не база: колонка — обычный `integer`, поэтому строка, записанная без него (значение по умолчанию 0), расходится со своим текстом, и такой путь в коде один — миграция, которая заполняет уже сохранённый текст.
 
 HTTP-адаптер (cURL): редиректы, retry с нарастающей задержкой на настроенные коды ответа, таймауты, User-Agent. Все числа, кроме задержки, берутся из `parser_config` (см. «Настройки парсера»), константы класса остаются как поведение вручную собранного клиента — в тестах и при пустой таблице.
 

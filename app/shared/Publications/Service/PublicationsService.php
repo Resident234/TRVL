@@ -11,7 +11,7 @@ use app\shared\Publications\Contract\PublicationRepositoryInterface;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Dto\PublicationData;
 use app\shared\Settings\Service\PublicationSettingsService;
-use app\shared\Telegram\Dto\LinkButton;
+use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
@@ -117,13 +117,13 @@ final class PublicationsService
         string $text,
         array $imageUrls,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
         ?ForumPublicationRef $forumRef = null,
     ): void {
         $this->assertPartValid($title, $text, $formatting);
-        $button->assertValid();
-        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $button, $title);
+        $buttons->assertValid();
+        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $buttons, $title);
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -140,14 +140,14 @@ final class PublicationsService
         string $text,
         array $imageUrls,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
         string $publishedAt,
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
     ): void {
         $this->assertPartValid($title, $text, $formatting);
-        $button->assertValid();
+        $buttons->assertValid();
         $normalized = $this->normalizeDate($publishedAt, $userTimezone);
         $id = $this->publications->createPost(
             $text,
@@ -155,7 +155,7 @@ final class PublicationsService
             $normalized,
             $this->now(),
             $formatting,
-            $button,
+            $buttons,
             $title,
         );
         $this->bindForumRef($id, $forumRef);
@@ -176,8 +176,8 @@ final class PublicationsService
      * saved without images. $formats is the highlighting of every part the
      * same way, one entity list per part, counted from the same text the form
      * shows — the trim() below moves it along with the text it describes.
-     * $buttons is the link button of every part in the same order again; a part
-     * with an empty one goes to the channel without a keyboard. $titles is the
+     * $buttons is the keyboard of every part in the same order again; a part
+     * with an empty one goes to the channel without buttons. $titles is the
      * heading of every part in the same order again; a part with an empty one
      * goes out as a plain message, and the heading of a numbered part takes the
      * «Часть N» line out of its text and puts it at the end of that heading.
@@ -185,11 +185,11 @@ final class PublicationsService
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
      * @param MessageEntities[] $formats
-     * @param LinkButton[] $buttons
+     * @param LinkButtons[] $buttons
      * @param string[] $titles
      * @throws InvalidArgumentException when a part is empty or longer than the
-     * Telegram limit, when its formatting does not fit it, when its button is
-     * half-filled or malformed, or when the date is invalid
+     * Telegram limit, when its formatting does not fit it, when one of its
+     * buttons is half-filled or malformed, or when the date is invalid
      */
     public function saveParts(
         array $texts,
@@ -209,7 +209,7 @@ final class PublicationsService
         foreach (array_values($texts) as $index => $text) {
             $parts[] = trim($text);
             $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
-            $keyboard[] = $buttons[$index] ?? LinkButton::empty();
+            $keyboard[] = $buttons[$index] ?? LinkButtons::empty();
             $headings[] = trim((string)($titles[$index] ?? ''));
         }
         $albums = array_values($imageGroups);
@@ -249,7 +249,7 @@ final class PublicationsService
                     'text' => $text,
                     'imageUrls' => $albums[$index] ?? [],
                     'formatting' => $formatting[$index],
-                    'button' => $keyboard[$index],
+                    'buttons' => $keyboard[$index],
                     'title' => $headings[$index],
                 ];
             }
@@ -266,7 +266,7 @@ final class PublicationsService
                 'text' => $text,
                 'imageUrls' => $albums[$index] ?? [],
                 'formatting' => $formatting[$index],
-                'button' => $keyboard[$index],
+                'buttons' => $keyboard[$index],
                 'title' => $headings[$index],
                 'publishedAt' => $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes()),
             ];
@@ -468,7 +468,7 @@ final class PublicationsService
                 $draft->createdAt,
                 $draft->updatedAt,
                 formatting: $draft->formatting,
-                button: $draft->button,
+                buttons: $draft->buttons,
                 title: $draft->title,
             ),
             $now,
@@ -500,7 +500,7 @@ final class PublicationsService
                 $draft->createdAt,
                 $draft->updatedAt,
                 formatting: $draft->formatting,
-                button: $draft->button,
+                buttons: $draft->buttons,
                 title: $draft->title,
             ),
             $now,
@@ -525,7 +525,7 @@ final class PublicationsService
         }
 
         $now = $this->now();
-        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting, $post->button, $post->title);
+        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting, $post->buttons, $post->title);
     }
 
     /**
@@ -549,7 +549,7 @@ final class PublicationsService
                 $post->messageText(),
                 $this->prepareImageUrlsForTelegram($post->imageUrls),
                 $post->messageEntities(),
-                $post->button,
+                $post->buttons,
             );
         }
 
@@ -558,7 +558,7 @@ final class PublicationsService
                 $post->messageText(),
                 $post->imageUrls,
                 $post->messageEntities(),
-                $post->button,
+                $post->buttons,
             );
         }
 
@@ -566,7 +566,7 @@ final class PublicationsService
             throw new RuntimeException('Telegram-канал не сконфигурирован.');
         }
 
-        return $this->channel->publishText($post->messageText(), $post->messageEntities(), $post->button);
+        return $this->channel->publishText($post->messageText(), $post->messageEntities(), $post->buttons);
     }
 
     /**
@@ -707,7 +707,7 @@ final class PublicationsService
             $record->telegramId,
             $record->messageText(),
             $record->messageEntities(),
-            $record->button,
+            $record->buttons,
         );
     }
 
@@ -741,7 +741,7 @@ final class PublicationsService
         string $text,
         array $imageUrls,
         MessageEntities $formatting,
-        LinkButton $button,
+        LinkButtons $buttons,
         string $title,
         string $publishedAt,
         string $source,
@@ -750,7 +750,7 @@ final class PublicationsService
         ?string $userTimezone = null,
     ): void {
         $this->assertPartValid($title, $text, $formatting);
-        $button->assertValid();
+        $buttons->assertValid();
         $now = $this->now();
 
         if ($source === 'deleted') {
@@ -769,7 +769,7 @@ final class PublicationsService
                         $record->createdAt,
                         $record->updatedAt,
                         formatting: $formatting,
-                        button: $button,
+                        buttons: $buttons,
                         title: $title,
                     ),
                     $now,
@@ -790,7 +790,7 @@ final class PublicationsService
                     $record->createdAt,
                     $record->updatedAt,
                     formatting: $formatting,
-                    button: $button,
+                    buttons: $buttons,
                     title: $title,
                 ),
                 $now,
@@ -804,7 +804,7 @@ final class PublicationsService
             $this->assertDraftExists($sourceId);
             if ($action === 'draft') {
                 // 6) draft + "Сохранить": update in place.
-                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting, $button, $title);
+                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting, $buttons, $title);
 
                 return;
             }
@@ -821,7 +821,7 @@ final class PublicationsService
                     $draft->createdAt,
                     $draft->updatedAt,
                     formatting: $formatting,
-                    button: $button,
+                    buttons: $buttons,
                     title: $title,
                 ),
                 $now,
@@ -862,7 +862,7 @@ final class PublicationsService
                 $this->normalizeDate($publishedAt, $userTimezone),
                 $now,
                 $formatting,
-                $button,
+                $buttons,
                 $title,
             );
 
@@ -881,7 +881,7 @@ final class PublicationsService
                 $post->createdAt,
                 $post->updatedAt,
                 formatting: $formatting,
-                button: $button,
+                buttons: $buttons,
                 title: $title,
             ),
             $now,
@@ -933,7 +933,7 @@ final class PublicationsService
                 $record->createdAt,
                 $record->updatedAt,
                 formatting: $record->formatting,
-                button: $record->button,
+                buttons: $record->buttons,
                 title: $record->title,
             ),
             $now,
@@ -965,7 +965,7 @@ final class PublicationsService
                 $record->createdAt,
                 $record->updatedAt,
                 formatting: $record->formatting,
-                button: $record->button,
+                buttons: $record->buttons,
                 title: $record->title,
             ),
             $now,
@@ -1129,7 +1129,7 @@ final class PublicationsService
             '',
             null,
             new MessageEntities(),
-            LinkButton::empty(),
+            LinkButtons::empty(),
             $title,
         ))->messageText();
     }
