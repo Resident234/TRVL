@@ -560,7 +560,7 @@ Emoji — обычный текст: форма не хранит про них 
 
 ## Релизы
 
-Релизы публикуются автоматически на [GitHub Releases](https://github.com/Resident234/awd/releases) через GitHub Actions (`.github/workflows/release.yml`).
+Релизы публикуются автоматически на [GitHub Releases](https://github.com/Resident234/TRVL/releases) через GitHub Actions (`.github/workflows/release.yml`).
 
 Порядок выпуска релиза:
 
