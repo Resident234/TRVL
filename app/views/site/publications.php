@@ -617,6 +617,18 @@ CSS
                                                 </div>
                                                 <div class="col-sm-auto d-none">
                                                     <button type="button"
+                                                            class="btn btn-outline-secondary btn-icon publication-button-up"
+                                                            aria-label="Поднять кнопку-ссылку выше" disabled
+                                                            title="Поднять эту кнопку на строку выше">
+                                                        <i class="bi bi-arrow-up-short"></i>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-outline-secondary btn-icon publication-button-down"
+                                                            aria-label="Опустить кнопку-ссылку ниже" disabled
+                                                            title="Опустить эту кнопку на строку ниже">
+                                                        <i class="bi bi-arrow-down-short"></i>
+                                                    </button>
+                                                    <button type="button"
                                                             class="btn btn-danger btn-icon publication-button-remove"
                                                             aria-label="Убрать кнопку-ссылку" disabled
                                                             title="Убрать эту кнопку">
@@ -776,6 +788,18 @@ CSS
                                                            maxlength="2048" placeholder="https://example.com/poll">
                                                 </div>
                                                 <div class="col-sm-auto d-none">
+                                                    <button type="button"
+                                                            class="btn btn-outline-secondary btn-icon publication-button-up"
+                                                            aria-label="Поднять кнопку-ссылку выше"
+                                                            title="Поднять эту кнопку на строку выше">
+                                                        <i class="bi bi-arrow-up-short"></i>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-outline-secondary btn-icon publication-button-down"
+                                                            aria-label="Опустить кнопку-ссылку ниже"
+                                                            title="Опустить эту кнопку на строку ниже">
+                                                        <i class="bi bi-arrow-down-short"></i>
+                                                    </button>
                                                     <button type="button"
                                                             class="btn btn-danger btn-icon publication-button-remove"
                                                             aria-label="Убрать кнопку-ссылку" title="Убрать эту кнопку">
@@ -3469,16 +3493,44 @@ jQuery(document).ready(function () {
             nameButtonRows(box);
         }
 
-        // A row goes out by its own icon, and the one row of a box keeps its icon
-        // hidden; the icon of adding stops at the bound the portal gives a message.
-        // The icon goes out with its column, so that the address field of a row
-        // without an icon reaches the same right edge the icon stands at.
+        // A row of a box swaps places with its neighbour. The order of the rows is the
+        // order the channel gets its buttons in, since the form submits them as one
+        // list and the server reads that list positionally — so this is the whole of
+        // what the two icons do, and nothing on the server has to know about them.
+        // The names of the fields do not move (every row of a box carries one name),
+        // but their ids do, so the rows are named again after the swap.
+        function moveButtonRow(button, step) {
+            var row = button.closest('.publication-button-row');
+            var box = row.closest('.publication-button-box');
+            var rows = buttonRowsOf(box);
+            var index = rows.indexOf(row);
+            var neighbour = rows[index + step];
+            // The row goes in front of whatever has to stay behind it: the neighbour
+            // it swaps with when climbing, the row after that neighbour when falling.
+            var before = step < 0 ? neighbour : rows[index + 2] || null;
+
+            if (!neighbour) {
+                return;
+            }
+            rowsBoxOf(box).insertBefore(row, before);
+            nameButtonRows(box);
+        }
+
+        // A row goes out by its own icon and climbs or falls by the two beside it; the
+        // one row of a box keeps the column of icons hidden, and at the ends of the
+        // list the icon that has nowhere to go is stopped rather than taken away, so
+        // that the column never jumps. The icon of adding stops at the bound the
+        // portal gives a message. The icons leave with their column, so that the
+        // address field of a row without them reaches the same edge they stand at.
         function updateButtonRows(box, enabled) {
             var rows = buttonRowsOf(box);
 
-            rows.forEach(function (row) {
+            rows.forEach(function (row, index) {
                 var remove = row.querySelector('.publication-button-remove');
+
                 remove.parentElement.classList.toggle('d-none', rows.length < 2);
+                row.querySelector('.publication-button-up').disabled = !enabled || index === 0;
+                row.querySelector('.publication-button-down').disabled = !enabled || index === rows.length - 1;
                 remove.disabled = !enabled;
             });
             addButtonOf(box).disabled = !enabled || rows.length >= __BUTTON_LIMIT;
@@ -5062,11 +5114,16 @@ jQuery(document).ready(function () {
                 update();
             }
         });
-        // An icon of a box of the parts adds a row to that box or takes the row its
-        // own icon stands in out of the form, the cloned boxes included.
+        // An icon of a box of the parts adds a row to that box, moves the row its own
+        // icon stands in up or down the list, or takes that row out of the form, the
+        // cloned boxes included.
         function takeButtonClick(box, event) {
             if (event.target.closest('.publication-button-add')) {
                 addButtonRow(box);
+            } else if (event.target.closest('.publication-button-up')) {
+                moveButtonRow(event.target.closest('.publication-button-up'), -1);
+            } else if (event.target.closest('.publication-button-down')) {
+                moveButtonRow(event.target.closest('.publication-button-down'), 1);
             } else if (event.target.closest('.publication-button-remove')) {
                 removeButtonRow(event.target.closest('.publication-button-remove'));
             } else {
