@@ -188,16 +188,25 @@ $this->registerCss(
     white-space: nowrap;
 }
 
-/* The emoji panel opens over the caret of the part that asked for it, in
-   viewport coordinates like the buttons that move a selection. */
-.publication-emoji-panel {
+/* The emoji panel is the rich popover of the ui-kit: its card, its header and its
+   arrow are the styles of `.popover` and `.popover-rich`, and only the placement
+   stays ours — the panel opens over the caret of the part that asked for it, in
+   viewport coordinates like the buttons that move a selection. The compound
+   selector is what keeps these three from being re-decided by load order. The
+   width is the one the reference popover of `popovers.html` draws at, which is the
+   `max-width` of `.popover-rich` itself: left to shrink-to-fit the card would stop
+   at its `min-width` of 350px, and eight columns of emoji do not ask for more. */
+.popover.publication-emoji-panel {
     position: fixed;
+    width: 380px;
     z-index: 1080;
-    width: 19rem;
-    padding: 0.5rem;
-    border: 1px solid var(--bs-border-color);
-    border-radius: 0.375rem;
-    background-color: var(--bs-body-bg);
+}
+
+/* Popper, which normally owns the arrow of a popover, is not here: the arrow goes
+   where the script that places the panel tells it. */
+.publication-emoji-panel .popover-arrow {
+    left: 0;
+    position: absolute;
 }
 
 /* The colon reads its shortcode from the text of the part itself, so the panel
@@ -233,21 +242,32 @@ $this->registerCss(
     color: var(--bs-link-color);
 }
 
+/* Eight columns of `minmax(0, 1fr)`, and no horizontal scroll: a track may not be
+   widened by what stands in it, because the widest answer the list keeps — a
+   family of four, which the font of the machine does draw as one figure — comes
+   within two pixels of the whole width of a column, and a row that grew past the
+   card would hang a second scrollbar under it. Five of the square rows below. */
 .publication-emoji-grid {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    max-height: 10.5rem;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    max-height: 12.7rem;
+    overflow-x: hidden;
     overflow-y: auto;
     margin-top: 0.5rem;
 }
 
+/* The cell is a square: `aspect-ratio` gives it the height of the column it stands
+   in, and the box centers the figure itself, because a row of the old fixed height
+   cannot follow a side the width of the card decides. */
 .publication-emoji-cell {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
     padding: 0;
     border: 0;
     border-radius: 0.25rem;
     background: none;
     font-size: 1.25rem;
-    line-height: 1.6;
 }
 
 /* The cell the arrows stopped on and the one under the cursor are the same
@@ -258,10 +278,25 @@ $this->registerCss(
 }
 
 /* Quill gives the buttons of its toolbar an icon of its own svg set and knows
-   nothing of this one, so it takes the icon font of the portal. */
+   nothing of this one, so it takes the icon font of the portal. The two do not
+   sit the same way: Quill floats its svg into the height of the button, so the
+   icon never touches the line box, while a font glyph is placed on that box's
+   baseline, and a baseline is not the middle of the ink. Centering the button
+   gets the glyph out of the line box, and the block pseudo-element leaves it no
+   baseline to lean on either. The size is measured off the neighbours: their ink
+   is 12–14px tall in a 24px button, so at 1rem the smile was not only low but a
+   third bigger than the row it stands in. */
 .publication-editor .ql-toolbar .ql-emoji {
+    align-items: center;
     color: var(--bs-body-color);
-    font-size: 1rem;
+    display: flex;
+    font-size: 0.875rem;
+    justify-content: center;
+    line-height: 1;
+}
+
+.publication-editor .ql-toolbar .ql-emoji .bi::before {
+    display: block;
 }
 CSS
 );
@@ -991,15 +1026,23 @@ CSS
     </div>
 </div>
 
-<!-- Emoji panel. The script moves the node to the body, where nothing can
-     shadow the viewport it is placed against. -->
-<div class="publication-emoji-panel d-none shadow" id="publicationEmojiPanel">
-    <div class="publication-emoji-head">
-        <input type="text" class="form-control form-control-sm" id="publicationEmojiQuery"
-               autocomplete="off" placeholder="Поиск emoji" aria-label="Поиск emoji">
-        <div class="publication-emoji-categories" id="publicationEmojiCategories"></div>
+<!-- Emoji panel: the rich popover of the ui-kit, moved to the body, where nothing
+     can shadow the viewport it is placed against. Only its placement is ours; the
+     card, its header and its arrow are the styles of `.popover`/`.popover-rich`. -->
+<div class="publication-emoji-panel popover popover-rich bs-popover-auto d-none"
+     id="publicationEmojiPanel" data-popper-placement="bottom">
+    <div class="popover-arrow" id="publicationEmojiArrow"></div>
+    <h3 class="popover-header"><i class="bi bi-emoji-smile"></i>Emoji</h3>
+    <div class="popover-body">
+        <div class="p-1">
+            <div class="publication-emoji-head">
+                <input type="text" class="form-control form-control-sm" id="publicationEmojiQuery"
+                       autocomplete="off" placeholder="Поиск emoji" aria-label="Поиск emoji">
+                <div class="publication-emoji-categories" id="publicationEmojiCategories"></div>
+            </div>
+            <div class="publication-emoji-grid" id="publicationEmojiGrid"></div>
+        </div>
     </div>
-    <div class="publication-emoji-grid" id="publicationEmojiGrid"></div>
 </div>
 
 <?php
@@ -1490,6 +1533,27 @@ function readEmojiTable(table) {
             name: fields[2],
             words: fields.slice(3),
         };
+    });
+}
+
+// The font of the machine draws what it cannot compose as the separate glyphs a
+// joiner (U+200D) stands between, and those together are near twice the width of
+// one emoji. Half again is the line the measurement leaves between the two
+// answers: the widest figure the font really does draw alone — a family of four —
+// comes to 1.41 of an emoji, while the sets it splits begin at 1.64. Only the
+// sequences carrying a joiner are asked of it, since every answer of the table
+// wider than one glyph carries one, and the rest, the two-letter flags among it,
+// is known to fit. The question goes to the font and not to a list of exclusions:
+// a newer font answers it the other way and gives back what this one loses.
+function emojiSupported(list, measure, single) {
+    var limit = single * 1.5;
+
+    return list.filter(function (item) {
+        if (item.emoji.indexOf('\u200D') < 0) {
+            return true;
+        }
+
+        return measure(item.emoji) <= limit;
     });
 }
 
@@ -2336,6 +2400,7 @@ jQuery(document).ready(function () {
                 emojiButton.innerHTML = '<i class="bi bi-emoji-smile"></i>';
                 emojiGroup.appendChild(emojiButton);
                 toolbar.appendChild(emojiGroup);
+                field.__emojiButton = emojiButton;
                 emojiButton.addEventListener('mousedown', function (event) {
                     event.preventDefault();
                     toggleEmojiPicker(field);
@@ -2644,10 +2709,26 @@ jQuery(document).ready(function () {
         // ones.
 
         var emojiPanel = document.getElementById('publicationEmojiPanel');
+        var emojiArrow = document.getElementById('publicationEmojiArrow');
         var emojiQueryInput = document.getElementById('publicationEmojiQuery');
         var emojiCategoriesBox = document.getElementById('publicationEmojiCategories');
         var emojiGridBox = document.getElementById('publicationEmojiGrid');
-        var EMOJI = window.TRVL_EMOJI ? readEmojiTable(window.TRVL_EMOJI) : [];
+        // The width the font of the machine gives a symbol. The canvas answers the
+        // same advance the cell of the grid would lay out, which is what the panel
+        // needs the cell to hold; the size it is asked at does not decide the
+        // answer, since the reference emoji is measured at the same one.
+        var emojiWidth = (function () {
+            var ctx = document.createElement('canvas').getContext('2d');
+
+            ctx.font = '20px ' + getComputedStyle(document.body).fontFamily;
+
+            return function (symbol) {
+                return ctx.measureText(symbol).width;
+            };
+        })();
+        var EMOJI = window.TRVL_EMOJI
+            ? emojiSupported(readEmojiTable(window.TRVL_EMOJI), emojiWidth, emojiWidth('\u{1F600}'))
+            : [];
         // A category of the table is a few hundred emoji wide, which is more than the
         // panel shows and more than the arrows are worth walking. The order of
         // Unicode puts the common ones of a category first, so what the cut leaves
@@ -2766,14 +2847,40 @@ jQuery(document).ready(function () {
         }
 
         function placeEmojiPanel() {
+            var anchor = emojiAnchor();
             var point = popupPoint(
-                caretPoint(emojiTarget.field, emojiTarget.start + emojiTarget.length),
+                anchor,
                 { width: emojiPanel.offsetWidth, height: emojiPanel.offsetHeight },
                 { width: window.innerWidth, height: window.innerHeight }
             );
+            // The side the arrow stands on is the side the panel landed on: a panel
+            // above the anchor wears the arrow at its bottom, one below — at its top.
+            var above = point.top + emojiPanel.offsetHeight <= anchor.y;
+            // The arrow of a popover is a box of 1rem with the triangle in its middle,
+            // and it is pulled to the anchor the same way Popper would have pulled it.
+            var arrowWidth = 16;
+            var arrowLeft = anchor.x - point.left - arrowWidth / 2;
 
             emojiPanel.style.left = point.left + 'px';
             emojiPanel.style.top = point.top + 'px';
+            emojiPanel.dataset.popperPlacement = above ? 'top' : 'bottom';
+
+            if (emojiArrow) {
+                emojiArrow.style.transform = 'translate(' + Math.round(
+                    Math.max(arrowWidth, Math.min(arrowLeft, emojiPanel.offsetWidth - arrowWidth * 2))
+                ) + 'px, 0)';
+            }
+        }
+
+        // The panel of the button stands over the button, the panel of a colon over
+        // the caret that colon left: the arrow of the first has to point at the smile
+        // a person has just pressed, and the whole card moves to keep it there.
+        function emojiAnchor() {
+            if (emojiTarget.mode === 'picker' && emojiTarget.field.__emojiButton) {
+                return buttonPoint(emojiTarget.field.__emojiButton);
+            }
+
+            return caretPoint(emojiTarget.field, emojiTarget.start + emojiTarget.length);
         }
 
         function openEmojiPanel(field, mode, trigger) {
@@ -4294,18 +4401,21 @@ jQuery(document).ready(function () {
             };
         }
 
-        // The popup goes above the end of the selection, below it when the top of
-        // the viewport is in the way, and inside the viewport on both axes.
-        function popupPoint(caret, size, viewport) {
+        // The popup goes above the anchor, below it when the top of the viewport is in
+        // the way, and inside the viewport on both axes. An anchor carries the two
+        // edges a popup stands by: a caret is a line, so both of them are that line,
+        // while a control has a top the popup clears from above and a bottom it clears
+        // from below.
+        function popupPoint(anchor, size, viewport) {
             var margin = 8;
             var left = Math.max(margin, Math.min(
-                caret.x - size.width / 2,
+                anchor.x - size.width / 2,
                 viewport.width - size.width - margin
             ));
-            var top = caret.y - size.height - margin;
+            var top = anchor.y - size.height - margin;
 
             if (top < margin) {
-                top = caret.y + margin;
+                top = anchor.bottom + margin;
             }
 
             if (top + size.height > viewport.height - margin) {
@@ -4322,7 +4432,7 @@ jQuery(document).ready(function () {
             var root = editorRootOf(field);
 
             if (!editor || !root) {
-                return { x: 0, y: 0 };
+                return { x: 0, y: 0, bottom: 0 };
             }
 
             var box = root.getBoundingClientRect();
@@ -4330,8 +4440,17 @@ jQuery(document).ready(function () {
                 Math.max(0, Math.min(position, editor.getLength() - 1)),
                 0
             ) || { left: 0, top: 0, height: 0 };
+            var line = box.top + bounds.top + bounds.height;
 
-            return { x: box.left + bounds.left, y: box.top + bounds.top + bounds.height };
+            return { x: box.left + bounds.left, y: line, bottom: line };
+        }
+
+        // The box of a control read as an anchor: its middle, which the arrow of a
+        // popup has to sit under, and its two edges.
+        function buttonPoint(button) {
+            var box = button.getBoundingClientRect();
+
+            return { x: box.left + box.width / 2, y: box.top, bottom: box.bottom };
         }
 
         function showSelectionActions(field) {
