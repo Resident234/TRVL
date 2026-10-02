@@ -128,6 +128,7 @@ class SiteController extends Controller
                     'publication-page' => ['post'],
                     'publication-sort' => ['post'],
                     'title-from-first-line-save' => ['post'],
+                    'links-to-buttons-save' => ['post'],
                     'forum-text-order-save' => ['post'],
                     'forum-viewed' => ['post'],
                     'forum-post-page' => ['post'],
@@ -271,7 +272,7 @@ class SiteController extends Controller
     /**
      * Displays the channel publications page. The session holds the forum
      * filters, the reading order of the lists, the length order of the topics
-     * and the heading switch of the form, and the address bar is kept as their
+     * and the two switches of the form, and the address bar is kept as their
      * mirror image, so a page that was opened on a URL disagreeing with the
      * session is redirected onto the address the session describes.
      *
@@ -285,6 +286,7 @@ class SiteController extends Controller
         $this->syncPublicationsSort();
         $this->syncForumTextOrder();
         $this->syncTitleFromFirstLine();
+        $this->syncLinksToButtons();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
@@ -295,7 +297,7 @@ class SiteController extends Controller
     /**
      * Whether the address the page was opened on says something else than the
      * session does — of the forum filters, of the reading order of the lists,
-     * of the length order of the topics or of the heading switch of the form.
+     * of the length order of the topics or of a switch of the form.
      *
      * @param array<string, mixed> $query
      */
@@ -304,7 +306,8 @@ class SiteController extends Controller
         return $this->normalizeForumFilters($query) !== $this->forumFilters()
             || $this->publicationsSortFromQuery($query) !== $this->publicationsSort()
             || $this->forumTextOrderFromQuery($query) !== $this->forumTextOrder()
-            || $this->titleFromFirstLineFromQuery($query) !== $this->titleFromFirstLine();
+            || $this->titleFromFirstLineFromQuery($query) !== $this->titleFromFirstLine()
+            || $this->linksToButtonsFromQuery($query) !== $this->linksToButtons();
     }
 
     /**
@@ -390,7 +393,7 @@ class SiteController extends Controller
     /**
      * The address the whole view state of the page deserves: the forum filters,
      * the reading order of every block that was switched, the length order of
-     * the topics and the heading switch of the form.
+     * the topics and the switches of the form.
      *
      * @return array<int|string, string>
      */
@@ -414,6 +417,10 @@ class SiteController extends Controller
 
         if ($this->titleFromFirstLine()) {
             $url['titleFromFirstLine'] = '1';
+        }
+
+        if ($this->linksToButtons()) {
+            $url['linksToButtons'] = '1';
         }
 
         return $url;
@@ -575,6 +582,55 @@ class SiteController extends Controller
     }
 
     /**
+     * Whether the switch of the form turns the addresses of a text into link
+     * buttons on its own — the state of that switch, kept in the session so a
+     * reload opens the form with the automation the reader left running.
+     */
+    private function linksToButtons(): bool
+    {
+        return $this->normalizeLinksToButtons(Yii::$app->session->get('linksToButtons'));
+    }
+
+    /**
+     * The state of the links switch the address of the page asks for:
+     * `?linksToButtons=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function linksToButtonsFromQuery(array $query): bool
+    {
+        return $this->normalizeLinksToButtons($query['linksToButtons'] ?? null);
+    }
+
+    /**
+     * Resolves the links switch the way the heading switch does: the automation
+     * has a state of its own when it is off, so it is a session that has never
+     * held one which adopts the parameter of the request — reloading or
+     * following a link cannot change what the reader left.
+     */
+    private function syncLinksToButtons(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('linksToButtons')) {
+            return;
+        }
+
+        $session->set('linksToButtons', $this->linksToButtonsFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizeLinksToButtons(mixed $state): bool
+    {
+        return $state === true || $state === '1';
+    }
+
+    /**
      * Whether a reader who never touched a switch of the page sees the oldest
      * records first — the order the settings page chooses for all blocks.
      */
@@ -664,6 +720,7 @@ class SiteController extends Controller
             'oldestFirst' => $sorts,
             'forumTextOrder' => $textOrder,
             'titleFromFirstLine' => $this->titleFromFirstLine(),
+            'linksToButtons' => $this->linksToButtons(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -816,6 +873,27 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'titleFromFirstLine',
             $this->normalizeTitleFromFirstLine($this->request->post('titleFromFirstLine')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the switch that turns the addresses of a text into link buttons and
+     * answers with the address that mirrors it. Like the heading switch it
+     * redraws nothing: the automation works over the fields of the form, which
+     * are none of the server's business until the record is saved.
+     *
+     * @return Response
+     */
+    public function actionLinksToButtonsSave(): Response
+    {
+        Yii::$app->session->set(
+            'linksToButtons',
+            $this->normalizeLinksToButtons($this->request->post('linksToButtons')),
         );
 
         return $this->asJson([

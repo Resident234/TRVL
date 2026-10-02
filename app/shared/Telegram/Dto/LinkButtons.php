@@ -8,9 +8,10 @@ use InvalidArgumentException;
 
 /**
  * The keyboard of a channel message: the link buttons Telegram draws under a
- * text, a photo or an album, in the order the form holds them. Every button
- * takes a row of its own, the way the one button of a message used to. An empty
- * list is a message that goes out without a keyboard.
+ * text, a photo or an album, in the order the form holds them. The buttons go to
+ * the keyboard in no more than self::MAX_ROWS rows, shared between them evenly
+ * and widening downwards: two of them stand one under another, three make a lone
+ * button over a pair. An empty list is a message that goes out without a keyboard.
  */
 final readonly class LinkButtons
 {
@@ -20,6 +21,14 @@ final readonly class LinkButtons
      * buttons of a publication stop being an accent and become a menu.
      */
     public const MAX_BUTTONS = 10;
+
+    /**
+     * How many rows the keyboard of a publication is given: a client spreads the
+     * buttons of a row over the whole width of the message, so it is the rows,
+     * not the buttons, that make the strip under the text tall — two of them
+     * still read as one strip, a stack of them is a block of its own.
+     */
+    public const MAX_ROWS = 2;
 
     /**
      * @param LinkButton[] $buttons
@@ -110,6 +119,35 @@ final readonly class LinkButtons
     public function all(): array
     {
         return $this->buttons;
+    }
+
+    /**
+     * The buttons grouped the way the keyboard sends them: no more than
+     * self::MAX_ROWS rows, the list shared between them evenly, and the row that
+     * takes the odd button is the last one, so the strip widens downwards.
+     *
+     * @return array<int, LinkButton[]>
+     */
+    public function rows(): array
+    {
+        $count = $this->count();
+        if ($count === 0) {
+            return [];
+        }
+
+        $rows = min(self::MAX_ROWS, $count);
+        $size = intdiv($count, $rows);
+        $widest = $count % $rows;
+
+        $grouped = [];
+        $offset = 0;
+        for ($row = 0; $row < $rows; $row++) {
+            $buttons = $size + ($row >= $rows - $widest ? 1 : 0);
+            $grouped[] = array_slice($this->buttons, $offset, $buttons);
+            $offset += $buttons;
+        }
+
+        return $grouped;
     }
 
     public function count(): int

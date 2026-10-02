@@ -21,8 +21,9 @@ interface TelegramChannelClientInterface
     /**
      * @param MessageEntities $entities inline formatting of the text; an empty
      *        list sends plain text
-     * @param LinkButtons $buttons the link buttons drawn under the message, one
-     *        to a row; an empty list sends the message without a keyboard
+     * @param LinkButtons $buttons the link buttons drawn under the message, packed
+     *        into the rows LinkButtons::rows() describes; an empty list sends the
+     *        message without a keyboard
      * @throws \app\shared\Telegram\Infrastructure\TelegramApiException
      */
     public function sendTextMessage(

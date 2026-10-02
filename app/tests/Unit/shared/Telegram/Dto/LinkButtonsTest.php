@@ -112,4 +112,42 @@ final class LinkButtonsTest extends Unit
         $this->assertSame([$open], $buttons->all());
         $this->assertSame('[{"text":"Открыть","url":"https://example.com/open"}]', $buttons->toJson());
     }
+
+    public function testTheKeyboardPacksItsButtonsIntoTwoRowsAtMost(): void
+    {
+        $make = static function (int $count): LinkButtons {
+            $buttons = [];
+
+            for ($index = 1; $index <= $count; $index++) {
+                $buttons[] = new LinkButton("Кнопка {$index}", "https://example.com/{$index}");
+            }
+
+            return new LinkButtons($buttons);
+        };
+
+        $shape = static fn (int $count): array => array_map(
+            static fn (array $row): int => count($row),
+            $make($count)->rows(),
+        );
+
+        $this->assertSame([], LinkButtons::empty()->rows());
+        $this->assertSame([1], $shape(1));
+        $this->assertSame([1, 1], $shape(2));
+        $this->assertSame([1, 2], $shape(3));
+        $this->assertSame([2, 2], $shape(4));
+        $this->assertSame([2, 3], $shape(5));
+        $this->assertSame([5, 5], $shape(LinkButtons::MAX_BUTTONS));
+
+        foreach (range(1, LinkButtons::MAX_BUTTONS) as $count) {
+            $rows = $make($count)->rows();
+
+            $this->assertLessThanOrEqual(LinkButtons::MAX_ROWS, count($rows));
+            $this->assertSame($count, array_sum(array_map(static fn (array $row): int => count($row), $rows)));
+        }
+
+        $rows = $make(LinkButtons::MAX_BUTTONS)->rows();
+        $this->assertSame('Кнопка 1', $rows[0][0]->text);
+        $this->assertSame('Кнопка 5', $rows[0][4]->text);
+        $this->assertSame('Кнопка 6', $rows[1][0]->text);
+    }
 }

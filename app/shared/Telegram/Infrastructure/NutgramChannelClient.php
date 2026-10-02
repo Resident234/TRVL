@@ -6,6 +6,7 @@ namespace app\shared\Telegram\Infrastructure;
 
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
 use app\shared\Telegram\Dto\ChannelInfo;
+use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
 use app\shared\Telegram\Dto\PostResult;
@@ -214,9 +215,9 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
     /**
      * Our DTO in, SDK types out: no Nutgram class leaks above this adapter.
      * An empty list gives no keyboard at all, which is how a message without
-     * buttons reaches the API. Every button takes a row of its own: a client
-     * draws a row across the whole width of the message, which is how the one
-     * button of a message used to look.
+     * buttons reaches the API. The rows are the ones LinkButtons describes: a
+     * client draws the rows it is sent and splits the width of the message
+     * between the buttons of each, so the packing is ours to decide.
      */
     private static function toKeyboard(LinkButtons $buttons): ?InlineKeyboardMarkup
     {
@@ -225,8 +226,14 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         }
 
         $keyboard = InlineKeyboardMarkup::make();
-        foreach ($buttons->all() as $button) {
-            $keyboard->addRow(InlineKeyboardButton::make(text: $button->text, url: $button->url));
+        foreach ($buttons->rows() as $row) {
+            $keyboard->addRow(...array_map(
+                static fn (LinkButton $button): InlineKeyboardButton => InlineKeyboardButton::make(
+                    text: $button->text,
+                    url: $button->url,
+                ),
+                $row,
+            ));
         }
 
         return $keyboard;

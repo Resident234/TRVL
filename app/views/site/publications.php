@@ -16,6 +16,7 @@ declare(strict_types=1);
 /** @var array<string, bool> $oldestFirst the order of every switch of the page */
 /** @var string $forumTextOrder '' | 'asc' | 'desc' — the length order of the topics */
 /** @var bool $titleFromFirstLine whether a fill of the forum cuts its first line into the heading */
+/** @var bool $linksToButtons whether the addresses of a text become link buttons on their own */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -39,6 +40,10 @@ $buttonLimit = LinkButtons::MAX_BUTTONS;
 // How long the label of one of those buttons may be: the portal counts it in
 // bytes, so a label the form writes on its own is cut to this.
 $buttonLabelBytes = LinkButton::TEXT_MAX_LENGTH;
+// How the keyboard of a message is packed: the preview has to break the list
+// into rows the way the sender does, or it shows a keyboard the channel never
+// draws — so it takes the bound of the rows out of LinkButtons.
+$keyboardMaxRows = LinkButtons::MAX_ROWS;
 
 $this->registerCss(
     <<<CSS
@@ -114,11 +119,19 @@ $this->registerCss(
     text-align: left;
 }
 
-/* The keyboard of a channel message is one button across its whole width, with
-   the label in the colour of a link. */
-.telegram-preview-button {
-    display: block;
+/* The keyboard of a channel message: the sender packs its buttons into rows the
+   way LinkButtons::rows() does and a client gives every row the whole width of
+   the message, split between its buttons. The label goes in the colour of a
+   link. */
+.telegram-preview-keyboard-row {
+    display: flex;
+    gap: 0.5rem;
     margin-top: 0.5rem;
+}
+
+.telegram-preview-button {
+    flex: 1 1 0;
+    min-width: 0;
     padding: 0.375rem 0.75rem;
     border: 1px solid var(--bs-border-color);
     border-radius: 0.375rem;
@@ -675,8 +688,10 @@ CSS
                                         board in ui-kit/tasks.html puts under each of its items. */ ?>
                                 <div class="kanban-item publication-button-frame p-3 rounded-2 bg-white">
                                     <?php /* The switch that reads the addresses of the text into the
-                                            buttons of the same part. It never travels to the server:
-                                            the rows it adds are the fields that do. It stands at the top
+                                            buttons of the same part. It never travels with the saved
+                                            record: the rows it adds are the fields that do — the switch
+                                            itself goes to the server alone, and only to be remembered.
+                                            It stands at the top
                                             left of the frame in the shape the vendored sheet draws it:
                                             the group is padded by the width of its toggle and the toggle
                                             is pulled back by the same amount, so the knob itself lands on
@@ -690,7 +705,8 @@ CSS
                                          data-bs-custom-class="popover-info"
                                          data-bs-content="Через 10 секунд после того, как текст перестали править, дописывает в «Кнопки-ссылки» адреса этого текста, кроме ссылок на изображения. Набранные вручную кнопки оставляет, адрес, который в кнопках уже есть, не повторяет. У разбитой публикации каждая часть берёт адреса своего текста, поэтому её поля кнопок включаются сами.">
                                         <input class="form-check-input" type="checkbox"
-                                               role="switch" id="publicationLinksToButtons">
+                                               role="switch" id="publicationLinksToButtons"
+                                               <?= $linksToButtons ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationLinksToButtons">
                                             <i class="bi bi-link-45deg me-1"></i>Ссылки из текста в кнопки-ссылки
                                         </label>
@@ -702,7 +718,7 @@ CSS
                                         <label class="form-label mb-1" for="publicationButtonText-0"
                                                data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
                                                data-bs-custom-class="popover-info"
-                                               data-bs-content="Каждая кнопка появляется под сообщением в канале своей строкой и ведёт по своему адресу: надпись длиной до 64 байт, адрес — с http://, https:// или tg://. Под одним сообщением не больше <?= $buttonLimit ?> кнопок. Пустые поля означают публикацию без кнопок; у разбитой публикации это кнопки её первой части.">
+                                               data-bs-content="Кнопки встают под сообщением в канале не больше чем в <?= $keyboardMaxRows ?> ряда, причём нижний ряд шире верхнего: две кнопки встают одна под другой, три — одна сверху и две снизу. Каждая ведёт по своему адресу, надпись длиной до 64 байт, адрес — с http://, https:// или tg://. Под одним сообщением не больше <?= $buttonLimit ?> кнопок. Пустые поля означают публикацию без кнопок; у разбитой публикации это кнопки её первой части.">
                                             <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки
                                         </label>
 
@@ -995,6 +1011,7 @@ $postPageUrl = \yii\helpers\Url::to(['site/forum-post-page']);
 $threadUrl = \yii\helpers\Url::to(['site/forum-thread']);
 $sortUrl = \yii\helpers\Url::to(['site/publication-sort']);
 $titleSwitchSaveUrl = \yii\helpers\Url::to(['site/title-from-first-line-save']);
+$linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
@@ -1018,6 +1035,7 @@ var __POST_PAGE_URL = '{$postPageUrl}';
 var __THREAD_URL = '{$threadUrl}';
 var __SORT_URL = '{$sortUrl}';
 var __TITLE_SWITCH_URL = '{$titleSwitchSaveUrl}';
+var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
@@ -1025,6 +1043,7 @@ var __CSRF_TOKEN = '{$csrfToken}';
 var __TEXT_PART_LIMIT = {$textLimit};
 var __BUTTON_LIMIT = {$buttonLimit};
 var __BUTTON_LABEL_BYTES = {$buttonLabelBytes};
+var __KEYBOARD_MAX_ROWS = {$keyboardMaxRows};
 var __NUMBERING_RESERVE = {$numberingReserve};
 var __SCROLL_EDGE = {$scrollEdge};
 var __IMAGE_PROBE_TIMEOUT = {$probeTimeout};
@@ -2053,6 +2072,37 @@ jQuery(document).ready(function () {
                     // The session kept the state it was asked with, so the
                     // switch has to keep the one it was rendered with.
                     input.checked = !input.checked;
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
+    // The switch that reads the addresses of a text into buttons changes none of
+    // the lists either: it says what the form does with the text it holds, so the
+    // server stores its state and answers with the address that mirrors it. The
+    // same turn of the switch starts the waiting over again — turning it on reads
+    // the text as it stands, turning it off stops the fill that had not come yet,
+    // and a rejected save has to leave the waiting on the state it was told — so
+    // `arm` is that waiting, which lives in the scope of the form.
+    function watchLinksSwitch(arm) {
+        var input = document.getElementById('publicationLinksToButtons');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            var state = input.checked;
+            arm();
+            postForJson(__LINKS_SWITCH_URL, { linksToButtons: state ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                })
+                .catch(function (error) {
+                    // The session kept the state it was asked with, so the
+                    // switch has to keep the one it was rendered with — and the
+                    // waiting has to agree with it.
+                    input.checked = !state;
+                    arm();
                     showFlash('error', 'Не удалось запомнить переключатель: '
                         + (error && error.message ? error.message : error));
                 });
@@ -4712,9 +4762,11 @@ jQuery(document).ready(function () {
             node.appendChild(fragment);
         }
 
-        // The keyboard of a message: every button takes a row of its own across its
-        // whole width, in the order the form holds them. Half a pair is no button:
-        // the form refuses it, and the preview shows none.
+        // The keyboard of a message: the buttons go into no more than
+        // __KEYBOARD_MAX_ROWS rows, shared between them evenly, and the row that
+        // takes the odd button is the last one — the same packing the sender puts
+        // into the inline keyboard, in the order the form holds them. Half a pair
+        // is no button: the form refuses it, and the preview shows none.
         function renderPreviewKeyboard(buttons) {
             var whole = (buttons || []).filter(function (button) {
                 return button.text !== '' && button.url !== '';
@@ -4725,12 +4777,28 @@ jQuery(document).ready(function () {
             }
 
             var keyboard = document.createElement('div');
-            whole.forEach(function (button) {
-                var node = document.createElement('span');
-                node.className = 'telegram-preview-button';
-                node.textContent = button.text;
-                keyboard.appendChild(node);
-            });
+            var rows = Math.min(__KEYBOARD_MAX_ROWS, whole.length);
+            var even = Math.floor(whole.length / rows);
+            var widest = whole.length % rows;
+            var start = 0;
+
+            for (var index = 0; index < rows; index++) {
+                var size = even + (index >= rows - widest ? 1 : 0);
+                var piece = whole.slice(start, start + size);
+                start += size;
+
+                var row = document.createElement('div');
+                row.className = 'telegram-preview-keyboard-row';
+
+                piece.forEach(function (button) {
+                    var node = document.createElement('span');
+                    node.className = 'telegram-preview-button';
+                    node.textContent = button.text;
+                    row.appendChild(node);
+                });
+
+                keyboard.appendChild(row);
+            }
 
             return keyboard;
         }
@@ -4865,11 +4933,6 @@ jQuery(document).ready(function () {
         }
         if (distributeImagesInput) {
             distributeImagesInput.addEventListener('change', distributeImages);
-        }
-        // The switch of the addresses: turning it on starts the waiting over the
-        // text as it stands, turning it off stops the fill that had not come yet.
-        if (linksToButtonsInput) {
-            linksToButtonsInput.addEventListener('change', armLinksToButtons);
         }
         // The preview answers to the buttons of the first part as it does to its
         // text: a row of the shared field is read on every keystroke, and the parts
@@ -5233,10 +5296,9 @@ jQuery(document).ready(function () {
                 distributeImagesInput.checked = false;
             }
             // The record just saved has its addresses in the rows already; the next
-            // one starts from a blank text, so the waiting for them starts over.
-            if (linksToButtonsInput) {
-                linksToButtonsInput.checked = false;
-            }
+            // one starts from a blank text, so the waiting for them starts over. The
+            // switch itself is not part of a record: its state belongs to the session,
+            // and taking it off here would leave the page disagreeing with it.
             armLinksToButtons();
             writeImages(0, '');
             if (sourceTypeInput) sourceTypeInput.value = 'new';
@@ -5593,6 +5655,10 @@ jQuery(document).ready(function () {
         // The heading switch of the form is remembered the same way, although
         // nothing of the page has to be redrawn for it.
         watchHeadingSwitch();
+
+        // So is the switch of the addresses, and it is handed the waiting of the
+        // fill it owns: the two states of one turn have to agree with each other.
+        watchLinksSwitch(armLinksToButtons);
 
         // Scroll does not bubble, so one capture listener on the document sees
         // the viewport of every block, whenever OverlayScrollbars rebuilt it.
