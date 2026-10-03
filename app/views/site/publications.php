@@ -144,12 +144,14 @@ $this->registerCss(
     overflow-wrap: anywhere;
 }
 
-/* The frame of the button fields borrows the border of a board card, but it is
-   not a card of a board: standing inside `.kanban-items` it would catch the
-   dashed orange hover and the move cursor of a draggable item while the form is
-   being filled. The three classes of the board rule are repeated here so this
-   one wins on specificity, not on the order the sheets were loaded in. */
-.kanban-board .kanban-items .kanban-item.publication-button-frame:hover {
+/* A group of fields of this form is framed as a card of the board, but it is not
+   a card of a board: standing inside `.kanban-items` it would catch the dashed
+   orange hover and the move cursor of a draggable item while the form is being
+   filled. The three classes of the board rule are repeated here so this one wins
+   on specificity, not on the order the sheets were loaded in. The frame is named
+   for what it holds — buttons, the shared album, the album of a part — since the
+   same border stands around all three. */
+.kanban-board .kanban-items .kanban-item.publication-field-frame:hover {
     border: 1px solid #dfe5ea;
     cursor: auto;
 }
@@ -161,7 +163,7 @@ $this->registerCss(
    still shortens the line boxes of the text in the same context, which is the
    wrapping the notice wants. The vendored sheet has no `d-flow-root` utility, so
    the two boxes name the display themselves. */
-.publication-button-frame,
+.publication-field-frame,
 .publication-part-button {
     display: flow-root;
 }
@@ -554,51 +556,52 @@ CSS
                                                name="publicationFormatting[]" value="[]">
                                     </div>
 
-                                    <?php /* The album of a part. The first block never shows its own:
-                                            its album is the shared «Изображения публикации» field under the
-                                            list, so this one stays hidden and disabled — a disabled field
-                                            is not submitted and cannot shift the parts of the list. */ ?>
-                                    <div class="publication-part-album d-none mt-2">
-                                        <label class="form-label mb-1" for="publicationPartImages">
-                                            <i class="bi bi-images me-1"></i>Изображения этой части
-                                        </label>
-                                        <textarea class="form-control publication-part-album-field" id="publicationPartImages"
-                                                  name="publicationPartImages[]" rows="2" disabled
-                                                  placeholder="По одному URL изображения в строке"></textarea>
+                                    <?php /* The album of a part, framed like the shared album of the first
+                                            part. The first block never shows its own: its album is the
+                                            shared «Изображения публикации» field under the list, so this
+                                            one stays hidden and disabled — a disabled field is not
+                                            submitted and cannot shift the parts of the list. */ ?>
+                                    <div class="kanban-item publication-field-frame publication-part-album p-3 rounded-2 bg-white d-none mt-2">
+                                            <label class="form-label mb-1" for="publicationPartImages">
+                                                <i class="bi bi-images me-1"></i>Изображения этой части
+                                            </label>
+                                            <textarea class="form-control publication-part-album-field" id="publicationPartImages"
+                                                      name="publicationPartImages[]" rows="2" disabled
+                                                      placeholder="По одному URL изображения в строке"></textarea>
 
-                                        <?php /* The companion of the links field: the same album filled from a
-                                                computer instead of from addresses. One picker per part, so the
-                                                files a part holds move and merge with the links of that part. */ ?>
-                                        <label class="form-label mb-1 mt-2 publication-part-album-files-label"
-                                               for="publicationPartImageFiles">
-                                            <i class="bi bi-file-earmark-image me-1"></i>Файлы этой части
-                                        </label>
-                                        <input type="file" class="form-control publication-part-album-files"
-                                               id="publicationPartImageFiles" name="publicationPartImageFiles0[]"
-                                               accept="image/*" multiple disabled>
+                                            <?php /* The companion of the links field: the same album filled from a
+                                                    computer instead of from addresses. One picker per part, so the
+                                                    files a part holds move and merge with the links of that part. */ ?>
+                                            <label class="form-label mb-1 mt-2 publication-part-album-files-label"
+                                                   for="publicationPartImageFiles">
+                                                <i class="bi bi-file-earmark-image me-1"></i>Файлы этой части
+                                            </label>
+                                            <input type="file" class="form-control publication-part-album-files"
+                                                   id="publicationPartImageFiles" name="publicationPartImageFiles0[]"
+                                                   accept="image/*" multiple disabled>
 
-                                        <?php /* The album goes to a neighbour and comes in behind what that field
-                                                already holds — the links and the files alike; the field it left
-                                                stands empty. */ ?>
-                                        <div class="d-flex flex-wrap gap-2 mt-1 publication-album-move">
-                                            <button type="button" class="btn btn-outline-secondary btn-sm"
-                                                    data-move-album="-1"
-                                                    title="Ссылки и файлы этого поля переедут в предыдущую часть и встанут после тех, что в ней уже есть">
-                                                <i class="bi bi-arrow-left-short me-1"></i>Переместить изображения в предыдущую часть
-                                            </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm"
-                                                    data-move-album="1"
-                                                    title="Ссылки и файлы этого поля переедут в следующую часть и встанут после тех, что в ней уже есть">
-                                                <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
-                                            </button>
-                                        </div>
-                                        <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
-                                             role="status"></div>
-                                        <?php /* A file the album will not take is named here: the pick stays out
-                                                of the form, and the album keeps what it already held. */ ?>
-                                        <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
-                                             role="status"></div>
-                                        <div class="stacked-images mt-2 d-none publication-part-images"></div>
+                                            <?php /* The album goes to a neighbour and comes in behind what that field
+                                                    already holds — the links and the files alike; the field it left
+                                                    stands empty. */ ?>
+                                            <div class="d-flex flex-wrap gap-2 mt-1 publication-album-move">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                        data-move-album="-1"
+                                                        title="Ссылки и файлы этого поля переедут в предыдущую часть и встанут после тех, что в ней уже есть">
+                                                    <i class="bi bi-arrow-left-short me-1"></i>Переместить изображения в предыдущую часть
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                        data-move-album="1"
+                                                        title="Ссылки и файлы этого поля переедут в следующую часть и встанут после тех, что в ней уже есть">
+                                                    <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
+                                                </button>
+                                            </div>
+                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
+                                                 role="status"></div>
+                                            <?php /* A file the album will not take is named here: the pick stays out
+                                                    of the form, and the album keeps what it already held. */ ?>
+                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
+                                                 role="status"></div>
+                                            <div class="stacked-images mt-2 d-none publication-part-images"></div>
                                     </div>
 
                                     <?php /* The buttons of a part. They come out of the switch
@@ -718,41 +721,46 @@ CSS
 
                             <!-- Attached images -->
                             <div class="mb-3">
-                                <label for="publicationImages" class="form-label"
-                                       data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
-                                       data-bs-custom-class="popover-info"
-                                       data-bs-content="Изображения отправляются в канал вместе с текстом публикации (первое — с подписью); у разбитой публикации это изображения её первой части. Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома.">
-                                    <i class="bi bi-images me-1"></i>Изображения публикации
-                                </label>
-                                <textarea class="form-control" id="publicationImages" name="publicationImages"
-                                          rows="3"
-                                          placeholder="По одному URL изображения в строке&#10;https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
+                                <?php /* The album of the first part of the publication is this block, and it
+                                        stands in the same bordered card the buttons of the form and the albums
+                                        of its other parts stand in, so one album reads as one group. */ ?>
+                                <div class="kanban-item publication-field-frame p-3 rounded-2 bg-white">
+                                    <label for="publicationImages" class="form-label"
+                                           data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                           data-bs-custom-class="popover-info"
+                                           data-bs-content="Изображения отправляются в канал вместе с текстом публикации (первое — с подписью); у разбитой публикации это изображения её первой части. Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома.">
+                                        <i class="bi bi-images me-1"></i>Изображения публикации
+                                    </label>
+                                    <textarea class="form-control" id="publicationImages" name="publicationImages"
+                                              rows="3"
+                                              placeholder="По одному URL изображения в строке&#10;https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
 
-                                <?php /* The companion of the links field for the first part of the
-                                        publication: the album of that part is this block, so its
-                                        picker carries the name of the field, not of a part. The
-                                        brackets make PHP keep every file of a `multiple` input
-                                        instead of only the last one. */ ?>
-                                <label class="form-label mb-1 mt-2" for="publicationImageFiles">
-                                    <i class="bi bi-file-earmark-image me-1"></i>Файлы публикации
-                                </label>
-                                <input type="file" class="form-control" id="publicationImageFiles"
-                                       name="publicationImageFiles[]" accept="image/*" multiple>
+                                    <?php /* The companion of the links field for the first part of the
+                                            publication: the album of that part is this block, so its
+                                            picker carries the name of the field, not of a part. The
+                                            brackets make PHP keep every file of a `multiple` input
+                                            instead of only the last one. */ ?>
+                                    <label class="form-label mb-1 mt-2" for="publicationImageFiles">
+                                        <i class="bi bi-file-earmark-image me-1"></i>Файлы публикации
+                                    </label>
+                                    <input type="file" class="form-control" id="publicationImageFiles"
+                                           name="publicationImageFiles[]" accept="image/*" multiple>
 
-                                <?php /* Named here are the links a fill left out: the shape is the
-                                        one the ui-kit gives a day divider inside a chat column. */ ?>
-                                <div class="bg-primary-subtle px-3 py-2 m-3 mb-1 rounded-2 text-break d-none publication-images-notice"
-                                     id="publicationImagesNotice" role="status"></div>
-                                <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
-                                     id="publicationImageFilesNotice" role="status"></div>
-                                <div class="stacked-images mt-2 d-none" id="publicationImagesPreview"></div>
+                                    <?php /* Named here are the links a fill left out: the shape is the
+                                            one the ui-kit gives a day divider inside a chat column. */ ?>
+                                    <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
+                                         id="publicationImagesNotice" role="status"></div>
+                                    <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
+                                         id="publicationImageFilesNotice" role="status"></div>
+                                    <div class="stacked-images mt-2 d-none" id="publicationImagesPreview"></div>
+                                </div>
                             </div>
 
                             <!-- Link buttons -->
                             <div class="mb-3">
                                 <?php /* The frame of the buttons: the same bordered card a column of the
                                         board in ui-kit/tasks.html puts under each of its items. */ ?>
-                                <div class="kanban-item publication-button-frame p-3 rounded-2 bg-white">
+                                <div class="kanban-item publication-field-frame p-3 rounded-2 bg-white">
                                     <?php /* The switch that reads the addresses of the text into the
                                             buttons of the same part. It never travels with the saved
                                             record: the rows it adds are the fields that do — the switch
