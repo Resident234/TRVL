@@ -298,6 +298,25 @@ $this->registerCss(
 .publication-editor .ql-toolbar .ql-emoji .bi::before {
     display: block;
 }
+
+/* The block of the forum topics is as tall as the page that is visible under the
+   sticky header, so the list of topics scrolls inside the block instead of the
+   document scrolling. A rule cannot ask a neighbour how tall it is, and that
+   neighbour is not one number: the header of the layout is 64px on a desktop
+   window and 70px below `lg`, where its 46px brand mark stands beside the
+   buttons — so the page script measures it into `--app-header-height` and the
+   fallback is the desktop figure. `flex: 1 1 0` gives the rest of the card to the
+   list, and `min-height: 0` lets it take less than its own content: a flex item
+   that kept its automatic minimum would stretch over every topic it holds and the
+   card would outgrow the page. */
+#pub-forum-block {
+    height: calc(100vh - var(--app-header-height, 64px));
+}
+
+#pub-forum-block > .scroll350 {
+    flex: 1 1 0;
+    min-height: 0;
+}
 CSS
 );
 ?>
@@ -373,8 +392,8 @@ CSS
                     </div>
                 </div>
 
-                <!-- Forum topics -->
-                <div class="card p-3 border border-danger to-do">
+                <!-- Forum topics: the id carries the height rule of registerCss -->
+                <div class="card p-3 border border-danger to-do" id="pub-forum-block">
                     <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
                         <div class="d-flex align-items-center gap-2">
                             <span class="icon-box sm bg-danger-subtle border border-danger rounded-circle">
@@ -2195,6 +2214,23 @@ jQuery(document).ready(function () {
                         + (error && error.message ? error.message : error));
                 });
         });
+    }
+
+    // The height the block of the forum topics is written in depends on the
+    // header of the layout, and CSS reads no neighbour: that header takes the
+    // height of whatever its breakpoint leaves standing in it — the 46px brand
+    // mark below `lg`, the search field and the avatar above it — so it is
+    // measured off the live element and handed to the rule as a variable.
+    function syncAppHeaderHeight() {
+        var header = document.querySelector('.app-header');
+        if (!header) {
+            return;
+        }
+
+        document.documentElement.style.setProperty(
+            '--app-header-height',
+            header.getBoundingClientRect().height.toFixed(2) + 'px'
+        );
     }
 
     var runOnce = false;
@@ -5836,6 +5872,13 @@ jQuery(document).ready(function () {
         // fill it owns: the two states of one turn have to agree with each other.
         watchLinksSwitch(armLinksToButtons);
 
+        // The height of the forum block is the page under the sticky header, so
+        // the header is measured once the lists are wired and again whenever the
+        // window changes — the header itself changes with the breakpoint it is
+        // laid out in, and the block has to follow it.
+        syncAppHeaderHeight();
+        window.addEventListener('resize', syncAppHeaderHeight);
+
         // Scroll does not bubble, so one capture listener on the document sees
         // the viewport of every block, whenever OverlayScrollbars rebuilt it.
         document.addEventListener('scroll', function (event) {
@@ -5864,7 +5907,13 @@ jQuery(document).ready(function () {
     }
     setTimeout(initAll, 0);
     setTimeout(initAll, 100);
-    jQuery(window).on('load', function () { setTimeout(initAll, 0); });
+    // The brand mark of the header is the tallest thing in it below `lg`, and an
+    // image knows its own height only once it has come, so the measure of the
+    // header is taken again when the window has loaded everything.
+    jQuery(window).on('load', function () {
+        syncAppHeaderHeight();
+        setTimeout(initAll, 0);
+    });
 });
 JS
 );
