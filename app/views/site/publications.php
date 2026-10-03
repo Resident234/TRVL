@@ -873,6 +873,13 @@ CSS
                                 <button type="submit" name="action" value="draft" class="btn btn-outline-secondary">
                                     <i class="bi bi-save me-1"></i>Сохранить
                                 </button>
+                                <?php /* Back to the blank state the page opens in, by hand instead of
+                                       after a save. The record form taken over is dropped with it: a
+                                       field left standing would write over that record. */ ?>
+                                <button type="button" class="btn btn-outline-danger" id="publicationClearBtn"
+                                        title="Освободить форму: текст, части, изображения, кнопки и дату — как после сохранения">
+                                    <i class="bi bi-x-circle me-1"></i>Очистить
+                                </button>
                             </div>
                         </form>
 
@@ -5605,6 +5612,20 @@ jQuery(document).ready(function () {
                 updatePreviewPublicationAt();
             }
         };
+
+        // The reset a save runs is offered by hand too. Asking for it is asking for the
+        // blank form the page opens in, so the record taken over goes with the fields:
+        // keeping its id would let the next submit write over a record nobody meant to
+        // change. The two switches of the session keep their state, as they do after a
+        // save — the reader left the page with them on purpose.
+        var clearFormButton = document.getElementById('publicationClearBtn');
+        if (clearFormButton) {
+            clearFormButton.addEventListener('click', function () {
+                clearEditingState();
+                showFlash('success', 'Форма очищена.');
+                source.focus();
+            });
+        }
 
         var ajaxInFlight = false;
 
