@@ -1579,24 +1579,28 @@ function readEmojiTable(table) {
     });
 }
 
-// The font of the machine draws what it cannot compose as the separate glyphs a
-// joiner (U+200D) stands between, and those together are near twice the width of
-// one emoji. Half again is the line the measurement leaves between the two
-// answers: the widest figure the font really does draw alone — a family of four —
+// The font of the machine fails at two different things, and each asks its own
+// question. What it cannot compose it draws as the separate glyphs a joiner
+// (U+200D) stands between, and those together are near twice the width of one
+// emoji: half again is the line the measurement leaves between the two answers,
+// since the widest figure the font really does draw alone — a family of four —
 // comes to 1.41 of an emoji, while the sets it splits begin at 1.64. Only the
-// sequences carrying a joiner are asked of it, since every answer of the table
+// sequences carrying a joiner are measured, because every answer of the table
 // wider than one glyph carries one, and the rest, the two-letter flags among it,
-// is known to fit. The question goes to the font and not to a list of exclusions:
-// a newer font answers it the other way and gives back what this one loses.
-function emojiSupported(list, measure, single) {
+// is known to fit. A symbol the font holds no figure for at all is the other
+// failure, and no width tells of it: the box of the last resort is exactly as wide
+// as the emoji it stands for. `missing` is that question, asked of the ink. Both
+// go to the font and not to a list of exclusions: a newer font answers them the
+// other way and gives back what this one loses.
+function emojiSupported(list, measure, single, missing) {
     var limit = single * 1.5;
 
     return list.filter(function (item) {
-        if (item.emoji.indexOf('\u200D') < 0) {
-            return true;
+        if (item.emoji.indexOf('\u200D') >= 0 && measure(item.emoji) > limit) {
+            return false;
         }
 
-        return measure(item.emoji) <= limit;
+        return !missing(item.emoji);
     });
 }
 
@@ -2786,9 +2790,68 @@ jQuery(document).ready(function () {
                 return ctx.measureText(symbol).width;
             };
         })();
-        var EMOJI = window.TRVL_EMOJI
-            ? emojiSupported(readEmojiTable(window.TRVL_EMOJI), emojiWidth, emojiWidth('\u{1F600}'))
-            : [];
+        // Whether the font drew a symbol at all. A code point no font on any machine
+        // holds — U+10FFFF, which Unicode reserves forever — is drawn as the box of
+        // the last resort, and every symbol the font holds no figure for comes out of
+        // that same box, pixel for pixel, which is the answer compared here. The
+        // pixels and not the width: the box is as wide as the emoji it stands for,
+        // while the black square of the table, which the font really does hold and
+        // which is black by design, is that same width again. Where even the grinning
+        // face comes out of the box the machine draws no emoji, and the question is
+        // dropped: it would refuse the whole table to a font that has nothing to say.
+        var emojiMissing = (function () {
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d', {willReadFrequently: true});
+            // One answer of the font per symbol: the panel is filled again on every
+            // keystroke, every chip and every arrow, and the second answer of the
+            // same question is the first.
+            var answers = {};
+
+            canvas.width = 48;
+            canvas.height = 32;
+            ctx.font = '20px ' + getComputedStyle(document.body).fontFamily;
+            ctx.textBaseline = 'alphabetic';
+
+            function figure(symbol) {
+                var hash = 2166136261;
+                var pixels;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#000';
+                ctx.fillText(symbol, 2, 26);
+                pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+                for (var i = 0; i < pixels.length; i++) {
+                    hash = ((hash ^ pixels[i]) * 16777619) >>> 0;
+                }
+
+                return hash;
+            }
+
+            var box = figure('\u{10FFFF}');
+            var width = ctx.measureText('\u{10FFFF}').width;
+
+            return box === figure('\u{1F600}')
+                ? function () {
+                    return false;
+                }
+                : function (symbol) {
+                    if (answers[symbol] === undefined) {
+                        // One figure of one font has one advance, so a symbol that is
+                        // not as wide as the box cannot be that box. The width is
+                        // asked first because the pixels cost a second the whole
+                        // category would take.
+                        answers[symbol] = ctx.measureText(symbol).width === width
+                            && figure(symbol) === box;
+                    }
+
+                    return answers[symbol];
+                };
+        })();
+        var EMOJI = window.TRVL_EMOJI ? readEmojiTable(window.TRVL_EMOJI) : [];
+        // The width of the reference emoji, which the answer of the width question
+        // is weighed against wherever the font is asked.
+        var emojiSingle = emojiWidth('\u{1F600}');
         // A category of the table is a few hundred emoji wide, which is more than the
         // panel shows and more than the arrows are worth walking. The order of
         // Unicode puts the common ones of a category first, so what the cut leaves
@@ -2832,15 +2895,26 @@ jQuery(document).ready(function () {
         }
 
         // What the panel lists: the answer to a word, or the category it was opened
-        // on while nothing is asked for.
+        // on while nothing is asked for. The font is put to here, when the panel is
+        // filled, and not over the whole table at start-up: a machine takes a few
+        // tenths of a millisecond for its first sight of a symbol, so a question
+        // about the table would hold the page for half a second to name the boxes of
+        // the parts nobody is about to open. The answer is remembered by emojiMissing.
+        // A category is asked before it is cut, because the rows the font has no
+        // figure for would otherwise stand as boxes in the page and leave one cell
+        // short of what the panel could have filled. A word is cut first: its matches
+        // come back ranked, so the tail of them is not the answer anyone is looking
+        // for, and one keystroke must not cost more than the panel can show.
         function emojiListOf(word) {
             if (word !== '') {
-                return emojiSearch(word, EMOJI, EMOJI_SEARCH_LIMIT);
+                return emojiSupported(emojiSearch(word, EMOJI, EMOJI_SEARCH_LIMIT), emojiWidth, emojiSingle, emojiMissing);
             }
 
-            return EMOJI.filter(function (item) {
+            var category = EMOJI.filter(function (item) {
                 return item.category === emojiCategory;
-            }).slice(0, EMOJI_BROWSE_LIMIT);
+            });
+
+            return emojiSupported(category, emojiWidth, emojiSingle, emojiMissing).slice(0, EMOJI_BROWSE_LIMIT);
         }
 
         function emojiQuery() {
