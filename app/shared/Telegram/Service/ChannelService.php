@@ -134,7 +134,9 @@ final class ChannelService
     /**
      * Publishes a post with its photos: a single photo becomes a
      * photo message with the caption, two to ten photos become an
-     * album (the caption goes on the first photo). The caption is
+     * album (the caption goes on the first photo). An empty text sends
+     * the photos with no caption at all, which is the message Telegram
+     * makes of pictures alone. The caption is
      * cropped to CAPTION_MAX_LENGTH, preferring the last line break that
      * still fits so a line is never cut in the middle. What does not fit
      * into the caption is sent once more after the photos as a
@@ -147,7 +149,8 @@ final class ChannelService
      *
      * @param string[] $photoUrls
      * @throws TelegramApiException on API failure
-     * @throws InvalidArgumentException when the text is empty or the photo list is empty
+     * @throws InvalidArgumentException when the photo list is empty; an empty text
+     * is a caption-less album, which is the message Telegram shows for photos alone
      */
     public function publishPhotos(
         string $text,
@@ -155,10 +158,6 @@ final class ChannelService
         MessageEntities $entities = new MessageEntities(),
         LinkButtons $buttons = new LinkButtons(),
     ): int {
-        if (mb_strlen($text) === 0) {
-            throw new InvalidArgumentException('Текст поста не может быть пустым.');
-        }
-
         $photoUrls = array_values(array_filter(
             $photoUrls,
             static fn (string $url): bool => $url !== '',

@@ -91,13 +91,16 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
     ): PostResult {
         // Check if it's a local file path
         $photo = $this->isLocalFile($photoPath) ? new InputFile($photoPath) : $photoPath;
+        // A picture sent without words carries no caption field at all: an empty
+        // string would be a caption of zero length rather than its absence.
+        $hasCaption = $caption !== '';
 
         $message = $this->call(
             static fn (Nutgram $bot): ?Message => $bot->sendPhoto(
                 chat_id: $channelId,
                 photo: $photo,
-                caption: $caption,
-                caption_entities: self::toMessageEntities($entities),
+                caption: $hasCaption ? $caption : null,
+                caption_entities: $hasCaption ? self::toMessageEntities($entities) : null,
                 reply_markup: self::toKeyboard($buttons),
             ),
         );
@@ -118,13 +121,16 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         LinkButtons $buttons = new LinkButtons(),
     ): PostResult {
         $media = [];
+        $hasCaption = $caption !== '';
         foreach (array_values($photoUrls) as $index => $url) {
             // Check if it's a local file path
             $mediaUrl = $this->isLocalFile($url) ? new InputFile($url) : $url;
             $media[] = new InputMediaPhoto(
                 media: $mediaUrl,
-                caption: $index === 0 ? $caption : null,
-                caption_entities: $index === 0 ? self::toMessageEntities($entities) : null,
+                caption: $index === 0 && $hasCaption ? $caption : null,
+                caption_entities: $index === 0 && $hasCaption
+                    ? self::toMessageEntities($entities)
+                    : null,
             );
         }
 

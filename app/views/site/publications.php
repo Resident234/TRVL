@@ -1824,6 +1824,13 @@ function stripAction(open, clicked) {
     return open.index === clicked.index ? 'close' : 'slide';
 }
 
+// What a part of the form shows the preview as: a part carries a message when it
+// has words of its own or an album of its own, because a picture without a
+// caption is a post Telegram accepts. A part with neither is nothing to show.
+function partIsShown(text, pictures) {
+    return text !== '' || pictures.length > 0;
+}
+
 jQuery(document).ready(function () {
     var pickerFormat = __PICKER_FORMAT;
     var __FLASH_ID = 'app-flash';
@@ -5368,14 +5375,15 @@ jQuery(document).ready(function () {
             var shown = [];
 
             partValues().forEach(function (value, index) {
-                if (value !== '') {
+                var pictures = albums[index] || [];
+                if (partIsShown(value, pictures)) {
                     // Every card shows the message the channel will get: the
                     // heading of the part over its text, bold, with the number of
                     // a numbered part at the end of the heading.
                     var message = composedMessage(titles[index] || '', value, formattingOf(fields[index]));
                     shown.push({
                         text: message.text,
-                        pictures: albums[index] || [],
+                        pictures: pictures,
                         entities: message.entities,
                         buttons: buttons[index] || [],
                     });
@@ -5407,10 +5415,14 @@ jQuery(document).ready(function () {
                     part.appendChild(box);
                     renderImagesPreview(box, one.pictures);
                 }
-                var body = document.createElement('p');
-                body.className = 'publication-preview-part';
-                renderFormattedText(body, one.text, one.entities);
-                part.appendChild(body);
+                // A part of pictures and nothing else has no text line: that is
+                // exactly how the channel shows an album without a caption.
+                if (one.text !== '') {
+                    var body = document.createElement('p');
+                    body.className = 'publication-preview-part';
+                    renderFormattedText(body, one.text, one.entities);
+                    part.appendChild(body);
+                }
                 var keyboard = renderPreviewKeyboard(one.buttons);
                 if (keyboard) {
                     part.appendChild(keyboard);

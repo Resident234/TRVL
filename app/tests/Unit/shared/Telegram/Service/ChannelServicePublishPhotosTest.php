@@ -220,11 +220,38 @@ final class ChannelServicePublishPhotosTest extends Unit
         $this->assertSame(13, $this->_service->publishPhotos($text, ['https://example.com/a.jpg']));
     }
 
-    public function testEmptyTextThrows(): void
+    public function testEmptyTextSendsThePhotoWithoutACaption(): void
+    {
+        $this->_client
+            ->expects($this->once())
+            ->method('sendPhotoMessage')
+            ->with(self::CHANNEL_ID, 'https://example.com/a.jpg', '', new MessageEntities(), new LinkButtons())
+            ->willReturn(new PostResult(16, 123));
+
+        $this->assertSame(16, $this->_service->publishPhotos('', ['https://example.com/a.jpg']));
+    }
+
+    public function testEmptyTextSendsAnAlbumWithoutACaption(): void
+    {
+        $urls = [
+            'https://example.com/a.jpg',
+            'https://example.com/b.jpg',
+        ];
+
+        $this->_client
+            ->expects($this->once())
+            ->method('sendPhotoGroupMessage')
+            ->with(self::CHANNEL_ID, $urls, '', new MessageEntities(), new LinkButtons())
+            ->willReturn(new PostResult(17, 123));
+
+        $this->assertSame(17, $this->_service->publishPhotos('', $urls));
+    }
+
+    public function testEmptyTextWithoutPhotosThrows(): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        $this->_service->publishPhotos('', ['https://example.com/a.jpg']);
+        $this->_service->publishPhotos('', []);
     }
 
     public function testEmptyPhotoListThrows(): void

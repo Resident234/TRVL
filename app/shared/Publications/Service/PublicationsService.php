@@ -110,8 +110,8 @@ final class PublicationsService
      * in the temporary store.
      *
      * @param string[] $imageUrls
-     * @throws InvalidArgumentException when the text is empty or its
-     * formatting does not fit it
+     * @throws InvalidArgumentException when the part carries neither text nor
+     * images, or when its formatting does not fit the text
      */
     public function saveDraft(
         string $text,
@@ -121,7 +121,7 @@ final class PublicationsService
         string $title,
         ?ForumPublicationRef $forumRef = null,
     ): void {
-        $this->assertPartValid($title, $text, $formatting);
+        $this->assertPartValid($title, $text, $formatting, $imageUrls);
         $buttons->assertValid();
         $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $buttons, $title);
         $this->bindForumRef($id, $forumRef);
@@ -134,7 +134,8 @@ final class PublicationsService
      * "forum entity - publication" link is remembered.
      *
      * @param string[] $imageUrls
-     * @throws InvalidArgumentException when the text is empty or the date is invalid
+     * @throws InvalidArgumentException when the part carries neither text nor images
+     * or the date is invalid
      */
     public function schedulePost(
         string $text,
@@ -146,7 +147,7 @@ final class PublicationsService
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
     ): void {
-        $this->assertPartValid($title, $text, $formatting);
+        $this->assertPartValid($title, $text, $formatting, $imageUrls);
         $buttons->assertValid();
         $normalized = $this->normalizeDate($publishedAt, $userTimezone);
         $id = $this->publications->createPost(
@@ -187,9 +188,10 @@ final class PublicationsService
      * @param MessageEntities[] $formats
      * @param LinkButtons[] $buttons
      * @param string[] $titles
-     * @throws InvalidArgumentException when a part is empty or longer than the
-     * Telegram limit, when its formatting does not fit it, when one of its
-     * buttons is half-filled or malformed, or when the date is invalid
+     * @throws InvalidArgumentException when a part carries neither text nor its own
+     * album or is longer than the Telegram limit, when its formatting does not fit
+     * it, when one of its buttons is half-filled or malformed, or when the date is
+     * invalid
      */
     public function saveParts(
         array $texts,
@@ -215,7 +217,7 @@ final class PublicationsService
         $albums = array_values($imageGroups);
 
         foreach ($parts as $index => $text) {
-            $this->assertPartValid($headings[$index], $text, $formatting[$index]);
+            $this->assertPartValid($headings[$index], $text, $formatting[$index], $albums[$index] ?? []);
             $keyboard[$index]->assertValid();
         }
 
@@ -733,9 +735,9 @@ final class PublicationsService
      * time on every move or update.
      *
      * @param string[] $imageUrls
-     * @throws InvalidArgumentException when the text is empty, its formatting
-     * does not fit it, the button is malformed, the date is invalid or the
-     * source record does not exist
+     * @throws InvalidArgumentException when the record carries neither text nor
+     * images, when its formatting does not fit it, the button is malformed, the
+     * date is invalid or the source record does not exist
      */
     public function saveFromForm(
         string $text,
@@ -749,7 +751,7 @@ final class PublicationsService
         string $action,
         ?string $userTimezone = null,
     ): void {
-        $this->assertPartValid($title, $text, $formatting);
+        $this->assertPartValid($title, $text, $formatting, $imageUrls);
         $buttons->assertValid();
         $now = $this->now();
 
@@ -1095,18 +1097,32 @@ final class PublicationsService
     }
 
     /**
-     * @throws InvalidArgumentException when the text is empty or longer than
-     * the message limit Telegram accepts, or when its formatting does not
-     * describe real spans of it
+     * $album is the picture list of this very part: an album carries a message
+     * on its own, so the text of a part that brings pictures may stay empty.
+     *
+     * @param string[] $album
+     * @throws InvalidArgumentException when the part has neither text nor album,
+     * when its message is longer than the limit Telegram accepts, or when its
+     * formatting does not describe real spans of it
      */
-    private function assertPartValid(string $title, string $text, MessageEntities $formatting): void
-    {
+    private function assertPartValid(
+        string $title,
+        string $text,
+        MessageEntities $formatting,
+        array $album = [],
+    ): void {
         $message = self::messageOf($title, $text);
         $what = trim($title) === '' ? 'Текст публикации' : 'Заголовок с текстом';
 
-        if (mb_strlen($text) === 0 || mb_strlen($message) > ChannelService::TEXT_MAX_LENGTH) {
+        if ($text === '' && $album === []) {
             throw new InvalidArgumentException(
-                sprintf('%s должен быть от 1 до %d символов.', $what, ChannelService::TEXT_MAX_LENGTH),
+                'Публикации нужны текст или хотя бы одно изображение.',
+            );
+        }
+
+        if (mb_strlen($message) > ChannelService::TEXT_MAX_LENGTH) {
+            throw new InvalidArgumentException(
+                sprintf('%s должен быть не длиннее %d символов.', $what, ChannelService::TEXT_MAX_LENGTH),
             );
         }
 
