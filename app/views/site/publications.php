@@ -80,6 +80,31 @@ $this->registerCss(
     margin-left: 0.25rem;
 }
 
+/* The strip under the fields of an album is the stacked images of the UI-kit, the
+   theme drawing it: circles of 48px overlapping by their own margin and growing
+   under the cursor. Only two things are the page's own — the ring of the cursor,
+   because a picture of the strip opens the slider of the album, and the way a
+   photo is cut: the vendored rule sizes a square avatar, so a landscape picture
+   without a fit would be squeezed into that square. */
+.publication-album-strip img,
+.publication-album-strip .plus {
+    cursor: pointer;
+}
+
+.publication-album-strip img {
+    object-fit: cover;
+}
+
+/* The frame the slider stands in is as wide as the card of the form, so the
+   picture of a slide is held by its height, not by its width: the strip cuts a
+   photo into a round mark, while the point of the slider is to see the photo —
+   so it keeps its own proportions and the space it did not take stays the
+   background the utility class gives it. */
+.publication-album-slide {
+    max-height: 24rem;
+    object-fit: contain;
+}
+
 .preview-card > .card-body {
     align-items: flex-start;
     justify-content: flex-start;
@@ -601,7 +626,21 @@ CSS
                                                     of the form, and the album keeps what it already held. */ ?>
                                             <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
                                                  role="status"></div>
-                                            <div class="stacked-images mt-2 d-none publication-part-images"></div>
+                                            <div class="stacked-images publication-album-strip mt-2 d-none"></div>
+                                            <?php /* The slider of this album, in the shape the ui-kit
+                                                    gives it: the clone of a part block brings its own. */ ?>
+                                            <div class="carousel slide publication-album-carousel mt-2 d-none">
+                                                <div class="carousel-indicators"></div>
+                                                <div class="carousel-inner"></div>
+                                                <button class="carousel-control-prev" type="button" data-bs-slide="prev">
+                                                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                                    <span class="visually-hidden">Предыдущее изображение</span>
+                                                </button>
+                                                <button class="carousel-control-next" type="button" data-bs-slide="next">
+                                                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                                    <span class="visually-hidden">Следующее изображение</span>
+                                                </button>
+                                            </div>
                                     </div>
 
                                     <?php /* The buttons of a part. They come out of the switch
@@ -752,7 +791,24 @@ CSS
                                          id="publicationImagesNotice" role="status"></div>
                                     <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
                                          id="publicationImageFilesNotice" role="status"></div>
-                                    <div class="stacked-images mt-2 d-none" id="publicationImagesPreview"></div>
+                                    <div class="stacked-images publication-album-strip mt-2 d-none" id="publicationImagesPreview"></div>
+                                    <?php /* The slider a click on the strip above opens: the shape of
+                                            carousel.html, standing empty until the album of this frame
+                                            fills it. Its id and the data-bs-target of its own controls
+                                            are written when it opens — a part block is cloned with a
+                                            slider of its own, so two open ones never share a name. */ ?>
+                                    <div class="carousel slide publication-album-carousel mt-2 d-none">
+                                        <div class="carousel-indicators"></div>
+                                        <div class="carousel-inner"></div>
+                                        <button class="carousel-control-prev" type="button" data-bs-slide="prev">
+                                            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Предыдущее изображение</span>
+                                        </button>
+                                        <button class="carousel-control-next" type="button" data-bs-slide="next">
+                                            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Следующее изображение</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1754,6 +1810,18 @@ function wholeCharacter(text, at) {
     }
 
     return at;
+}
+
+// What a click on a picture of the album strip asks for: `open` is the album
+// whose slider the page shows and the slide it stands on, or null while no
+// slider is open. Another album opens its own slider, another picture of the
+// album already open slides it, and the picture the slider is on hides it.
+function stripAction(open, clicked) {
+    if (open === null || open.album !== clicked.album) {
+        return 'open';
+    }
+
+    return open.index === clicked.index ? 'close' : 'slide';
 }
 
 jQuery(document).ready(function () {
@@ -3474,7 +3542,7 @@ jQuery(document).ready(function () {
 
         function albumStrips() {
             return albumBoxes().map(function (box) {
-                return box.querySelector('.publication-part-images');
+                return box.querySelector('.publication-album-strip');
             });
         }
 
@@ -4780,6 +4848,194 @@ jQuery(document).ready(function () {
             container.classList.remove('d-none');
         };
 
+        // The slider a click on a strip opens. One node stands in the markup of
+        // every album frame, so a part block is cloned with its own; the node is
+        // named when it opens and the same name is written into the controls of
+        // that node alone, because two sliders of one form may not answer to one
+        // id. The album of the slider is the whole album of its field — the strip
+        // only has room for a few of its pictures.
+        var stripOpen = null;
+        var carouselSeq = 0;
+
+        function albumCarouselOf(strip) {
+            var node = strip.nextElementSibling;
+
+            return node && node.classList.contains('publication-album-carousel') ? node : null;
+        }
+
+        function stripPictures(strip) {
+            var pictures = albumPictures();
+
+            if (strip === imagesPreview) {
+                return pictures[0] || [];
+            }
+
+            var index = albumStrips().indexOf(strip);
+
+            return index === -1 ? [] : (pictures[index + 1] || []);
+        }
+
+        function slideKey(pictures) {
+            return pictures.map(pictureUrl).join('\n');
+        }
+
+        function fillAlbumCarousel(node, pictures) {
+            var id = 'publicationAlbumCarousel' + (carouselSeq += 1);
+            var many = pictures.length > 1;
+            var inner = node.querySelector('.carousel-inner');
+            var marks = node.querySelector('.carousel-indicators');
+
+            node.id = id;
+            inner.textContent = '';
+            marks.textContent = '';
+
+            pictures.forEach(function (picture, index) {
+                var item = document.createElement('div');
+                item.className = 'carousel-item' + (index === 0 ? ' active' : '');
+
+                var img = document.createElement('img');
+                img.className = 'd-block w-100 rounded-2 bg-light-subtle publication-album-slide';
+                img.src = pictureUrl(picture);
+                img.alt = 'Изображение публикации';
+                item.appendChild(img);
+                inner.appendChild(item);
+
+                if (!many) {
+                    return;
+                }
+
+                var mark = document.createElement('button');
+                mark.type = 'button';
+                mark.setAttribute('data-bs-target', '#' + id);
+                mark.setAttribute('data-bs-slide-to', index);
+                mark.setAttribute('aria-label', 'Изображение ' + (index + 1));
+                if (index === 0) {
+                    mark.className = 'active';
+                    mark.setAttribute('aria-current', 'true');
+                }
+                marks.appendChild(mark);
+            });
+
+            // A single picture has nothing to slide to, so the arrows and the marks
+            // of the strip's slider stay out of the way of the picture itself.
+            node.querySelectorAll('.carousel-control-prev, .carousel-control-next')
+                .forEach(function (control) {
+                    control.setAttribute('data-bs-target', '#' + id);
+                    control.classList.toggle('d-none', !many);
+                });
+        }
+
+        // The node is drawn whole every time it opens, so the instance of the
+        // drawing before it goes with the slides it had already counted.
+        function dropAlbumCarousel(node) {
+            if (typeof bootstrap === 'undefined' || !bootstrap.Carousel || !node) {
+                return;
+            }
+
+            var held = bootstrap.Carousel.getInstance(node);
+            if (held) {
+                held.dispose();
+            }
+        }
+
+        function openAlbumSlider(strip, index) {
+            var node = albumCarouselOf(strip);
+            var pictures = stripPictures(strip);
+
+            if (!node || !pictures.length || typeof bootstrap === 'undefined' || !bootstrap.Carousel) {
+                return;
+            }
+
+            // One album is being looked at at a time: the slider of another album
+            // goes away before this one is drawn.
+            if (stripOpen && stripOpen.album !== strip) {
+                closeAlbumSlider();
+            }
+
+            dropAlbumCarousel(node);
+            fillAlbumCarousel(node, pictures);
+            node.classList.remove('d-none');
+            stripOpen = { album: strip, index: index, slides: slideKey(pictures) };
+            new bootstrap.Carousel(node, { ride: false, wrap: true, touch: true }).to(index);
+        }
+
+        function closeAlbumSlider() {
+            if (!stripOpen) {
+                return;
+            }
+
+            var node = albumCarouselOf(stripOpen.album);
+            dropAlbumCarousel(node);
+            if (node) {
+                node.classList.add('d-none');
+            }
+            stripOpen = null;
+        }
+
+        // An album changes while its slider stands open: a link typed, a file
+        // picked, the album handed to a neighbour. The redraw draws it again and
+        // keeps the picture that was being looked at — or the last one left, when
+        // the album shrank under it. A field that lost its album, and a block that
+        // left the form with its part, close the slider they held.
+        function refreshAlbumSliders() {
+            if (!stripOpen) {
+                return;
+            }
+
+            var strip = stripOpen.album;
+            var pictures = stripPictures(strip);
+
+            if (!pictures.length || !document.contains(strip)) {
+                closeAlbumSlider();
+                return;
+            }
+
+            if (slideKey(pictures) === stripOpen.slides) {
+                return;
+            }
+
+            openAlbumSlider(strip, Math.min(stripOpen.index, pictures.length - 1));
+        }
+
+        // A picture of a strip opens the slider of its album on that picture, and
+        // the picture the slider already shows hides it again; the mark of the
+        // pictures the strip had no room for opens it on the first of those.
+        function watchAlbumStrips(node) {
+            node.addEventListener('click', function (event) {
+                var mark = event.target.closest('.publication-album-strip img, .publication-album-strip .plus');
+                if (!mark) {
+                    return;
+                }
+
+                var strip = mark.closest('.publication-album-strip');
+                var shown = strip.querySelectorAll('img');
+                var index = mark.tagName === 'IMG'
+                    ? Array.prototype.indexOf.call(shown, mark)
+                    : shown.length;
+                var action = stripAction(stripOpen, { album: strip, index: index });
+
+                if (action === 'close') {
+                    closeAlbumSlider();
+                    return;
+                }
+
+                if (action === 'slide') {
+                    var slider = bootstrap.Carousel.getInstance(albumCarouselOf(strip));
+                    if (slider) {
+                        slider.to(index);
+                        stripOpen.index = index;
+                    }
+
+                    return;
+                }
+
+                openAlbumSlider(strip, index);
+            });
+        }
+
+        watchAlbumStrips(imagesPreview.parentNode);
+        watchAlbumStrips(partsBox);
+
         var updateSingleImagePreview = function (pictures) {
             if (!previewCardImgEl) {
                 return;
@@ -4827,6 +5083,7 @@ jQuery(document).ready(function () {
         var updateImages = function () {
             renderImagesPreview(imagesPreview, albumPictures()[0] || []);
             updateAlbumStrips();
+            refreshAlbumSliders();
             update();
         };
 
@@ -5579,6 +5836,10 @@ jQuery(document).ready(function () {
         // Back to the blank "new record" state the page reload used to leave behind,
         // otherwise the next submit would overwrite the record just saved.
         var clearEditingState = function () {
+            // A slider of an album goes with the album the form loses here, and it
+            // goes before the blocks are rebuilt: the node it stands in may be the
+            // one the rebuild takes out of the page.
+            closeAlbumSlider();
             if (editingLog && editingLog.isConnected) {
                 editingLog.querySelector('.editing-badge').classList.add('d-none');
             }
