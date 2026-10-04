@@ -47,37 +47,77 @@ $keyboardMaxRows = LinkButtons::MAX_ROWS;
 
 $this->registerCss(
     <<<CSS
-.stacked-images.publication-preview-images {
-    margin-top: 0.5rem;
+/* The album of a part goes to the channel above its caption, and the channel
+   lays it out by how many pictures it holds: one across the message, two side by
+   side, three with the first holding the whole left side, four in two by two.
+   The grid is pulled out of the padding of the bubble, because a photo in the
+   channel touches its edges, and only the corners of the whole group are
+   rounded — the seams between the tiles stay straight.
+   The columns are bounded by zero rather than by their content: a cell of its own
+   would otherwise drive the width of the column it sits in, and an album of three
+   would give the left tile the whole message and push the two of the right out. */
+.publication-preview-album {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+    margin: -1rem -1rem 0.5rem;
+    overflow: hidden;
+    border-radius: var(--bs-border-radius-lg) var(--bs-border-radius-lg) 0 0;
 }
 
-/* A distributed publication goes to the channel as one message per part: the
-   photos first, the text of the part as the caption under them. */
-.stacked-images.publication-part-images {
-    margin: 0 0 0.5rem;
+.publication-preview-album.album-1 {
+    grid-template-columns: 1fr;
 }
 
-.stacked-images.publication-preview-images img,
-.stacked-images.publication-part-images img {
-    max-height: 120px;
-    width: auto;
-    border-radius: 0.375rem;
+/* An album with nothing under it is the whole message, so it keeps the rounding
+   of the bubble on all four of its corners. */
+.publication-preview-album.album-only {
+    margin-bottom: -1rem;
+    border-radius: var(--bs-border-radius-lg);
+}
+
+.publication-album-cell {
+    position: relative;
+    aspect-ratio: 1;
+}
+
+/* The first tile of three is the whole left side: it holds the two rows and keeps
+   no square of its own, since the channel crops it instead. */
+.publication-preview-album.album-3 .publication-album-cell:first-child {
+    grid-row: span 2;
+    aspect-ratio: auto;
+}
+
+.publication-album-cell img {
+    display: block;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
 }
 
-.stacked-images.publication-preview-images .plus,
-.stacked-images.publication-part-images .plus {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 60px;
-    height: 60px;
-    font-size: 1.25rem;
+/* A single picture keeps its own proportions, the way the channel shows it, and
+   is cut back only when it is taller than the bubble should get. */
+.publication-preview-album.album-1 .publication-album-cell {
+    aspect-ratio: auto;
+}
+
+.publication-preview-album.album-1 .publication-album-cell img {
+    height: auto;
+    max-height: 18rem;
+}
+
+/* Whatever the four tiles have no room for is counted on the last of them. */
+.publication-album-more {
+    position: absolute;
+    right: 0.375rem;
+    bottom: 0.375rem;
+    padding: 0 0.4375rem;
+    border-radius: 0.625rem;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 0.8125rem;
     font-weight: 600;
-    border-radius: 0.375rem;
-    background-color: var(--bs-danger);
-    color: white;
-    margin-left: 0.25rem;
+    line-height: 1.5;
 }
 
 /* The strip under the fields of an album is the stacked images of the UI-kit, the
@@ -488,14 +528,10 @@ CSS
                             <h5 class="text-warning fw-semibold m-0">Предпросмотр публикации</h5>
                         </div>
                     </div>
-                    <div class="card-img">
-                        <img src="" class="card-img-top img-fluid d-none" alt="Превью" id="previewCardImgEl">
-                    </div>
                     <div class="card-body">
                         <div class="d-flex flex-column gap-2 w-100" id="publicationPreview"
                              data-source="publicationTextInput"
                              data-placeholder="Введите текст публикации — он отобразится здесь до отправки в канал TRVL."></div>
-                        <div class="stacked-images publication-preview-images d-none" id="publicationPreviewImages"></div>
                     </div>
                     <div class="card-footer bg-transparent">
                         <div class="d-flex justify-content-between align-items-center">
@@ -1829,6 +1865,24 @@ function stripAction(open, clicked) {
 // caption is a post Telegram accepts. A part with neither is nothing to show.
 function partIsShown(text, pictures) {
     return text !== '' || pictures.length > 0;
+}
+
+// How the channel lays an album of N pictures out: the tiles it really shows,
+// whether the first of them holds the whole left side (three pictures), and how
+// many stay behind the «+N» of the last one — an album longer than the grid is
+// paged through in the app, which a static preview cannot do.
+function albumLayout(count) {
+    if (count <= 1) {
+        return { shown: count, tall: false, extra: 0 };
+    }
+
+    if (count === 3) {
+        return { shown: 3, tall: true, extra: 0 };
+    }
+
+    var shown = count < 4 ? count : 4;
+
+    return { shown: shown, tall: false, extra: count - shown };
 }
 
 jQuery(document).ready(function () {
@@ -4786,8 +4840,6 @@ jQuery(document).ready(function () {
         var imageFilesInput = document.getElementById('publicationImageFiles');
         var imageFilesNotice = document.getElementById('publicationImageFilesNotice');
         var imagesPreview = document.getElementById('publicationImagesPreview');
-        var previewImages = document.getElementById('publicationPreviewImages');
-        var previewCardImgEl = document.getElementById('previewCardImgEl');
         var publicationAtInput = document.getElementById('publicationAt');
         var previewPublicationAt = document.getElementById('previewPublicationAt');
         var sourceTypeInput = document.getElementById('publicationSource');
@@ -4853,6 +4905,37 @@ jQuery(document).ready(function () {
                 container.appendChild(plus);
             }
             container.classList.remove('d-none');
+        };
+
+        // The album of a part as the channel draws it: the tiles its own count of
+        // pictures asks for, the last of them counting whatever the grid has no
+        // room for. The classes carry the layout — albumLayout() has already
+        // decided it — and the sheet says what each of them means.
+        var renderAlbumGrid = function (pictures) {
+            var layout = albumLayout(pictures.length);
+            var grid = document.createElement('div');
+            grid.className = 'publication-preview-album album-' + layout.shown;
+
+            pictures.slice(0, layout.shown).forEach(function (picture, index) {
+                var cell = document.createElement('div');
+                cell.className = 'publication-album-cell';
+
+                var img = document.createElement('img');
+                img.src = pictureUrl(picture);
+                img.alt = 'Изображение публикации';
+                cell.appendChild(img);
+
+                if (index === layout.shown - 1 && layout.extra > 0) {
+                    var more = document.createElement('span');
+                    more.className = 'publication-album-more';
+                    more.textContent = '+' + layout.extra;
+                    cell.appendChild(more);
+                }
+
+                grid.appendChild(cell);
+            });
+
+            return grid;
         };
 
         // The slider a click on a strip opens. One node stands in the markup of
@@ -5042,22 +5125,6 @@ jQuery(document).ready(function () {
 
         watchAlbumStrips(imagesPreview.parentNode);
         watchAlbumStrips(partsBox);
-
-        var updateSingleImagePreview = function (pictures) {
-            if (!previewCardImgEl) {
-                return;
-            }
-            if (pictures.length === 1) {
-                previewCardImgEl.src = pictureUrl(pictures[0]);
-                previewCardImgEl.classList.remove('d-none');
-                if (previewImages) {
-                    previewImages.classList.add('d-none');
-                }
-            } else {
-                previewCardImgEl.classList.add('d-none');
-                previewCardImgEl.src = '';
-            }
-        };
 
         // The even split the album of the first part is handed out by: contiguous
         // slices that differ in size by at most one image.
@@ -5400,20 +5467,18 @@ jQuery(document).ready(function () {
                 });
             }
 
-            // A publication that stands in several fields goes out as several
-            // messages, so every one of them carries its own album.
-            var many = shown.length > 1;
-
             preview.textContent = '';
             shown.forEach(function (one) {
                 var part = document.createElement('div');
                 part.className = 'event-content bg-light-subtle rounded-3 p-3 flex-grow-1 telegram-preview-text';
-                if (many && one.pictures.length > 0) {
-                    // The photos go first, the text of the part is their caption.
-                    var box = document.createElement('div');
-                    box.className = 'stacked-images publication-part-images';
-                    part.appendChild(box);
-                    renderImagesPreview(box, one.pictures);
+                // The photos go first and the text of the part is their caption —
+                // in one message of the channel and in several the same way.
+                if (one.pictures.length > 0) {
+                    var album = renderAlbumGrid(one.pictures);
+                    if (one.text === '') {
+                        album.classList.add('album-only');
+                    }
+                    part.appendChild(album);
                 }
                 // A part of pictures and nothing else has no text line: that is
                 // exactly how the channel shows an album without a caption.
@@ -5429,13 +5494,6 @@ jQuery(document).ready(function () {
                 }
                 preview.appendChild(part);
             });
-
-            // One part keeps the album in the strip under the fields, where a
-            // single picture of it grows into the card of the preview.
-            var first = shown[0].pictures;
-
-            renderImagesPreview(previewImages, many ? [] : first);
-            updateSingleImagePreview(many ? [] : first);
         };
         // One listener for every part field, including the ones cloned later. The
         // editor writes the field it mirrors through, so this is what a keystroke
