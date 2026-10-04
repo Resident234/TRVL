@@ -49,13 +49,16 @@ $this->registerCss(
     <<<CSS
 /* The album of a part goes to the channel above its caption, and the channel
    lays it out by how many pictures it holds: one across the message, two side by
-   side, three with the first holding the whole left side, four in two by two.
+   side, three with the first lying across the whole message on top of the other
+   two, four in two by two.
    The grid is pulled out of the padding of the bubble, because a photo in the
    channel touches its edges, and only the corners of the whole group are
    rounded — the seams between the tiles stay straight.
-   The columns are bounded by zero rather than by their content: a cell of its own
-   would otherwise drive the width of the column it sits in, and an album of three
-   would give the left tile the whole message and push the two of the right out. */
+   The columns are bounded by zero rather than by their content: a tile that keeps
+   no ratio of its own drives the width of the column it sits in instead, which is
+   what the left tile of a three-picture album used to do (columns of 614px and
+   306px inside a box of 614px). Every tile sizes itself today, so the floor holds
+   nothing up — and stays for the tile that one day stops doing that. */
 .publication-preview-album {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -81,11 +84,13 @@ $this->registerCss(
     aspect-ratio: 1;
 }
 
-/* The first tile of three is the whole left side: it holds the two rows and keeps
-   no square of its own, since the channel crops it instead. */
+/* The first tile of three lies across both columns, and the channel crops it
+   instead of keeping its proportions, so it takes a ratio of its own rather than
+   the square the other tiles keep. Two to one is what makes the whole group a
+   square: the two tiles under it are squares half the message wide. */
 .publication-preview-album.album-3 .publication-album-cell:first-child {
-    grid-row: span 2;
-    aspect-ratio: auto;
+    grid-column: span 2;
+    aspect-ratio: 2 / 1;
 }
 
 .publication-album-cell img {
@@ -1868,21 +1873,21 @@ function partIsShown(text, pictures) {
 }
 
 // How the channel lays an album of N pictures out: the tiles it really shows,
-// whether the first of them holds the whole left side (three pictures), and how
-// many stay behind the «+N» of the last one — an album longer than the grid is
-// paged through in the app, which a static preview cannot do.
+// whether the first of them lies across both columns on top of the rest (three
+// pictures), and how many stay behind the «+N» of the last one — an album longer
+// than the grid is paged through in the app, which a static preview cannot do.
 function albumLayout(count) {
     if (count <= 1) {
-        return { shown: count, tall: false, extra: 0 };
+        return { shown: count, wide: false, extra: 0 };
     }
 
     if (count === 3) {
-        return { shown: 3, tall: true, extra: 0 };
+        return { shown: 3, wide: true, extra: 0 };
     }
 
     var shown = count < 4 ? count : 4;
 
-    return { shown: shown, tall: false, extra: count - shown };
+    return { shown: shown, wide: false, extra: count - shown };
 }
 
 jQuery(document).ready(function () {
