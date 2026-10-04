@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\commands;
 
+use app\shared\Publications\Infrastructure\TempImageCleanup;
 use app\shared\Publications\Service\PublicationsService;
 use app\shared\Telegram\Infrastructure\TelegramApiException;
 use app\shared\Telegram\Service\ChannelService;
@@ -22,6 +23,7 @@ final class TelegramController extends Controller
         $module,
         private readonly ChannelService $channel,
         private readonly PublicationsService $publications,
+        private readonly TempImageCleanup $tempImages,
         $config = [],
     ) {
         parent::__construct($id, $module, $config);
@@ -167,6 +169,25 @@ final class TelegramController extends Controller
             "Processed: %d, edited: %d, failed: %d\n",
             $stats['processed'],
             $stats['edited'],
+            $stats['failed'],
+        ));
+
+        return $stats['failed'] > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+    }
+
+    /**
+     * Remove the pictures the publishing queue downloaded for its albums and
+     * needs no longer: files named publication_img_* in the temp directory,
+     * older than the age limit the sweep runs with.
+     */
+    public function actionCleanTemp(): int
+    {
+        $stats = $this->tempImages->run();
+
+        $this->stdout(sprintf(
+            "Processed: %d, removed: %d, failed: %d\n",
+            $stats['processed'],
+            $stats['removed'],
             $stats['failed'],
         ));
 

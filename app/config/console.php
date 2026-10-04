@@ -95,6 +95,10 @@ $config = [
                 ),
             \app\shared\Forum\Contract\ForumPublicationMapGatewayInterface::class => static fn (): \app\shared\Forum\Infrastructure\ForumRepository =>
                 new \app\shared\Forum\Infrastructure\ForumRepository(\Yii::$app->getDb()),
+            \app\shared\Publications\Infrastructure\TempImageCleanup::class => static fn (): \app\shared\Publications\Infrastructure\TempImageCleanup =>
+                new \app\shared\Publications\Infrastructure\TempImageCleanup(
+                    logger: new \app\shared\Forum\Infrastructure\YiiPsrLoggerAdapter(\Yii::$app->getLog()->getLogger()),
+                ),
             \app\shared\Publications\Contract\PublicationForumLinkStoreInterface::class => static fn (): \app\shared\Publications\Infrastructure\CachePublicationForumLinkStore =>
                 new \app\shared\Publications\Infrastructure\CachePublicationForumLinkStore(\Yii::$app->getCache()),
             \app\shared\Forum\Contract\ForumHttpClientInterface::class => static function () use ($parserTunables): \app\shared\Forum\Infrastructure\ForumHttpClient {

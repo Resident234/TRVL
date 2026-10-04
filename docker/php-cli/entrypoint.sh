@@ -18,6 +18,9 @@ case "$role" in
         printf '%s php /var/www/html/yii telegram/publish-due\n' "${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}" > "$crontab_file"
         printf '%s php /var/www/html/yii telegram/delete-due\n' "${TELEGRAM_DELETE_CRON_SCHEDULE:-*/5 * * * *}" >> "$crontab_file"
         printf '%s php /var/www/html/yii telegram/edit-due\n' "${TELEGRAM_EDIT_CRON_SCHEDULE:-*/5 * * * *}" >> "$crontab_file"
+        # The daily sweep of the pictures this queue downloaded for its albums:
+        # only this role writes them, and /tmp is separate per container.
+        printf '%s php /var/www/html/yii telegram/clean-temp\n' "${TELEGRAM_TEMP_CLEAN_CRON_SCHEDULE:-0 4 * * *}" >> "$crontab_file"
         ;;
     *)
         printf 'CRON_ROLE must be parser or telegram, got: %s\n' "$role" >&2

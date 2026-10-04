@@ -30,6 +30,7 @@ The **Publications** module lives entirely in the **Shared** layer and does **no
 
 #### Publications Module (`app/shared/Publications`)
 - `PublicationsService` - Main service implementing use-cases for publications management
+- `TempImageCleanup` - The sweep of the album pictures the queue downloaded into the temp directory; it also owns the name those files are written under (`PREFIX`)
 - `PublicationRepositoryInterface` - Abstract repository for publications persistence
 - `PublicationForumLinkStoreInterface` - Temporary store for forum-publication links
 - `PublicationData` - DTO representing a publication record (its heading, text, inline formatting, link buttons, album, timestamps, message id)
@@ -236,6 +237,8 @@ A link button reaches the channel as `reply_markup`: `NutgramChannelClient::toKe
 
 The channel never sees the columns as they stand: `publishToTelegram()` and `editInTelegram()` send `PublicationData::messageText()` with `messageEntities()`, so what goes out is the record's text with its heading composed in front of it — the heading line bold, the «Часть N» the text opened with moved to the end of that line, and the spans of the text behind it. A record without a heading composes into its own text byte for byte, which is every record written before the column existed. See «Заголовок части» in [README.md](README.md).
 
+A download is not removed on the spot: the file has done its work once the message carrying it is sent, and nothing comes back for it later — an edit replaces the text of a message, and a re-send reads the album again from its addresses. `TempImageCleanup` (`app/shared/Publications/Infrastructure/TempImageCleanup.php`, run by `telegram/clean-temp` once a day by default) takes the files older than `MAX_AGE_SECONDS` (an hour): a younger one can still belong to an album being sent by a queue pass running at the same moment, since the client reads the file while the request goes out. The sweep looks at that one name and at nothing else — the container's temp directory also holds the crontab `entrypoint.sh` writes for supercronic and the mounted composer cache, and neither is the queue's to remove. The name itself is written in one place, `TempImageCleanup::PREFIX`, which is what `downloadImage()` builds its path from.
+
 All methods may throw `TelegramApiException` (API failure) and `RuntimeException` when the bot token is missing.
 
 The client waits 30 seconds for an answer (`NutgramChannelClient::REQUEST_TIMEOUT`, given to Nutgram through `Configuration::fromArray(['timeout' => …])`). The five seconds Nutgram asks for by default are not the time the API takes to answer but the time the connection to it takes — the first call of a run spends most of it negotiating the route, measured on the local portal at about fifteen seconds — and a task that never gets past that is a task that fails again every five minutes.
@@ -256,6 +259,7 @@ The console controller exposes the above functionality to the command line and i
 | `php yii telegram/publish-due` | Executes `PublicationsService::publishDue()` - publishes all due scheduled posts. |
 | `php yii telegram/delete-due` | Executes `PublicationsService::deleteDue()` - removes messages from Telegram for soft-deleted publications. |
 | `php yii telegram/edit-due` | Executes `PublicationsService::editDue()` - updates the text of edited publications in Telegram. |
+| `php yii telegram/clean-temp` | Executes `TempImageCleanup::run()` - removes the `publication_img_*` files the queue downloaded for its albums and needs no more. |
 
 These commands are typically scheduled via **cron** using the environment variables defined in `.env` (see below).
 
@@ -268,10 +272,11 @@ These commands are typically scheduled via **cron** using the environment variab
 | `TELEGRAM_PUBLISH_CRON_SCHEDULE` | `*/5 * * * *` | How often `telegram/publish-due` should run. |
 | `TELEGRAM_DELETE_CRON_SCHEDULE` | `*/5 * * * *` | How often `telegram/delete-due` should run. |
 | `TELEGRAM_EDIT_CRON_SCHEDULE` | `*/5 * * * *` | How often `telegram/edit-due` should run. |
+| `TELEGRAM_TEMP_CLEAN_CRON_SCHEDULE` | `0 4 * * *` | How often `telegram/clean-temp` should sweep the downloaded album pictures out of the temp directory. |
 
 These variables are read by the **docker-compose** entrypoint (or by a host scheduler) and passed to the container. Adjust them according to your desired frequency.
 
-The three jobs run in the `telegram` container, not in the `parser` one: `docker/php-cli/entrypoint.sh` builds the crontab from `CRON_ROLE`, and only the role `telegram` writes these three lines. The container is built from the same image as the parsers, so nothing about the commands changes — where they run is a matter of which schedule lines the crontab gets. The `parser` container holds the four forum scans and has no bot token at all.
+The four jobs run in the `telegram` container, not in the `parser` one: `docker/php-cli/entrypoint.sh` builds the crontab from `CRON_ROLE`, and only the role `telegram` writes these four lines. The container is built from the same image as the parsers, so nothing about the commands changes — where they run is a matter of which schedule lines the crontab gets. The `parser` container holds the four forum scans and has no bot token at all.
 
 `TELEGRAM_PUBLISH_CRON_SCHEDULE` is also passed to the `app` container, because the settings page needs it: `PublicationSettingsService::cronIntervalMinutes()` turns the schedule into a number of minutes, and that number is the lower bound of the gap between the parts of one publication. The portal shows the schedule read-only and never edits it — the cron of the container is not something a page can change.
 

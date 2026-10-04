@@ -80,11 +80,13 @@ services:
       DB_USERNAME: ${POSTGRES_USER:-yii}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
       # The queue of publications: what is due goes to the channel, what was
-      # deleted comes out of it, what was edited is replaced there.
+      # deleted comes out of it, what was edited is replaced there, and the
+      # pictures it downloaded to send them are swept once a day.
       CRON_ROLE: telegram
       TELEGRAM_PUBLISH_CRON_SCHEDULE: ${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}
       TELEGRAM_DELETE_CRON_SCHEDULE: ${TELEGRAM_DELETE_CRON_SCHEDULE:-*/5 * * * *}
       TELEGRAM_EDIT_CRON_SCHEDULE: ${TELEGRAM_EDIT_CRON_SCHEDULE:-*/5 * * * *}
+      TELEGRAM_TEMP_CLEAN_CRON_SCHEDULE: ${TELEGRAM_TEMP_CLEAN_CRON_SCHEDULE:-0 4 * * *}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID:-@gsu_travels}
       # A publication of a forum topic is read back through the same HTTP client
