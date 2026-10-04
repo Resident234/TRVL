@@ -481,8 +481,8 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' FROM {{%post}} bp'
                 . ' WHERE bp.topic_id IN (' . implode(',', $topicIds) . ')'
                 . $this->unprocessedPostFilterSql($withPostsOnly)
-                . $this->postImageFilterSql($withImagesOnly, $imagesCount)
-                . $this->postLinkFilterSql($withLinksOnly, $linksCount)
+                . $this->postImageFilterSql($withImagesOnly, $imagesCount, 'bp')
+                . $this->postLinkFilterSql($withLinksOnly, $linksCount, 'bp')
                 . ' ) p'
                 . ' LEFT JOIN {{%member}} m ON m.id = p.author_id'
                 . ' LEFT JOIN {{%publications_post_map}} ppm ON ppm.post_id = p.id'
@@ -555,8 +555,8 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' FROM {{%post}} bp'
                 . ' WHERE bp.topic_id = :topicId'
                 . $this->unprocessedPostFilterSql($withPostsOnly)
-                . $this->postImageFilterSql($withImagesOnly, $imagesCount)
-                . $this->postLinkFilterSql($withLinksOnly, $linksCount)
+                . $this->postImageFilterSql($withImagesOnly, $imagesCount, 'bp')
+                . $this->postLinkFilterSql($withLinksOnly, $linksCount, 'bp')
                 . ' ) p'
                 . ' LEFT JOIN {{%member}} m ON m.id = p.author_id'
                 . ' LEFT JOIN {{%publications_post_map}} ppm ON ppm.post_id = p.id'
@@ -637,7 +637,9 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
     /**
      * The rule that lets a topic reach the page: it is unprocessed itself, or
      * one of its posts still is, plus the filters of the block header. Shared
-     * by the list of topics and by the count that pages it.
+     * by the list of topics and by the count that pages it. The post the rule
+     * reads is filtered by the very conditions the list of posts reads, so a
+     * topic is never kept on the page by a post the page would hide.
      */
     private function topicFilterSql(bool $withImagesOnly, bool $withPostsOnly, int $imagesCount, bool $withLinksOnly, int $linksCount): string
     {
@@ -660,8 +662,8 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
             . 'SELECT 1 FROM {{%post}} fp'
             . ' WHERE fp.topic_id = t.id'
             . ' AND NOT EXISTS (SELECT 1 FROM {{%publications_post_map}} fpm WHERE fpm.post_id = fp.id)'
-            . ($withImagesOnly ? ' AND fp.image_urls != \'[]\'::jsonb' : '')
-            . ($withLinksOnly ? ' AND fp.links_count > 0' : '')
+            . $this->postImageFilterSql($withImagesOnly, $imagesCount, 'fp')
+            . $this->postLinkFilterSql($withLinksOnly, $linksCount, 'fp')
             . '))';
     }
 
@@ -680,12 +682,15 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
     /**
      * The image filters of the header. They run over the posts of a topic
      * before those posts are numbered, so the window a page reads from and
-     * the count of the discussion speak about the same set of rows.
+     * the count of the discussion speak about the same set of rows. The alias
+     * names the post row being read: the list of posts numbers 'bp', the rule
+     * that keeps a viewed topic on the page reads 'fp', and both get the same
+     * conditions from here.
      */
-    private function postImageFilterSql(bool $withImagesOnly, int $imagesCount): string
+    private function postImageFilterSql(bool $withImagesOnly, int $imagesCount, string $alias): string
     {
-        return ($withImagesOnly ? ' AND bp.image_urls != \'[]\'::jsonb' : '')
-            . ($imagesCount > 0 ? ' AND jsonb_array_length(bp.image_urls) = ' . $imagesCount : '');
+        return ($withImagesOnly ? ' AND ' . $alias . '.image_urls != \'[]\'::jsonb' : '')
+            . ($imagesCount > 0 ? ' AND jsonb_array_length(' . $alias . '.image_urls) = ' . $imagesCount : '');
     }
 
     /**
@@ -693,10 +698,10 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * text, the same links_count the topic rule of topicFilterSql() reads, so
      * a discussion that reached the page is made of posts that answer to it.
      */
-    private function postLinkFilterSql(bool $withLinksOnly, int $linksCount): string
+    private function postLinkFilterSql(bool $withLinksOnly, int $linksCount, string $alias): string
     {
-        return ($withLinksOnly ? ' AND bp.links_count > 0' : '')
-            . ($linksCount > 0 ? ' AND bp.links_count = ' . $linksCount : '');
+        return ($withLinksOnly ? ' AND ' . $alias . '.links_count > 0' : '')
+            . ($linksCount > 0 ? ' AND ' . $alias . '.links_count = ' . $linksCount : '');
     }
 
     /**
