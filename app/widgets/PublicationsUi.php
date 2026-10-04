@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\widgets;
 
+use app\shared\Publications\Dto\PublicationData;
 use Yii;
 use yii\helpers\Html;
 use yii\helpers\Url;
@@ -124,6 +125,25 @@ final class PublicationsUi
         }
 
         return $lines === '' ? '' : '<div class="activity-meta">' . $lines . '</div>';
+    }
+
+    /**
+     * The status of a record as its row draws it. Only a message id the
+     * channel gave back says «Опубликовано»: a record whose time has come
+     * without one is still standing in the queue, and its time is what the
+     * schedule has for it, not what the channel holds.
+     */
+    public static function statusBadge(PublicationData $record, string $now): string
+    {
+        if ($record->telegramId !== null) {
+            return '<span class="badge bg-success mt-2">Опубликовано</span>';
+        }
+
+        if ($record->publishedAt !== null && $record->publishedAt <= $now) {
+            return '<span class="badge bg-warning text-dark mt-2">В очереди</span>';
+        }
+
+        return '<span class="badge bg-info mt-2">Запланировано</span>';
     }
 
     /**

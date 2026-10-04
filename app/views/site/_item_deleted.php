@@ -7,8 +7,7 @@
 use app\widgets\PublicationsUi;
 use yii\helpers\Html;
 
-$wasPublished = $record->telegramId !== null
-    || ($record->publishedAt !== null && $record->publishedAt <= $now);
+$isSent = $record->telegramId !== null;
 
 [$heading, $body] = $record->headingAndBody();
 
@@ -34,7 +33,7 @@ $wasPublished = $record->telegramId !== null
     <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($body) ?></p>
     <?= PublicationsUi::stackedImages($record->imageUrls) ?>
     <?= PublicationsUi::dateMeta([
-        $wasPublished ? 'Опубликовано' : 'Запланировано' => $record->publishedAt,
+        $isSent ? 'Опубликовано' : 'Запланировано' => $record->publishedAt,
         'Создано' => $record->createdAt,
         'Обновлено' => $record->updatedAt,
         'Удалено' => $record->deletedAt,

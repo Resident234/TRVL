@@ -7,7 +7,7 @@
 use app\widgets\PublicationsUi;
 use yii\helpers\Html;
 
-$isPublished = $record->telegramId !== null || ($record->publishedAt !== null && $record->publishedAt <= $now);
+$isSent = $record->telegramId !== null;
 
 [$heading, $body] = $record->headingAndBody();
 
@@ -29,7 +29,7 @@ $isPublished = $record->telegramId !== null || ($record->publishedAt !== null &&
             <i class="bi bi-pencil-square"></i>
         </a>
         <?= PublicationsUi::deleteForm($record->id, 'post') ?>
-        <?php if (!$isPublished): ?>
+        <?php if (!$isSent): ?>
             <?= PublicationsUi::publishForm($record->id, 'post') ?>
         <?php endif ?>
         <?= PublicationsUi::toDraftForm($record->id) ?>
@@ -40,12 +40,10 @@ $isPublished = $record->telegramId !== null || ($record->publishedAt !== null &&
     <p class="mb-1" style="white-space: pre-line; word-break: break-word;"><?= Html::encode($body) ?></p>
     <?= PublicationsUi::stackedImages($record->imageUrls) ?>
     <?= PublicationsUi::dateMeta([
-        $isPublished ? 'Опубликовано' : 'Запланировано' => $record->publishedAt,
+        $isSent ? 'Опубликовано' : 'Запланировано' => $record->publishedAt,
         'Создано' => $record->createdAt,
         'Обновлено' => $record->updatedAt,
     ]) ?>
-    <span class="badge <?= $isPublished ? 'bg-success' : 'bg-info' ?> mt-2">
-        <?= $isPublished ? 'Опубликовано' : 'Запланировано' ?>
-    </span>
+    <?= PublicationsUi::statusBadge($record, $now) ?>
     <span class="badge bg-warning text-dark mt-2 d-none editing-badge">Редактируется</span>
 </div>
