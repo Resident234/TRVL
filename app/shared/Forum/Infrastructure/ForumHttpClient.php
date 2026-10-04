@@ -20,6 +20,13 @@ use RuntimeException;
  * Cookies are tracked in memory through a header function instead of a
  * cURL cookie file: the jar file is unreliable under HTTP/2 (Set-Cookie
  * of the login response is not always persisted before close).
+ *
+ * The jar is kept per host, because this client does not only read the
+ * forum: the publishing queue fetches the pictures of a publication from
+ * whatever host they stand on through it. A session of the forum belongs
+ * to the forum, and a cookie of another host must not be handed to it
+ * either, so a request carries only the cookies the host it goes to gave
+ * out itself.
  */
 final class ForumHttpClient implements ForumHttpClientInterface
 {
@@ -29,7 +36,7 @@ final class ForumHttpClient implements ForumHttpClientInterface
 
     private const LOGIN_MARKER = 'вы должны быть авторизованы';
 
-    /** @var array<string, string> cookie name => value */
+    /** @var array<string, array<string, string>> host => cookie name => value */
     private array $_cookies = [];
 
     /** @var int[] */
@@ -113,13 +120,14 @@ final class ForumHttpClient implements ForumHttpClientInterface
         if ($body === false || $status >= 400) {
             throw new RuntimeException(sprintf('Forum login failed: %s [%s]', $this->loginUrl, $statusText));
         }
-        if (($this->_cookies['phpbb3_alft2_u'] ?? '1') === '1') {
+        if (($this->_cookies[$this->hostOf($this->loginUrl)]['phpbb3_alft2_u'] ?? '1') === '1') {
             throw new RuntimeException('Forum login failed: the session cookie was not granted.');
         }
     }
 
     /**
-     * Single HTTP request. Collects Set-Cookie headers into the cookie storage.
+     * Single HTTP request. Collects Set-Cookie headers into the cookie storage
+     * of the host the request was made to.
      *
      * @param array<string, string>|null $postFields
      * @return array{0: int, 1: string, 2: string|false}
@@ -141,7 +149,7 @@ final class ForumHttpClient implements ForumHttpClientInterface
             CURLOPT_TIMEOUT => $this->timeout,
             CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; TRVL-Parser/1.0)',
             CURLOPT_ACCEPT_ENCODING => '',
-            CURLOPT_HEADERFUNCTION => function ($ch, string $header) use (&$status, &$statusText): int {
+            CURLOPT_HEADERFUNCTION => function ($ch, string $header) use (&$status, &$statusText, $url): int {
                 $length = strlen($header);
                 $trimmed = trim($header);
                 if (preg_match('~^HTTP/\S+\s+(\d+)~', $trimmed, $m) === 1) {
@@ -149,13 +157,14 @@ final class ForumHttpClient implements ForumHttpClientInterface
                     $statusText = $trimmed;
                 }
                 if (preg_match('~^Set-Cookie:\s*([^=]+)=([^;]*)~i', $trimmed, $m) === 1) {
-                    $this->_cookies[trim($m[1])] = trim($m[2]);
+                    $this->keepCookie($url, trim($m[1]), trim($m[2]));
                 }
                 return $length;
             },
         ];
-        if ($this->_cookies !== []) {
-            $options[CURLOPT_COOKIE] = $this->cookieHeader();
+        $cookieHeader = $this->cookieHeader($url);
+        if ($cookieHeader !== '') {
+            $options[CURLOPT_COOKIE] = $cookieHeader;
         }
         if ($postFields !== null) {
             $options[CURLOPT_POST] = true;
@@ -170,10 +179,40 @@ final class ForumHttpClient implements ForumHttpClientInterface
         return [$status, $statusText, $body];
     }
 
-    private function cookieHeader(): string
+    /**
+     * Files one cookie under the host that answered with it, so the jar of one
+     * host never travels to another.
+     */
+    private function keepCookie(string $url, string $name, string $value): void
     {
+        $host = $this->hostOf($url);
+        if (!isset($this->_cookies[$host])) {
+            $this->_cookies[$host] = [];
+        }
+        $this->_cookies[$host][$name] = $value;
+    }
+
+    /**
+     * The host a request belongs to, lower cased, the key its cookies are kept
+     * under. An address carrying none keys a jar of its own, which holds
+     * nothing: no other host handed a cookie out to it.
+     */
+    private function hostOf(string $url): string
+    {
+        return strtolower((string) parse_url($url, PHP_URL_HOST));
+    }
+
+    /**
+     * The Cookie header of one host, empty when it never handed a cookie out.
+     */
+    private function cookieHeader(string $url): string
+    {
+        $host = $this->hostOf($url);
+        if (!isset($this->_cookies[$host])) {
+            return '';
+        }
         $pairs = [];
-        foreach ($this->_cookies as $name => $value) {
+        foreach ($this->_cookies[$host] as $name => $value) {
             if ($value !== '') {
                 $pairs[] = $name . '=' . $value;
             }

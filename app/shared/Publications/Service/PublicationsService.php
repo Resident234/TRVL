@@ -10,6 +10,7 @@ use app\shared\Publications\Contract\PublicationForumLinkStoreInterface;
 use app\shared\Publications\Contract\PublicationRepositoryInterface;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Dto\PublicationData;
+use app\shared\Publications\Infrastructure\TempImageCleanup;
 use app\shared\Settings\Service\PublicationSettingsService;
 use app\shared\Telegram\Dto\LinkButtons;
 use app\shared\Telegram\Dto\MessageEntities;
@@ -31,6 +32,16 @@ use yii;
  */
 final class PublicationsService
 {
+    /** How long a single retry may wait, however long the API asked for. */
+    private const RETRY_WAIT_MAX_MICROSECONDS = 10000000;
+
+    /**
+     * The extensions a downloaded picture is allowed to take over from its
+     * address; any other tail the address ends with belongs to a page, not to
+     * a picture, so the bytes of the answer name the file instead.
+     */
+    private const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tif', 'tiff', 'heic'];
+
     public function __construct(
         private readonly PublicationRepositoryInterface $publications,
         private ?LoggerInterface $logger,
@@ -39,6 +50,8 @@ final class PublicationsService
         private readonly ?PublicationForumLinkStoreInterface $forumLinks = null,
         private readonly ?ForumHttpClientInterface $forumHttpClient = null,
         private readonly ?PublicationSettingsService $settings = null,
+        private readonly int $publishAttempts = 3,
+        private readonly int $publishRetryMicroseconds = 2000000,
     ) {
     }
 
@@ -294,9 +307,11 @@ final class PublicationsService
      * Sends all due posts (empty telegram_id, published_at <= now)
      * to the channel, from the smallest id to the biggest one.
      *
-     * Each post is published independently: a failure is logged and
-     * does not stop the remaining posts; failed posts keep an empty
-     * telegram_id and are retried on the next run.
+     * Each post is published independently: it is retried while the attempt
+     * budget of this run lasts and a post the budget ran out on is logged,
+     * skipped and left for the following posts to be sent. A skipped post
+     * keeps an empty telegram_id, so the next run of the task takes it up
+     * again like any other due one.
      *
      * @return array{processed: int, published: int, failed: int}
      */
@@ -308,22 +323,57 @@ final class PublicationsService
         foreach ($this->publications->findDueForPublishing($now) as $post) {
             $stats['processed']++;
 
-            try {
-                $telegramId = $this->publishToTelegram($post);
+            $attempt = 0;
+
+            while (true) {
+                $attempt++;
+
+                try {
+                    $telegramId = $this->publishToTelegram($post);
+                } catch (TelegramApiException $e) {
+                    if ($attempt >= $this->publishAttempts) {
+                        $stats['failed']++;
+                        $this->logger?->error(
+                            'Publication {id} failed to reach Telegram in {attempts} attempts: {error}',
+                            ['id' => $post->id, 'attempts' => $attempt, 'error' => $e->getMessage()],
+                        );
+
+                        continue 2;
+                    }
+
+                    usleep($this->retryWaitMicroseconds($e, $attempt));
+
+                    continue;
+                }
+
                 $sentAt = $this->now();
                 $this->publications->storeTelegramId($post->id, $telegramId, $sentAt, $sentAt);
                 $this->stampForumMapTelegramId($post->id, $telegramId);
                 $stats['published']++;
-            } catch (TelegramApiException $e) {
-                $stats['failed']++;
-                $this->logger?->error(
-                    'Publication {id} failed to reach Telegram: {error}',
-                    ['id' => $post->id, 'error' => $e->getMessage()],
-                );
+
+                continue 2;
             }
         }
 
         return $stats;
+    }
+
+    /**
+     * The wait in front of a retry of the same record: the backoff growing
+     * with the attempt, or the retry_after the API asked for when that is
+     * longer. Both are bounded, because the task runs on a schedule and a
+     * record that holds the run past its own interval queues behind the next
+     * one instead of being sent by it.
+     */
+    private function retryWaitMicroseconds(TelegramApiException $e, int $attempt): int
+    {
+        $wait = $this->publishRetryMicroseconds * $attempt;
+
+        if ($e->retryAfter !== null) {
+            $wait = max($wait, $e->retryAfter * 1000000);
+        }
+
+        return min($wait, self::RETRY_WAIT_MAX_MICROSECONDS);
     }
 
     /**
@@ -545,7 +595,8 @@ final class PublicationsService
      */
     private function publishToTelegram(PublicationData $post): int
     {
-        // If we have images and forum HTTP client, download images and upload as files
+        // Pictures go to the channel as files the portal fetched itself, so no
+        // host decides the delivery by refusing the channel's own fetch
         if ($post->imageUrls !== [] && $this->forumHttpClient !== null && method_exists($this->channel, 'publishPhotos')) {
             return $this->channel->publishPhotos(
                 $post->messageText(),
@@ -572,9 +623,18 @@ final class PublicationsService
     }
 
     /**
-     * Prepares image URLs for Telegram publishing.
-     * If forum HTTP client is available, downloads forum images and returns local file paths
-     * that will be uploaded to Telegram as multipart/form-data.
+     * Prepares image URLs for Telegram publishing: every picture of the record
+     * is fetched here, whatever host it stands on, and goes to the channel as
+     * the local file path of that download, which is uploaded as
+     * multipart/form-data.
+     *
+     * The host answers for nothing but where the bytes are read from. A host
+     * that serves the portal the picture and answers the channel's own fetcher
+     * with something that is not a picture is an ordinary host of the forum,
+     * not a special one, and bytes that already arrived here cannot be refused
+     * a second time over there. A picture this side could not fetch still goes
+     * on as the address it was read from, so the channel keeps its own chance
+     * at it.
      *
      * @param string[] $imageUrls
      * @return string[] - local file paths or original URLs
@@ -587,52 +647,42 @@ final class PublicationsService
 
         $preparedUrls = [];
         foreach ($imageUrls as $url) {
-            // Check if URL is from forum.awd.ru which requires authentication
-            if (str_starts_with($url, 'https://forum.awd.ru/') || str_starts_with($url, 'http://forum.awd.ru/')) {
-                try {
-                    $localPath = $this->downloadForumImage($url);
-                    if ($localPath !== null) {
-                        $preparedUrls[] = $localPath;
-                        continue;
-                    }
-                } catch (\Throwable $e) {
-                    $this->logger?->warning('Failed to download forum image, will try direct URL: {error}', [
-                        'url' => $url,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-            // For other URLs, use as-is (Telegram will try to fetch)
-            $preparedUrls[] = $url;
+            $preparedUrls[] = $this->downloadImage($url) ?? $url;
         }
 
         return $preparedUrls;
     }
 
     /**
-     * Downloads an image from forum.awd.ru using authenticated HTTP client.
+     * Fetches one picture and writes it into the temp directory, so the channel
+     * receives the bytes instead of an address it has to follow itself.
      *
      * @return string|null - local file path or null on failure
      */
-    private function downloadForumImage(string $url): ?string
+    private function downloadImage(string $url): ?string
     {
         try {
             $content = $this->forumHttpClient->get($url);
-
-            // Determine file extension from URL or Content-Type
-            $extension = $this->guessImageExtension($url, $content);
-            $tempFile = sys_get_temp_dir() . '/forum_img_' . bin2hex(random_bytes(8)) . '.' . $extension;
-
-            if (file_put_contents($tempFile, $content) === false) {
-                $this->logger?->error('Failed to save downloaded forum image to temp file', ['url' => $url]);
-                return null;
-            }
-
-            return $tempFile;
         } catch (\Throwable $e) {
-            $this->logger?->error('Error downloading forum image', ['url' => $url, 'error' => $e->getMessage()]);
+            $this->logger?->warning('Failed to download image, will try direct URL: {url}: {error}', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
+
+        // Determine file extension from URL or Content-Type
+        $extension = $this->guessImageExtension($url, $content);
+        $tempFile = sys_get_temp_dir() . '/' . TempImageCleanup::PREFIX . bin2hex(random_bytes(8)) . '.' . $extension;
+
+        if (file_put_contents($tempFile, $content) === false) {
+            $this->logger?->error('Failed to save downloaded image to temp file', ['url' => $url]);
+
+            return null;
+        }
+
+        return $tempFile;
     }
 
     /**
@@ -640,12 +690,15 @@ final class PublicationsService
      */
     private function guessImageExtension(string $url, string $content): string
     {
-        // Try to get from URL
+        // Try to get from URL, but only an extension that names a picture of
+        // itself: any host can be reached through an address ending in .php,
+        // and such an address says nothing about the bytes behind it, which the
+        // check of the magic numbers below reads out of the answer itself.
         $path = parse_url($url, PHP_URL_PATH);
-        if ($path !== false) {
-            $ext = pathinfo($path, PATHINFO_EXTENSION);
-            if ($ext !== '') {
-                return strtolower($ext);
+        if (is_string($path)) {
+            $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+            if (in_array($ext, self::IMAGE_EXTENSIONS, true)) {
+                return $ext;
             }
         }
 
