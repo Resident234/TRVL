@@ -4858,6 +4858,26 @@ jQuery(document).ready(function () {
             previewPublicationAt.textContent = val || '';
         }
 
+        // The field and its calendar are two views of one moment: a value written
+        // without moving the picker leaves the dialog that opens over the form on the
+        // day the field does not name.
+        function applyPublicationSlot(value) {
+            if (publishedAtInput) {
+                publishedAtInput.value = value;
+            }
+            try {
+                var picker = publicationAtJq.data('daterangepicker');
+                if (picker && value) {
+                    var m = moment(value, pickerFormat);
+                    if (m.isValid()) {
+                        picker.setStartDate(m);
+                        picker.setEndDate(m.clone().add(__HORIZON_HOURS, 'hour'));
+                    }
+                }
+            } catch (e) {}
+            updatePreviewPublicationAt();
+        }
+
         var parseImageUrls = function (raw) {
             return (raw || '').split('\n').map(function (line) {
                 return line.trim();
@@ -5864,18 +5884,7 @@ jQuery(document).ready(function () {
             if (publishedAtInput) {
                 var newVal = utcToPickerValue(log.getAttribute('data-published-at-utc'))
                     || publishedAtInput.value;
-                publishedAtInput.value = newVal;
-                try {
-                    var picker = publicationAtJq.data('daterangepicker');
-                    if (picker && newVal) {
-                        var m = moment(newVal, pickerFormat);
-                        if (m.isValid()) {
-                            picker.setStartDate(m);
-                            picker.setEndDate(m.clone().add(__HORIZON_HOURS, 'hour'));
-                        }
-                    }
-                } catch (e) {}
-                updatePreviewPublicationAt();
+                applyPublicationSlot(newVal);
             }
             if (forumTypeInput && forumIdInput) {
                 forumTypeInput.value = '';
@@ -5943,17 +5952,7 @@ jQuery(document).ready(function () {
             if (forumTypeInput) forumTypeInput.value = '';
             if (forumIdInput) forumIdInput.value = '';
             if (publishedAtInput) {
-                var next = computeNextPublicationSlot().format(pickerFormat);
-                publishedAtInput.value = next;
-                try {
-                    var picker = publicationAtJq.data('daterangepicker');
-                    if (picker) {
-                        var m = moment(next, pickerFormat);
-                        picker.setStartDate(m);
-                        picker.setEndDate(m.clone().add(__HORIZON_HOURS, 'hour'));
-                    }
-                } catch (e) {}
-                updatePreviewPublicationAt();
+                applyPublicationSlot(computeNextPublicationSlot().format(pickerFormat));
             }
         };
 
@@ -5992,9 +5991,15 @@ jQuery(document).ready(function () {
             postForBlocks(form.getAttribute('action'), new FormData(form, event.submitter))
                 .then(function (payload) {
                     if (!payload || !payload.ok) {
+                        // A record the server did not take leaves the form as the reader
+                        // filled it — its time included, since that is what they will fix
+                        // the text around and send again.
                         return;
                     }
                     if (form.hasAttribute('data-clear-editing')) {
+                        // The blank form the page returns to carries the moment the next
+                        // record would go out at, so this reset is where the field of
+                        // «Дата и время публикации» takes a fresh slot — and the only place.
                         clearEditingState();
                     }
                     if (form.id === 'scheduleForm') {
