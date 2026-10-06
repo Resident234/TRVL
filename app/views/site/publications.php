@@ -410,6 +410,31 @@ $this->registerCss(
     flex: 1 1 0;
     min-height: 0;
 }
+
+/* The three list blocks stand half the window tall. The theme pins their scroll
+   hosts at `height: 350px`, which is no fraction of any screen: a third of a
+   1080px window, and taller than the whole visible list in a short one. The
+   height is asked of the window itself rather than of the space under the sticky
+   header — the forum block above takes that space because it may not scroll the
+   document at all, while these three sit in a page that does — and the list gets
+   whatever the header of the card and its padding leave it, by the same two flex
+   rules. A block holding one post, or none, keeps its half window exactly as it
+   kept its 350px. */
+.card.publication-list-block {
+    height: 50vh;
+}
+
+.publication-list-block > .card-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.publication-list-block > .card-body > .scroll350 {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+}
 CSS
 );
 ?>
@@ -1187,7 +1212,7 @@ CSS
     <div class="col-12">
 
         <!-- Publications -->
-        <div class="card mb-4">
+        <div class="card mb-4 publication-list-block">
             <div class="card-header">
                 <div class="d-flex align-items-center justify-content-between gap-3">
                     <h5 class="card-title mb-0">Публикации</h5>
@@ -1213,7 +1238,7 @@ CSS
     <div class="col-12">
 
         <!-- Drafts -->
-        <div class="card mb-4">
+        <div class="card mb-4 publication-list-block">
             <div class="card-header">
                 <div class="d-flex align-items-center justify-content-between gap-3">
                     <h5 class="card-title mb-0">Черновики</h5>
@@ -1239,7 +1264,7 @@ CSS
     <div class="col-12">
 
         <!-- Deleted -->
-        <div class="card mb-4">
+        <div class="card mb-4 publication-list-block">
             <div class="card-header">
                 <div class="d-flex align-items-center justify-content-between gap-3">
                     <h5 class="card-title mb-0">Удаленные</h5>
