@@ -149,13 +149,26 @@ final class NutgramChannelClient implements TelegramChannelClientInterface
         }
 
         if ($keyboard !== null) {
-            $this->call(
-                static fn (Nutgram $bot): bool => $bot->editMessageReplyMarkup(
-                    chat_id: $channelId,
-                    message_id: $first->message_id,
-                    reply_markup: $keyboard,
-                ) !== null,
-            );
+            try {
+                $this->call(
+                    static fn (Nutgram $bot): bool => $bot->editMessageReplyMarkup(
+                        chat_id: $channelId,
+                        message_id: $first->message_id,
+                        reply_markup: $keyboard,
+                    ) !== null,
+                );
+            } catch (TelegramApiException $e) {
+                // The answer of an album that is in the channel and already wears
+                // this keyboard is 400 "message is not modified", which refuses a
+                // change that needed no change. The album and its button are both
+                // there: the send of this part is over, and the record must be
+                // stamped with the message rather than go back to the queue, where
+                // it would ask for the same album again on the next run. Any other
+                // refusal of the edit is the failure it has always been.
+                if (!$e->isMessageUnchanged()) {
+                    throw $e;
+                }
+            }
         }
 
         return new PostResult($first->message_id, $first->date);

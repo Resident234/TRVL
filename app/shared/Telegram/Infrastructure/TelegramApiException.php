@@ -38,4 +38,17 @@ final class TelegramApiException extends RuntimeException
     {
         return stripos($this->getMessage(), 'message to delete not found') !== false;
     }
+
+    /**
+     * An edit that asks the message for what the message already is answers 400
+     * with this wording, and the description says so itself: the content and
+     * the reply markup asked for are "exactly the same as a current content and
+     * reply markup of the message". Nothing structured carries that, so the
+     * sentence is what there is to test by, and its capitalisation is as
+     * little trusted here as it is above.
+     */
+    public function isMessageUnchanged(): bool
+    {
+        return stripos($this->getMessage(), 'message is not modified') !== false;
+    }
 }
