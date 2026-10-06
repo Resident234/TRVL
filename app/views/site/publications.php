@@ -51,6 +51,11 @@ $this->registerCss(
    lays it out by how many pictures it holds: one across the message, two side by
    side, and three or four with the first lying across the whole message on top of
    the rest — the two are laid out by the rules for `album-3` and `album-4` below.
+   An album longer than four has no rule of its own and stands on this base grid:
+   two square tiles to a row, as many rows as the album asks for. The preview
+   shows the whole album, and only the ten pictures of one media group bound it —
+   what does not fit goes behind the «+N» of the last tile, because the sender
+   carries those pictures into an album of its own.
    The grid is pulled out of the padding of the bubble, because a photo in the
    channel touches its edges, and only the corners of the whole group are
    rounded — the seams between the tiles stay straight.
@@ -1412,6 +1417,10 @@ $previewLimit = (int)$settings['imagesPreviewLimit'];
 $uploadMaxMb = (int)$settings['imageUploadMaxMb'];
 $uploadLimit = (int)$settings['imageUploadLimit'];
 $numberingReserve = ChannelService::PARTS_NUMBERING_RESERVE;
+// The longest album the channel takes as one message: the preview of a longer one
+// shows this many tiles and counts the rest behind «+N», because the sender cuts
+// the pictures into media groups of the same size.
+$albumMax = ChannelService::ALBUM_MAX_PHOTOS;
 $pickerFormat = PublicationSettingsService::DATE_FORMATS[$settings['dateFormat']];
 $this->registerJs(
     "var __FILTER_SAVE_URL = '{$filterSaveUrl}';
@@ -1430,6 +1439,7 @@ var __BUTTON_LIMIT = {$buttonLimit};
 var __BUTTON_LABEL_BYTES = {$buttonLabelBytes};
 var __KEYBOARD_MAX_ROWS = {$keyboardMaxRows};
 var __NUMBERING_RESERVE = {$numberingReserve};
+var __ALBUM_MAX = {$albumMax};
 var __SCROLL_EDGE = {$scrollEdge};
 var __IMAGE_PROBE_TIMEOUT = {$probeTimeout};
 var __SNAP_RANGE = {$snapRange};
@@ -2062,22 +2072,23 @@ function partIsShown(text, pictures) {
 // How the channel lays an album of N pictures out: the tiles it really shows,
 // whether the first of them lies across both columns on top of the rest (three
 // pictures, and four — where the ones under it are three, not two), and how many
-// stay behind the «+N» of the last one — an album longer than the grid is paged
-// through in the app, which a static preview cannot do.
+// stay behind the «+N» of the last one. Only one media group bounds the tiles:
+// the sender cuts a longer album into albums of its own, which is a second
+// message this bubble has no place for.
 function albumLayout(count) {
     if (count <= 1) {
         return { shown: count, wide: false, extra: 0 };
     }
 
-    if (count === 3) {
-        return { shown: 3, wide: true, extra: 0 };
+    if (count === 3 || count === 4) {
+        return { shown: count, wide: true, extra: 0 };
     }
 
-    var shown = count < 4 ? count : 4;
+    // Two pictures and every album longer than four stand on the base grid of the
+    // sheet: two columns of square tiles, as many rows as the album asks for.
+    var shown = count < __ALBUM_MAX ? count : __ALBUM_MAX;
 
-    // The grid of four is the grid of the channel's four-picture album, and an
-    // album longer than four is shown with that same grid behind its «+N».
-    return { shown: shown, wide: shown === 4, extra: count - shown };
+    return { shown: shown, wide: false, extra: count - shown };
 }
 
 // --- the order of an album: its links, its files, and one place for each ----
