@@ -100,6 +100,27 @@ $this->registerCss(
     object-fit: cover;
 }
 
+/* Four pictures the channel lays out as one across the top and three under it,
+   not as a square of two by two. Six columns carry both rows: the top tile spans
+   all six, each of the three below takes two of them. The ratios are the ones the
+   channel itself measures at — its bubble is 430px of content wide, and there the
+   top tile stands 430 × 281 and each of the three under it 141 × 106 — so the
+   group keeps the shape of the post it copies rather than the square the old grid
+   made of it. */
+.publication-preview-album.album-4 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.publication-preview-album.album-4 .publication-album-cell:first-child {
+    grid-column: span 6;
+    aspect-ratio: 3 / 2;
+}
+
+.publication-preview-album.album-4 .publication-album-cell:not(:first-child) {
+    grid-column: span 2;
+    aspect-ratio: 4 / 3;
+}
+
 /* A single picture keeps its own proportions, the way the channel shows it, and
    is cut back only when it is taller than the bubble should get. */
 .publication-preview-album.album-1 .publication-album-cell {
@@ -2015,8 +2036,9 @@ function partIsShown(text, pictures) {
 
 // How the channel lays an album of N pictures out: the tiles it really shows,
 // whether the first of them lies across both columns on top of the rest (three
-// pictures), and how many stay behind the «+N» of the last one — an album longer
-// than the grid is paged through in the app, which a static preview cannot do.
+// pictures, and four — where the ones under it are three, not two), and how many
+// stay behind the «+N» of the last one — an album longer than the grid is paged
+// through in the app, which a static preview cannot do.
 function albumLayout(count) {
     if (count <= 1) {
         return { shown: count, wide: false, extra: 0 };
@@ -2028,7 +2050,9 @@ function albumLayout(count) {
 
     var shown = count < 4 ? count : 4;
 
-    return { shown: shown, wide: false, extra: count - shown };
+    // The grid of four is the grid of the channel's four-picture album, and an
+    // album longer than four is shown with that same grid behind its «+N».
+    return { shown: shown, wide: shown === 4, extra: count - shown };
 }
 
 // --- the order of an album: its links, its files, and one place for each ----
