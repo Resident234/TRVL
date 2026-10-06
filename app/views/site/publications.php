@@ -49,10 +49,11 @@ $this->registerCss(
     <<<CSS
 /* The album of a part goes to the channel above its caption, and the channel
    lays it out by how many pictures it holds: one across the message, two side by
-   side, and three or four with the first lying across the whole message on top of
-   the rest — the two are laid out by the rules for `album-3` and `album-4` below.
-   An album longer than four has no rule of its own and stands on this base grid:
-   two square tiles to a row, as many rows as the album asks for. The preview
+   side, and three, four or five with the first lying across the whole message on
+   top of the rest — the three are laid out by the rules for `album-3`, `album-4`
+   and `album-5` below. An album longer than five has no rule of its own and stands
+   on this base grid: two square tiles to a row, as many rows as the album asks
+   for, which is what the channel has been read at for two pictures. The preview
    shows the whole album, and only the ten pictures of one media group bound it —
    what does not fit goes behind the «+N» of the last tile, because the sender
    carries those pictures into an album of its own.
@@ -124,6 +125,21 @@ $this->registerCss(
 .publication-preview-album.album-4 .publication-album-cell:not(:first-child) {
     grid-column: span 2;
     aspect-ratio: 4 / 3;
+}
+
+/* Five pictures the channel lays out as one across the top over a square of two
+   by two. The grid is already two columns wide, so only the first cell moves and
+   the ratios change: the numbers are the ones the channel itself measures at — its
+   bubble is 430px of content wide, and there the top tile stands 430 × 285 while
+   each of the four under it holds 213 × 141 — both three to two, so the whole
+   group keeps the 430 × 575 shape of the post it copies rather than the three rows
+   of squares the base grid made of it. */
+.publication-preview-album.album-5 .publication-album-cell {
+    aspect-ratio: 3 / 2;
+}
+
+.publication-preview-album.album-5 .publication-album-cell:first-child {
+    grid-column: span 2;
 }
 
 /* A single picture keeps its own proportions, the way the channel shows it, and
@@ -2080,12 +2096,14 @@ function albumLayout(count) {
         return { shown: count, wide: false, extra: 0 };
     }
 
-    if (count === 3 || count === 4) {
+    if (count >= 3 && count <= 5) {
         return { shown: count, wide: true, extra: 0 };
     }
 
-    // Two pictures and every album longer than four stand on the base grid of the
-    // sheet: two columns of square tiles, as many rows as the album asks for.
+    // Two pictures and every album longer than five stand on the base grid of the
+    // sheet: two columns of square tiles, as many rows as the album asks for. The
+    // channel has been measured at three, four and five only, so a longer album
+    // keeps the tiles of the sheet rather than a collage nobody has read yet.
     var shown = count < __ALBUM_MAX ? count : __ALBUM_MAX;
 
     return { shown: shown, wide: false, extra: count - shown };
