@@ -628,12 +628,74 @@ CSS
                                             one stays hidden and disabled — a disabled field is not
                                             submitted and cannot shift the parts of the list. */ ?>
                                     <div class="kanban-item publication-field-frame publication-part-album p-3 rounded-2 bg-white d-none mt-2">
-                                            <label class="form-label mb-1" for="publicationPartImages">
+                                            <?php /* The same switch the shared album of the form carries, at the top
+                                                    of the frame and in the block every part is cloned with: the album
+                                                    of a part is rows of its own, and the order of one part says
+                                                    nothing about another. */ ?>
+                                            <div class="form-check form-switch mb-2" data-bs-toggle="popover"
+                                                 data-bs-trigger="hover" data-bs-placement="top-start"
+                                                 data-bs-custom-class="popover-info"
+                                                 data-bs-content="Показывает каждое изображение этой части отдельным полем: её ссылки и её файлы встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал. На другие части переключатель не влияет.">
+                                                <input class="form-check-input publication-album-rows-switch" type="checkbox"
+                                                       role="switch" id="publicationPartAlbumRows">
+                                                <label class="form-check-label" for="publicationPartAlbumRows">
+                                                    <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
+                                                </label>
+                                            </div>
+
+                                            <label class="form-label mb-1 publication-part-album-label" for="publicationPartImages">
                                                 <i class="bi bi-images me-1"></i>Изображения этой части
                                             </label>
+
                                             <textarea class="form-control publication-part-album-field" id="publicationPartImages"
                                                       name="publicationPartImages[]" rows="2" disabled
                                                       placeholder="По одному URL изображения в строке"></textarea>
+
+                                            <?php /* The rows of this album, cloned with the block and rebuilt from
+                                                    its own fields; the mask under them is the third of them, and the
+                                                    one name it carries makes the list of parts the server weaves. */ ?>
+                                            <div class="d-flex flex-column gap-2 publication-album-rows mt-2 d-none">
+                                                <div class="row gx-2 gy-2 align-items-center publication-album-row">
+                                                    <div class="col-sm">
+                                                        <input type="text" class="form-control publication-album-link"
+                                                               placeholder="https://example.com/photo.jpg"
+                                                               aria-label="Адрес изображения">
+                                                        <div class="form-control bg-body-tertiary text-truncate publication-album-file d-none">
+                                                            <i class="bi bi-file-earmark-image me-1"></i>
+                                                            <span class="publication-album-file-name"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-auto">
+                                                        <button type="button"
+                                                                class="btn btn-outline-secondary btn-icon publication-album-up"
+                                                                aria-label="Поднять изображение выше"
+                                                                title="Поднять это изображение на строку выше">
+                                                            <i class="bi bi-arrow-up-short"></i>
+                                                        </button>
+                                                        <button type="button"
+                                                                class="btn btn-outline-secondary btn-icon publication-album-down"
+                                                                aria-label="Опустить изображение ниже"
+                                                                title="Опустить это изображение на строку ниже">
+                                                            <i class="bi bi-arrow-down-short"></i>
+                                                        </button>
+                                                        <button type="button"
+                                                                class="btn btn-danger btn-icon publication-album-remove"
+                                                                aria-label="Убрать изображение" title="Убрать это изображение из альбома">
+                                                            <i class="bi bi-x-lg"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex justify-content-end publication-album-add-box mt-1 d-none">
+                                                <button type="button"
+                                                        class="btn btn-primary btn-icon publication-album-add"
+                                                        aria-label="Добавить изображение в альбом"
+                                                        title="Добавить в этот альбом ещё одну ссылку">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
+                                            </div>
+                                            <input type="hidden" name="publicationPartImageOrder[]"
+                                                   class="publication-album-order">
 
                                             <?php /* The companion of the links field: the same album filled from a
                                                     computer instead of from addresses. One picker per part, so the
@@ -805,15 +867,94 @@ CSS
                                         stands in the same bordered card the buttons of the form and the albums
                                         of its other parts stand in, so one album reads as one group. */ ?>
                                 <div class="kanban-item publication-field-frame p-3 rounded-2 bg-white">
+                                    <?php /* The switch that lays this album out as rows stands at the top of
+                                            the frame, the way the switch of the button frame stands there: it
+                                            says how the album below is shown before the album starts. Like the
+                                            switch of the distribution above it, this one never travels to the
+                                            server: what it arranges is the album, and the album goes out as a
+                                            text area, a picker and a mask. */ ?>
+                                    <div class="form-check form-switch mb-2" data-bs-toggle="popover"
+                                         data-bs-trigger="hover" data-bs-placement="top-start"
+                                         data-bs-custom-class="popover-info"
+                                         data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме.">
+                                        <input class="form-check-input publication-album-rows-switch" type="checkbox"
+                                               role="switch" id="publicationAlbumRows">
+                                        <label class="form-check-label" for="publicationAlbumRows">
+                                            <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
+                                        </label>
+                                    </div>
+
                                     <label for="publicationImages" class="form-label"
                                            data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
                                            data-bs-custom-class="popover-info"
                                            data-bs-content="Изображения отправляются в канал вместе с текстом публикации (первое — с подписью); у разбитой публикации это изображения её первой части. Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома.">
                                         <i class="bi bi-images me-1"></i>Изображения публикации
                                     </label>
+
                                     <textarea class="form-control" id="publicationImages" name="publicationImages"
                                               rows="3"
                                               placeholder="По одному URL изображения в строке&#10;https://example.com/photo1.jpg&#10;https://example.com/photo2.jpg"></textarea>
+
+                                    <?php /* The rows themselves: one per picture of the album, in the order the
+                                            channel gets them in. A row of a link holds an input without a name and
+                                            a row of a file holds its name — the fields that travel stay the text
+                                            area above, the picker below and the mask beside them. The one row of
+                                            the box doubles as the template the rest are cloned from, the way a
+                                            row of the button box does. */ ?>
+                                    <div class="d-flex flex-column gap-2 publication-album-rows mt-2 d-none"
+                                         id="publicationAlbumRowsBox">
+                                        <div class="row gx-2 gy-2 align-items-center publication-album-row">
+                                            <div class="col-sm">
+                                                <input type="text" class="form-control publication-album-link"
+                                                       placeholder="https://example.com/photo.jpg"
+                                                       aria-label="Адрес изображения">
+                                                <div class="form-control bg-body-tertiary text-truncate publication-album-file d-none">
+                                                    <i class="bi bi-file-earmark-image me-1"></i>
+                                                    <span class="publication-album-file-name"></span>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-auto">
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-icon publication-album-up"
+                                                        aria-label="Поднять изображение выше"
+                                                        title="Поднять это изображение на строку выше">
+                                                    <i class="bi bi-arrow-up-short"></i>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-icon publication-album-down"
+                                                        aria-label="Опустить изображение ниже"
+                                                        title="Опустить это изображение на строку ниже">
+                                                    <i class="bi bi-arrow-down-short"></i>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-danger btn-icon publication-album-remove"
+                                                        aria-label="Убрать изображение" title="Убрать это изображение из альбома">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <?php /* The icon that opens a row of this album: a blank address is not a
+                                            picture of the album yet, so the row stands behind the pictures until
+                                            the reader types one into it. It shows with the rows and takes the same
+                                            shape the icon of the button box takes. */ ?>
+                                    <div class="d-flex justify-content-end publication-album-add-box mt-1 d-none">
+                                        <button type="button" class="btn btn-primary btn-icon publication-album-add"
+                                                aria-label="Добавить изображение в альбом"
+                                                title="Добавить в этот альбом ещё одну ссылку">
+                                            <i class="bi bi-plus-lg"></i>
+                                        </button>
+                                    </div>
+
+                                    <?php /* The weave of the two fields: a token per picture of the album, "l" for
+                                            the next line of the text area above and "f" for the next file of the
+                                            picker below. The channel takes the links first and the stored files
+                                            after them, so this is the only way an order that reaches across both
+                                            has of getting there; a mask that does not fit the album it stands in
+                                            is let go of, and the album keeps the plain order. */ ?>
+                                    <input type="hidden" id="publicationImageOrder" name="publicationImageOrder"
+                                           class="publication-album-order">
 
                                     <?php /* The companion of the links field for the first part of the
                                             publication: the album of that part is this block, so its
@@ -1888,6 +2029,122 @@ function albumLayout(count) {
     var shown = count < 4 ? count : 4;
 
     return { shown: shown, wide: false, extra: count - shown };
+}
+
+// --- the order of an album: its links, its files, and one place for each ----
+//
+// An album of the form is two fields kept apart: the URLs a reader typed into
+// its text area and the files its picker holds. The channel receives the links
+// first and the stored files after them, so an order that reaches across both —
+// a photo picked from disk standing before a typed address — has nowhere to
+// travel. The mask is that place: one token per picture of the album, in the
+// order the album shows them, naming which of the two fields the picture comes
+// from. Both fields keep their own order, the mask only weaves them together,
+// and the server weaves the same way after it has turned every file into a link.
+var ALBUM_LINK_TOKEN = 'l';
+var ALBUM_FILE_TOKEN = 'f';
+
+function isAlbumToken(token) {
+    return token === ALBUM_LINK_TOKEN || token === ALBUM_FILE_TOKEN;
+}
+
+// The order nothing has been moved in: every link of the field, then every file
+// of the picker — which is also exactly what the server does without a mask.
+function plainAlbumMask(links, files) {
+    return (links || []).map(function () {
+        return ALBUM_LINK_TOKEN;
+    }).concat((files || []).map(function () {
+        return ALBUM_FILE_TOKEN;
+    }));
+}
+
+// Whether a mask can be trusted over an album: it may name fewer pictures than
+// the album holds — a file picked or a line typed after it was written stands
+// behind the rest — but one that names more, or carries a token from another
+// page, is not this album's pattern and is let go of rather than argued with.
+// The plain order is what the reader saw before any of the rows existed.
+function isAlbumMask(mask, count) {
+    return Array.isArray(mask) && mask.length <= count && mask.every(isAlbumToken);
+}
+
+// The album as the rows of the form see it: the two fields woven together by
+// the mask, every picture named once. A token whose field has run out is passed
+// over, and what no token named comes after the rest in the plain order.
+function orderAlbum(links, files, mask) {
+    var urls = (links || []).slice();
+    var picks = (files || []).slice();
+    var pattern = isAlbumMask(mask, urls.length + picks.length)
+        ? mask
+        : plainAlbumMask(urls, picks);
+    var pictures = [];
+
+    function take(pool, kind) {
+        if (pool.length === 0) {
+            return false;
+        }
+        pictures.push({ kind: kind, value: pool.shift() });
+
+        return true;
+    }
+
+    pattern.forEach(function (token) {
+        take(token === ALBUM_LINK_TOKEN ? urls : picks,
+            token === ALBUM_LINK_TOKEN ? 'link' : 'file');
+    });
+
+    // The pictures no token named, in the order their own field keeps them.
+    while (urls.length > 0) {
+        take(urls, 'link');
+    }
+    while (picks.length > 0) {
+        take(picks, 'file');
+    }
+
+    return pictures;
+}
+
+// The two sides of the same list, read back out of it: the fields the form
+// submits are derived from the order, never kept beside it.
+function splitAlbum(pictures) {
+    var parts = { links: [], files: [] };
+
+    (pictures || []).forEach(function (picture) {
+        parts[picture.kind === 'link' ? 'links' : 'files'].push(picture.value);
+    });
+
+    return parts;
+}
+
+function maskOfAlbum(pictures) {
+    return (pictures || []).map(function (picture) {
+        return picture.kind === 'link' ? ALBUM_LINK_TOKEN : ALBUM_FILE_TOKEN;
+    });
+}
+
+// A picture swaps places with its neighbour, the way a row of buttons does. The
+// list it was given is left alone, because the fields of the form are rewritten
+// from the answer and an in-place move would leave them holding half of it.
+function moveAlbumPicture(pictures, index, step) {
+    var list = (pictures || []).slice();
+    var to = index + step;
+
+    if (to < 0 || to >= list.length) {
+        return list;
+    }
+    list.splice(to, 0, list.splice(index, 1)[0]);
+
+    return list;
+}
+
+function removeAlbumPicture(pictures, index) {
+    var list = (pictures || []).slice();
+
+    if (index < 0 || index >= list.length) {
+        return list;
+    }
+    list.splice(index, 1);
+
+    return list;
 }
 
 jQuery(document).ready(function () {
@@ -3488,40 +3745,444 @@ jQuery(document).ready(function () {
             return alignGroups([], count);
         }
 
-        // What an album really holds: the links of its field with the files
-        // picked for that part behind them — the list the channel will get once
-        // the server has turned every file into a link of its own.
-        function albumPictures() {
-            var links = readImageGroups();
-            var files = readFileGroups();
+        // The rows of every album: the box of the shared field first, then one per
+        // part, the same offset the fields of links and of files keep.
+        function albumRowBoxes() {
+            return [sharedAlbumRowsBox].concat(albumBoxes().map(function (box) {
+                return box.querySelector('.publication-album-rows');
+            }));
+        }
 
-            return links.map(function (urls, index) {
-                return urls.concat(files[index] || []);
+        function albumOrderFields() {
+            return [imagesOrderInput].concat(albumBoxes().map(function (box) {
+                return box.querySelector('.publication-album-order');
+            }));
+        }
+
+        function albumRowSwitches() {
+            return [albumRowsInput].concat(albumBoxes().map(function (box) {
+                return box.querySelector('.publication-album-rows-switch');
+            }));
+        }
+
+        function albumRowsOf(box) {
+            return Array.prototype.slice.call(box.querySelectorAll('.publication-album-row'));
+        }
+
+        // The mask of an album as its field holds it: one token per picture. An
+        // empty field is no pattern, which the plain order of the two fields is.
+        function readAlbumMask(index) {
+            var target = albumOrderFields()[index];
+
+            return target ? String(target.value).split('') : [];
+        }
+
+        function writeAlbumMask(index, mask) {
+            var target = albumOrderFields()[index];
+
+            if (target) {
+                target.value = (mask || []).join('');
+            }
+        }
+
+        // The album of one part as the rows of its box show it: the links of its
+        // field and the files of its picker woven into one list by its mask.
+        function readAlbumOrder(index) {
+            return orderAlbum(readImageGroups()[index], readFileGroups()[index], readAlbumMask(index));
+        }
+
+        // Any arrangement of an album ends here, and the three fields of it are
+        // written from the one list: the text area of the links, the picker of the
+        // files and the mask that says which of them stands where. A blank link is
+        // not one of the pictures the album holds — a row the reader is still
+        // typing into has no address yet, and a line the channel would take for
+        // one cannot be left in the field.
+        function setAlbumOrder(index, pictures) {
+            var kept = (pictures || []).filter(function (picture) {
+                return picture.kind !== 'link' || String(picture.value).trim() !== '';
+            });
+            var parts = splitAlbum(kept);
+
+            writeImageGroup(index, parts.links);
+            writeFileGroup(index, parts.files);
+            writeAlbumMask(index, maskOfAlbum(kept));
+        }
+
+        // What an album really holds: its pictures in the order the reader laid
+        // them out — the list the channel will get once the server has turned
+        // every file into a link of its own. An album nobody has arranged comes
+        // out as its links with the files picked for that part behind them, which
+        // is exactly what the server does without a mask.
+        function albumPictures() {
+            return imageTargets().map(function (field, index) {
+                return readAlbumOrder(index).map(function (picture) {
+                    return picture.value;
+                });
             });
         }
 
-        // The album of a part handed to its neighbour: the moved links and files
-        // come after what the receiving field already holds, a link both fields
-        // showed is named once, and the field they came from stands empty.
+        // The album of a part handed to its neighbour: the moved pictures come
+        // after what the receiving album already holds, a link both of them showed
+        // is named once, and the album they came from stands empty. The order of
+        // both is kept, because the two lists are woven by the mask of the album
+        // they arrive in.
         function moveImageGroup(index, step) {
-            var groups = readImageGroups();
-            var files = readFileGroups();
             var to = index + step;
+            var moved = readAlbumOrder(index);
+            var many = readAlbumOrder(to);
 
             // An empty album has nothing to move, so the buttons never turn into a
             // way to empty the field of a neighbour.
-            if (index < 0 || to < 0 || to >= groups.length
-                || groups[index].length + files[index].length === 0) {
+            if (index < 0 || to < 0 || to >= imageTargets().length || moved.length === 0) {
                 return;
             }
 
-            writeImageGroup(to, unionGroups([groups[to], groups[index]]));
-            writeImageGroup(index, []);
-            writeFileGroup(to, unionGroups([files[to], files[index]]));
-            writeFileGroup(index, []);
+            setAlbumOrder(to, unionPictures([many, moved]));
+            setAlbumOrder(index, []);
+            forgetAlbumBlanks(to);
+            forgetAlbumBlanks(index);
             renderNotice(albumNotices()[index], []);
             renderFilesNotice(albumFileNotices()[index], [], []);
             updateImages();
+            syncAlbumRows();
+        }
+
+        // The links an album was shown holding are named once, as they were before
+        // the rows; two files of one name are two picks the reader made.
+        function unionPictures(groups) {
+            var pictures = [];
+
+            groups.forEach(function (group) {
+                group.forEach(function (picture) {
+                    var seen = picture.kind === 'link' && pictures.some(function (other) {
+                        return other.kind === 'link' && other.value === picture.value;
+                    });
+
+                    if (!seen) {
+                        pictures.push(picture);
+                    }
+                });
+            });
+
+            return pictures;
+        }
+
+        // --- the rows of an album -------------------------------------------------
+
+        // The four controls a row is worked with: the address of a link and the
+        // three icons. A rebuild of the box gives them new nodes, so the one that
+        // had the focus is looked for by the same class in the row it went to.
+        var ALBUM_ROW_CONTROLS = ['.publication-album-link', '.publication-album-up',
+            '.publication-album-down', '.publication-album-remove'];
+
+        function isAlbumRowsOn(index) {
+            var toggle = albumRowSwitches()[index];
+
+            return !!(toggle && toggle.checked);
+        }
+
+        // Which album and which picture a control of a row belongs to. The rows of
+        // a box are its album's pictures in their order, so the place of a row in
+        // the box is the place of its picture in the album.
+        function albumRowOf(target) {
+            var row = target.closest ? target.closest('.publication-album-row') : null;
+
+            if (!row) {
+                return null;
+            }
+
+            var box = row.closest('.publication-album-rows');
+
+            return {
+                index: albumRowBoxes().indexOf(box),
+                position: albumRowsOf(box).indexOf(row),
+                box: box,
+            };
+        }
+
+        // The control the reader is working in, and where it stands among the rows.
+        function albumFocusedRow(box) {
+            var active = document.activeElement;
+            var selector = null;
+
+            if (!active || !box.contains(active)) {
+                return null;
+            }
+            ALBUM_ROW_CONTROLS.some(function (candidate) {
+                if (active.matches(candidate)) {
+                    selector = candidate;
+                }
+
+                return !!selector;
+            });
+            if (!selector) {
+                return null;
+            }
+
+            return {
+                position: albumRowsOf(box).indexOf(active.closest('.publication-album-row')),
+                selector: selector,
+                caret: selector === '.publication-album-link' ? active.selectionStart : null,
+            };
+        }
+
+        function focusAlbumRow(box, held) {
+            var row = albumRowsOf(box)[held.position];
+            var control = row ? row.querySelector(held.selector) : null;
+
+            if (!control) {
+                return;
+            }
+            control.focus();
+            if (held.caret !== null) {
+                control.setSelectionRange(held.caret, held.caret);
+            }
+        }
+
+        // The rows a reader has opened but not filled in yet: an address that is
+        // still empty is not a picture of the album — the text area has no line for
+        // it, and the channel would get nothing out of it — so it stands in the box
+        // and in this count, behind the pictures, until a character arrives there.
+        // A row whose address is erased becomes one of them again.
+        var albumBlankRows = [];
+
+        function forgetAlbumBlanks(index) {
+            albumBlankRows[index] = 0;
+        }
+
+        // The icon that opens a row of an album stands beside the box of its rows,
+        // so the album it belongs to is read from the frame both of them stand in.
+        function albumIndexOfNode(node) {
+            var frame = node.closest('.publication-field-frame');
+
+            return frame ? albumRowBoxes().indexOf(frame.querySelector('.publication-album-rows')) : -1;
+        }
+
+        function albumAddBoxOf(index) {
+            var box = albumRowBoxes()[index];
+
+            return box ? box.parentNode.querySelector('.publication-album-add-box') : null;
+        }
+
+        // One row is one picture of the album: the address of a link in an input
+        // that carries no name, the name of a file in a block that cannot be typed
+        // into. A file has no address to show until the server has given it one,
+        // and its place in the album is what the arrows change, so a row of a file
+        // says what the picker below it holds.
+        function renderAlbumRows(index, held) {
+            var box = albumRowBoxes()[index];
+
+            if (!box) {
+                return;
+            }
+
+            var pictures = readAlbumOrder(index);
+            var many = pictures.length + (albumBlankRows[index] || 0);
+            var focused = held || albumFocusedRow(box);
+
+            box.textContent = '';
+            for (var position = 0; position < many; position += 1) {
+                box.appendChild(albumRowTemplate.cloneNode(true));
+            }
+
+            albumRowsOf(box).forEach(function (row, place) {
+                var blank = place >= pictures.length;
+                var picture = blank ? null : pictures[place];
+                var isLink = blank || picture.kind === 'link';
+                var link = row.querySelector('.publication-album-link');
+
+                link.classList.toggle('d-none', !isLink);
+                link.value = isLink && picture ? picture.value : '';
+                row.querySelector('.publication-album-file').classList.toggle('d-none', isLink);
+                row.querySelector('.publication-album-file-name').textContent =
+                    isLink ? '' : picture.value.name;
+            });
+
+            markAlbumRowFlags(box, pictures);
+
+            if (focused) {
+                focusAlbumRow(box, focused);
+            }
+        }
+
+        // Which arrows of a row are stopped: a blank holds no picture, so it has no
+        // place of the album to be moved to, and the pictures stop at the ends of
+        // the album. The icons are stopped rather than taken away, as the icons of a
+        // button row are, so that the column never jumps.
+        function markAlbumRowFlags(box, pictures) {
+            albumRowsOf(box).forEach(function (row, place) {
+                var blank = place >= pictures.length;
+
+                row.querySelector('.publication-album-up').disabled = blank || place === 0;
+                row.querySelector('.publication-album-down').disabled =
+                    blank || place === pictures.length - 1;
+            });
+        }
+
+        // The rows stand in the place of the text area of their album, and the
+        // picker stays where it is: it is how a file gets into the album, not a
+        // list of what the album holds. A text area taken out of sight is hidden by
+        // class and never disabled — a disabled field is not submitted, and the
+        // album would travel to the channel without a single link.
+        function syncAlbumRows() {
+            imageTargets().forEach(function (field, index) {
+                var box = albumRowBoxes()[index];
+                var add = albumAddBoxOf(index);
+                var on = isAlbumRowsOn(index);
+
+                if (box) {
+                    box.classList.toggle('d-none', !on);
+                    if (on) {
+                        renderAlbumRows(index);
+                    }
+                }
+                if (add) {
+                    add.classList.toggle('d-none', !on);
+                }
+                if (field) {
+                    field.classList.toggle('d-none', on);
+                }
+            });
+        }
+
+        // One place a row edit leaves the album: the fields are written from the new
+        // order and everything that listens to the album is drawn again. The rows
+        // themselves follow only an edit that came from an icon — between two
+        // keystrokes the box holds the field the caret stands in, and drawing it
+        // again would take that field away from under it.
+        function applyAlbumPictures(index, pictures, held) {
+            setAlbumOrder(index, pictures);
+            updateImages();
+
+            if (held && isAlbumRowsOn(index)) {
+                renderAlbumRows(index, held);
+            }
+        }
+
+        // The address a row shows is the picture of the album it stands for, unless
+        // the row is one of the blanks behind the album: those join by their own
+        // place, which is the end of it, and an address erased leaves the album and
+        // takes the place of a blank.
+        function takeAlbumLinkEdit(event) {
+            var row = albumRowOf(event.target);
+
+            if (!row || !event.target.classList.contains('publication-album-link')) {
+                return;
+            }
+
+            var pictures = readAlbumOrder(row.index);
+            var value = String(event.target.value);
+            var blank = row.position >= pictures.length;
+
+            if (blank) {
+                if (value.trim() === '') {
+                    return;
+                }
+                pictures.push({ kind: 'link', value: value });
+                albumBlankRows[row.index] = Math.max(0, (albumBlankRows[row.index] || 0) - 1);
+            } else if (value.trim() === '') {
+                pictures = removeAlbumPicture(pictures, row.position);
+                albumBlankRows[row.index] = (albumBlankRows[row.index] || 0) + 1;
+            } else {
+                pictures[row.position].value = value;
+            }
+
+            applyAlbumPictures(row.index, pictures);
+
+            // The box was not drawn again, so the arrows of these rows would still
+            // speak of the album as it stood before the keystroke. Only the flags
+            // move here: the field the caret stands in is left exactly as it is.
+            var box = albumRowBoxes()[row.index];
+
+            if (box) {
+                markAlbumRowFlags(box, readAlbumOrder(row.index));
+            }
+        }
+
+        // The icon of one album only: a click anywhere else in the card — and a
+        // label hands its click on to the control it stands for, so one reader
+        // click arrives as two events — must not open a row of its own.
+        function takeAlbumAdd(event) {
+            var add = event.target.closest('.publication-album-add');
+
+            if (!add) {
+                return;
+            }
+
+            var index = albumIndexOfNode(add);
+
+            if (index < 0) {
+                return;
+            }
+
+            var many = (albumBlankRows[index] || 0) + 1;
+
+            albumBlankRows[index] = many;
+
+            // The row opens at the end of the album, where a blank stands, and the
+            // caret goes into it: what the reader types there becomes the address of
+            // one more picture of the album.
+            applyAlbumPictures(index, readAlbumOrder(index), {
+                position: readAlbumOrder(index).length + many - 1,
+                selector: '.publication-album-link',
+                caret: 0,
+            });
+        }
+
+        function takeAlbumRowClick(event) {
+            var row = albumRowOf(event.target);
+            var up = event.target.closest('.publication-album-up');
+            var down = event.target.closest('.publication-album-down');
+            var remove = event.target.closest('.publication-album-remove');
+
+            if (!row || !(up || down || remove)) {
+                return;
+            }
+
+            var pictures = readAlbumOrder(row.index);
+            var blank = row.position >= pictures.length;
+            var held = null;
+
+            if (up || down) {
+                pictures = moveAlbumPicture(pictures, row.position, up ? -1 : 1);
+                held = {
+                    position: row.position + (up ? -1 : 1),
+                    selector: up ? '.publication-album-up' : '.publication-album-down',
+                    caret: null,
+                };
+            } else if (remove) {
+                if (blank) {
+                    albumBlankRows[row.index] = Math.max(0, (albumBlankRows[row.index] || 0) - 1);
+                } else {
+                    pictures = removeAlbumPicture(pictures, row.position);
+                }
+                // The row that came to stand in the place of the one taken out is
+                // the one the reader keeps working with.
+                held = {
+                    position: Math.min(row.position,
+                        readAlbumOrder(row.index).length + (albumBlankRows[row.index] || 0) - 1),
+                    selector: '.publication-album-remove',
+                    caret: null,
+                };
+
+                if (held.position < 0) {
+                    held = null;
+                }
+            }
+
+            applyAlbumPictures(row.index, pictures, held);
+        }
+
+        // The switch shows the rows of its own album and takes the text area of it
+        // out of sight. Nothing of the album changes: the rows are the same two
+        // fields seen as one list, and a blank row the reader had opened is kept.
+        function takeAlbumRowsSwitch(event) {
+            if (!event.target.classList
+                || !event.target.classList.contains('publication-album-rows-switch')) {
+                return;
+            }
+
+            syncAlbumRows();
         }
 
         // Lists laid out along the parts: what a part has no list of its own
@@ -4095,7 +4756,13 @@ jQuery(document).ready(function () {
                 var album = block.querySelector('.publication-part-album-field');
                 album.id = 'publicationPartImages' + (index + 1);
                 album.disabled = false;
-                block.querySelector('.publication-part-album label').setAttribute('for', album.id);
+                block.querySelector('.publication-part-album-label').setAttribute('for', album.id);
+
+                // The switch of the rows is one per part and named after its place,
+                // so that its label points at the toggle of the same album box.
+                var rowsSwitch = block.querySelector('.publication-album-rows-switch');
+                rowsSwitch.id = 'publicationPartAlbumRows' + (index + 1);
+                block.querySelector('.publication-part-album .form-check-label').setAttribute('for', rowsSwitch.id);
 
                 // The picker of a part is named after its place in the list of
                 // parts: the first part has none of its own, its album is the
@@ -4137,7 +4804,13 @@ jQuery(document).ready(function () {
 
             setAlbumFields(groups === undefined ? keepGroups(values.length) : groups);
             writeFileGroups(carriedFiles);
+            // A rebuild gives every part a mask field of its own and an empty one,
+            // which is the plain order of the album it stands in; the pictures that
+            // came out of a part that no longer exists keep their place behind the
+            // ones the receiving part already held.
+            albumBlankRows = [];
             updateAlbumBoxes();
+            syncAlbumRows();
             syncPartButtons();
             updateButtonBoxes();
             clearNotices();
@@ -4845,6 +5518,12 @@ jQuery(document).ready(function () {
         var imageFilesInput = document.getElementById('publicationImageFiles');
         var imageFilesNotice = document.getElementById('publicationImageFilesNotice');
         var imagesPreview = document.getElementById('publicationImagesPreview');
+        var albumRowsInput = document.getElementById('publicationAlbumRows');
+        var sharedAlbumRowsBox = document.getElementById('publicationAlbumRowsBox');
+        var imagesOrderInput = document.getElementById('publicationImageOrder');
+        var albumRowTemplate = sharedAlbumRowsBox
+            ? sharedAlbumRowsBox.querySelector('.publication-album-row').cloneNode(true)
+            : null;
         var publicationAtInput = document.getElementById('publicationAt');
         var previewPublicationAt = document.getElementById('previewPublicationAt');
         var sourceTypeInput = document.getElementById('publicationSource');
@@ -5287,6 +5966,9 @@ jQuery(document).ready(function () {
             writeFileGroup(index, kept);
             renderFilesNotice(albumFileNotices()[index], tooBig, extra);
             updateImages();
+            // A file that came into the picker comes into the rows of the same
+            // album, behind the pictures the mask already knew.
+            syncAlbumRows();
         };
 
         // The whole album goes into a field at once, so a form submitted while
@@ -5301,7 +5983,13 @@ jQuery(document).ready(function () {
 
             writeImageGroup(index, urls);
             renderNotice(albumNotices()[index], []);
+            // An album written from outside is a new album: the rows of it start at
+            // the plain order, and the blanks the reader had opened with the old
+            // addresses are gone with them.
+            forgetAlbumBlanks(index);
+            writeAlbumMask(index, []);
             updateImages();
+            syncAlbumRows();
             if (urls.length === 0) {
                 return;
             }
@@ -5321,6 +6009,7 @@ jQuery(document).ready(function () {
                 writeImageGroup(index, kept);
                 renderNotice(albumNotices()[index], dead);
                 updateImages();
+                syncAlbumRows();
             });
         };
 
@@ -5336,19 +6025,18 @@ jQuery(document).ready(function () {
         // slices come out contiguous and differ in size by at most one image.
         var distributeImages = function () {
             var groups = readImageGroups();
-            var album = albumPictures()[0] || [];
+            var album = readAlbumOrder(0);
 
             if (album.length === 0 || groups.length < 2) {
                 return;
             }
 
+            // The order of the album is what is handed out, so a file the reader
+            // stood before a link keeps that place in the part it comes to, and the
+            // mask of every part is written from the list its rows show.
             groupImages(album, groups.length).forEach(function (pictures, index) {
-                writeImageGroup(index, pictures.filter(function (picture) {
-                    return typeof picture === 'string';
-                }));
-                writeFileGroup(index, pictures.filter(function (picture) {
-                    return typeof picture !== 'string';
-                }));
+                forgetAlbumBlanks(index);
+                setAlbumOrder(index, pictures);
             });
 
             // The option has done its work inside the form: what the fields hold
@@ -5357,6 +6045,7 @@ jQuery(document).ready(function () {
                 distributeImagesInput.checked = false;
             }
             updateImages();
+            syncAlbumRows();
         };
 
         // The preview shows the highlighting the channel will show: the text is cut
@@ -5582,6 +6271,21 @@ jQuery(document).ready(function () {
         if (distributeImagesInput) {
             distributeImagesInput.addEventListener('change', distributeImages);
         }
+        // The rows of an album live in the same frame as the fields they arrange, so
+        // the frame of the shared block and the box of the parts answer for them
+        // alike: an address typed into a row, an icon clicked in one, and the switch
+        // that shows the rows of that album only.
+        [imagesInput ? imagesInput.closest('.publication-field-frame') : null, partsBox]
+            .forEach(function (node) {
+                if (!node) {
+                    return;
+                }
+
+                node.addEventListener('input', takeAlbumLinkEdit);
+                node.addEventListener('click', takeAlbumRowClick);
+                node.addEventListener('click', takeAlbumAdd);
+                node.addEventListener('change', takeAlbumRowsSwitch);
+            });
         // The preview answers to the buttons of the first part as it does to its
         // text: a row of the shared field is read on every keystroke, and the parts
         // that were handed these buttons follow it there.
@@ -5818,6 +6522,7 @@ jQuery(document).ready(function () {
         update();
         updateCounters();
         updateImages();
+        syncAlbumRows();
         updatePreviewPublicationAt();
 
         var scrollToMiddle = function (log) {

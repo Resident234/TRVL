@@ -68,6 +68,16 @@ class SiteController extends Controller
         IMAGETYPE_WEBP => 'webp',
     ];
 
+    /**
+     * The two tokens the mask of an album is made of: one per picture, naming
+     * which of the two fields of the form that picture came out of. A link typed
+     * into «Изображения публикации» and a file stored from «Файлы публикации»
+     * travel as separate lists, so without this the album could only ever be the
+     * links first and the pictures picked behind them.
+     */
+    private const ALBUM_LINK_TOKEN = 'l';
+    private const ALBUM_FILE_TOKEN = 'f';
+
     public function __construct(
         $id,
         $module,
@@ -1384,6 +1394,118 @@ class SiteController extends Controller
     }
 
     /**
+     * The masks of the publication form as one list of tokens per part, standing
+     * in the places the fields of links keep: «publicationImageOrder» carries the
+     * album of the first part, and every part after it adds one field of
+     * «publicationPartImageOrder[]», so a submission weaves each album with its
+     * own pattern.
+     *
+     * @return string[][]
+     */
+    private function maskGroupsFromRequest(): array
+    {
+        $groups = [$this->albumMaskFromValue($this->request->post('publicationImageOrder', ''))];
+        $raw = $this->request->post('publicationPartImageOrder', []);
+
+        foreach (is_array($raw) ? array_values($raw) : [$raw] as $field) {
+            $groups[] = $this->albumMaskFromValue($field);
+        }
+
+        return $groups;
+    }
+
+    /**
+     * One mask field of the form: the tokens of its album, one per picture,
+     * «l» for the next link of the text area and «f» for the next file of the
+     * picker. A value that carries anything else is read as no mask at all,
+     * which is the plain order of an album nobody has arranged.
+     *
+     * @return string[]
+     */
+    private function albumMaskFromValue(mixed $raw): array
+    {
+        $value = trim((string)$raw);
+        $tokens = '[' . self::ALBUM_LINK_TOKEN . self::ALBUM_FILE_TOKEN . ']';
+
+        if ($value === '' || preg_match('/^' . $tokens . '+$/', $value) !== 1) {
+            return [];
+        }
+
+        return str_split($value);
+    }
+
+    /**
+     * Whether a mask can be trusted over an album: it may name fewer pictures
+     * than the album holds — a line typed or a file picked after the form wrote
+     * the mask stands behind the rest — but one that names more, or carries a
+     * token of another page, is not this album's pattern.
+     *
+     * @param string[] $mask
+     */
+    private function isAlbumMask(array $mask, int $count): bool
+    {
+        if (count($mask) > $count) {
+            return false;
+        }
+
+        foreach ($mask as $token) {
+            if ($token !== self::ALBUM_LINK_TOKEN && $token !== self::ALBUM_FILE_TOKEN) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The order an album holds without anyone having moved a picture in it: the
+     * links of its field, then the pictures its files became. This is the order
+     * the portal has always used, and the one an album falls back to.
+     *
+     * @param string[] $links
+     * @param string[] $stored
+     * @return string[]
+     */
+    private function plainAlbumMask(array $links, array $stored): array
+    {
+        return array_merge(
+            array_fill(0, count($links), self::ALBUM_LINK_TOKEN),
+            array_fill(0, count($stored), self::ALBUM_FILE_TOKEN),
+        );
+    }
+
+    /**
+     * The album as the channel gets it: the links typed into the field woven
+     * with the links the stored files became, along the pattern the mask of that
+     * album carries. A token whose field has run out is passed over, and what no
+     * token named comes after the rest in the order its own field keeps it.
+     *
+     * @param string[] $links
+     * @param string[] $stored
+     * @param string[] $mask
+     * @return string[]
+     */
+    private function weaveAlbum(array $links, array $stored, array $mask): array
+    {
+        $urls = array_values($links);
+        $files = array_values($stored);
+        $pattern = $this->isAlbumMask($mask, count($urls) + count($files))
+            ? $mask
+            : $this->plainAlbumMask($urls, $files);
+        $pictures = [];
+
+        foreach ($pattern as $token) {
+            if ($token === self::ALBUM_LINK_TOKEN && $urls !== []) {
+                $pictures[] = array_shift($urls);
+            } elseif ($token === self::ALBUM_FILE_TOKEN && $files !== []) {
+                $pictures[] = array_shift($files);
+            }
+        }
+
+        return array_merge($pictures, $urls, $files);
+    }
+
+    /**
      * The albums of the form with the files their pickers brought in: a stored
      * picture is served by the portal itself, so an album gains one more link
      * exactly like the ones typed into the field by hand. Every file is read
@@ -1399,6 +1521,7 @@ class SiteController extends Controller
     private function withUploadedImages(array $groups): array
     {
         $settings = $this->publicationSettings();
+        $masks = $this->maskGroupsFromRequest();
         $maxMb = (int)$settings['imageUploadMaxMb'];
         $limit = (int)$settings['imageUploadLimit'];
         $albums = [];
@@ -1424,9 +1547,18 @@ class SiteController extends Controller
         }
 
         foreach ($albums as $index => $uploads) {
+            $stored = [];
+
             foreach ($uploads as [$file, $extension]) {
-                $groups[$index][] = $this->storeUpload($file, $extension);
+                $stored[] = $this->storeUpload($file, $extension);
             }
+
+            // The pictures the files became stand where the reader put them: an
+            // album whose form was arranged by rows is woven by its mask, and an
+            // album that brought no mask, or one that does not fit it, keeps the
+            // plain order of links first and stored pictures behind.
+            $mask = array_key_exists($index, $masks) ? $masks[$index] : [];
+            $groups[$index] = $this->weaveAlbum($groups[$index], $stored, $mask);
         }
 
         return $groups;
