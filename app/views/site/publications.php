@@ -49,8 +49,8 @@ $this->registerCss(
     <<<CSS
 /* The album of a part goes to the channel above its caption, and the channel
    lays it out by how many pictures it holds: one across the message, two side by
-   side, three with the first lying across the whole message on top of the other
-   two, four in two by two.
+   side, and three or four with the first lying across the whole message on top of
+   the rest — the two are laid out by the rules for `album-3` and `album-4` below.
    The grid is pulled out of the padding of the bubble, because a photo in the
    channel touches its edges, and only the corners of the whole group are
    rounded — the seams between the tiles stay straight.
