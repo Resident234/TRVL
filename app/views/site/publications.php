@@ -49,11 +49,12 @@ $this->registerCss(
     <<<CSS
 /* The album of a part goes to the channel above its caption, and the channel
    lays it out by how many pictures it holds: one across the message, two side by
-   side, and three, four or five with the first lying across the whole message on
-   top of the rest — the three are laid out by the rules for `album-3`, `album-4`
-   and `album-5` below. An album longer than five has no rule of its own and stands
-   on this base grid: two square tiles to a row, as many rows as the album asks
-   for, which is what the channel has been read at for two pictures. The preview
+   side, and three, four, five or six with the first lying across the whole message
+   on top of the rest — the four are laid out by the rules for `album-3`,
+   `album-4`, `album-5` and `album-6` below. An album longer than six has no rule of
+   its own and stands on this base grid: two square tiles to a row, as many rows as
+   the album asks for, which is what the channel has been read at for two pictures.
+   The preview
    shows the whole album, and only the ten pictures of one media group bound it —
    what does not fit goes behind the «+N» of the last tile, because the sender
    carries those pictures into an album of its own.
@@ -140,6 +141,44 @@ $this->registerCss(
 
 .publication-preview-album.album-5 .publication-album-cell:first-child {
     grid-column: span 2;
+}
+
+/* Six pictures the channel lays out in three rows: one across the whole message,
+   then a square beside a wide tile, then a square beside two wide ones. The rows
+   share no height — a row stands as tall as its own tiles ask — so no small number
+   of columns carries them, and the grid takes forty: the top tile spans all forty,
+   the row of two splits 16 and 24, the row of three 10, 15 and 15. Those are the
+   seams the shot measures at — at 430px of content the top tile stands 430 × 288,
+   the row under it holds 171 and 255 of tile at 171 of height, the last row 106,
+   158 and 158 at 106, the whole group 430 × 573. Which two of the six the channel
+   cut to squares is the shape of the album it was given: a picture it cannot fill
+   wide without cutting keeps the square, so the two squares here are this post's
+   own portrait pictures, not a rule every six will wear. */
+.publication-preview-album.album-6 {
+    grid-template-columns: repeat(40, minmax(0, 1fr));
+}
+
+.publication-preview-album.album-6 .publication-album-cell {
+    grid-column: span 15;
+    aspect-ratio: 3 / 2;
+}
+
+.publication-preview-album.album-6 .publication-album-cell:nth-child(1) {
+    grid-column: span 40;
+}
+
+.publication-preview-album.album-6 .publication-album-cell:nth-child(2) {
+    grid-column: span 16;
+    aspect-ratio: 1;
+}
+
+.publication-preview-album.album-6 .publication-album-cell:nth-child(3) {
+    grid-column: span 24;
+}
+
+.publication-preview-album.album-6 .publication-album-cell:nth-child(4) {
+    grid-column: span 10;
+    aspect-ratio: 1;
 }
 
 /* A single picture keeps its own proportions, the way the channel shows it, and
@@ -2096,14 +2135,14 @@ function albumLayout(count) {
         return { shown: count, wide: false, extra: 0 };
     }
 
-    if (count >= 3 && count <= 5) {
+    if (count >= 3 && count <= 6) {
         return { shown: count, wide: true, extra: 0 };
     }
 
-    // Two pictures and every album longer than five stand on the base grid of the
+    // Two pictures and every album longer than six stand on the base grid of the
     // sheet: two columns of square tiles, as many rows as the album asks for. The
-    // channel has been measured at three, four and five only, so a longer album
-    // keeps the tiles of the sheet rather than a collage nobody has read yet.
+    // channel has been measured at three, four, five and six only, so a longer
+    // album keeps the tiles of the sheet rather than a collage nobody has read yet.
     var shown = count < __ALBUM_MAX ? count : __ALBUM_MAX;
 
     return { shown: shown, wide: false, extra: count - shown };
