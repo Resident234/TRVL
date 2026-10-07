@@ -17,6 +17,7 @@ declare(strict_types=1);
 /** @var string $forumTextOrder '' | 'asc' | 'desc' — the length order of the topics */
 /** @var bool $titleFromFirstLine whether a fill of the forum cuts its first line into the heading */
 /** @var bool $linksToButtons whether the addresses of a text become link buttons on their own */
+/** @var bool $albumRows whether the album of the form shows its pictures as rows */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -975,16 +976,18 @@ CSS
                                 <div class="kanban-item publication-field-frame p-3 rounded-2 bg-white">
                                     <?php /* The switch that lays this album out as rows stands at the top of
                                             the frame, the way the switch of the button frame stands there: it
-                                            says how the album below is shown before the album starts. Like the
-                                            switch of the distribution above it, this one never travels to the
-                                            server: what it arranges is the album, and the album goes out as a
-                                            text area, a picker and a mask. */ ?>
+                                            says how the album below is shown before the album starts. This one
+                                            does travel to the server, and what it carries is only its own state:
+                                            the page keeps it in the session, so the album opens the rows the
+                                            reader left it in. The album itself still goes out as a text area, a
+                                            picker and a mask — the switch arranges those, it is none of them. */ ?>
                                     <div class="form-check form-switch mb-2" data-bs-toggle="popover"
                                          data-bs-trigger="hover" data-bs-placement="top-start"
                                          data-bs-custom-class="popover-info"
                                          data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме.">
                                         <input class="form-check-input publication-album-rows-switch" type="checkbox"
-                                               role="switch" id="publicationAlbumRows">
+                                               role="switch" id="publicationAlbumRows"
+                                               <?= $albumRows ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationAlbumRows">
                                             <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
                                         </label>
@@ -1457,6 +1460,7 @@ $threadUrl = \yii\helpers\Url::to(['site/forum-thread']);
 $sortUrl = \yii\helpers\Url::to(['site/publication-sort']);
 $titleSwitchSaveUrl = \yii\helpers\Url::to(['site/title-from-first-line-save']);
 $linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
+$albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
@@ -1485,6 +1489,7 @@ var __THREAD_URL = '{$threadUrl}';
 var __SORT_URL = '{$sortUrl}';
 var __TITLE_SWITCH_URL = '{$titleSwitchSaveUrl}';
 var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
+var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
@@ -2737,6 +2742,36 @@ jQuery(document).ready(function () {
                     // waiting has to agree with it.
                     input.checked = !state;
                     arm();
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
+    // The switch that lays the album of the form out in rows keeps its state the
+    // same way the two switches above it do: the server stores it and answers with
+    // the address that mirrors it. The rows the page lays out on the change of the
+    // switch by itself, so only a save that was refused has to bring the album back
+    // to the state it was rendered with — and `sync` is that layout, which lives in
+    // the scope of the form.
+    function watchAlbumRowsSwitch(sync) {
+        var input = document.getElementById('publicationAlbumRows');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            var state = input.checked;
+            postForJson(__ALBUM_SWITCH_URL, { albumRows: state ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                })
+                .catch(function (error) {
+                    // The session kept the state it was asked with, so the switch
+                    // goes back to the one it was rendered with — and the album
+                    // with it, since a checkbox that never was turned lays nothing
+                    // out on its own.
+                    input.checked = !state;
+                    sync();
                     showFlash('error', 'Не удалось запомнить переключатель: '
                         + (error && error.message ? error.message : error));
                 });
@@ -7137,6 +7172,11 @@ jQuery(document).ready(function () {
         // So is the switch of the addresses, and it is handed the waiting of the
         // fill it owns: the two states of one turn have to agree with each other.
         watchLinksSwitch(armLinksToButtons);
+
+        // And so is the switch of the album rows. It is handed the layout of the
+        // rows: a save the server refused has to leave the album in the state the
+        // page was rendered with, not in the one the reader clicked it into.
+        watchAlbumRowsSwitch(syncAlbumRows);
 
         // The height of the forum block is the page under the sticky header, so
         // the header is measured once the lists are wired and again whenever the

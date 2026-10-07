@@ -139,6 +139,7 @@ class SiteController extends Controller
                     'publication-sort' => ['post'],
                     'title-from-first-line-save' => ['post'],
                     'links-to-buttons-save' => ['post'],
+                    'album-rows-save' => ['post'],
                     'forum-text-order-save' => ['post'],
                     'forum-viewed' => ['post'],
                     'forum-post-page' => ['post'],
@@ -297,6 +298,7 @@ class SiteController extends Controller
         $this->syncForumTextOrder();
         $this->syncTitleFromFirstLine();
         $this->syncLinksToButtons();
+        $this->syncAlbumRows();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
@@ -317,7 +319,8 @@ class SiteController extends Controller
             || $this->publicationsSortFromQuery($query) !== $this->publicationsSort()
             || $this->forumTextOrderFromQuery($query) !== $this->forumTextOrder()
             || $this->titleFromFirstLineFromQuery($query) !== $this->titleFromFirstLine()
-            || $this->linksToButtonsFromQuery($query) !== $this->linksToButtons();
+            || $this->linksToButtonsFromQuery($query) !== $this->linksToButtons()
+            || $this->albumRowsFromQuery($query) !== $this->albumRows();
     }
 
     /**
@@ -431,6 +434,10 @@ class SiteController extends Controller
 
         if ($this->linksToButtons()) {
             $url['linksToButtons'] = '1';
+        }
+
+        if ($this->albumRows()) {
+            $url['albumRows'] = '1';
         }
 
         return $url;
@@ -641,6 +648,57 @@ class SiteController extends Controller
     }
 
     /**
+     * Whether the album of the form lays its pictures out in rows the way a post
+     * of the channel does — the state of the switch above the pictures of the
+     * whole form, kept in the session so a reload opens the album the way the
+     * reader left it. Only that one switch is remembered: the ones a part carries
+     * are set for that part alone and start off every time the page is read.
+     */
+    private function albumRows(): bool
+    {
+        return $this->normalizeAlbumRows(Yii::$app->session->get('albumRows'));
+    }
+
+    /**
+     * The state of the album switch the address of the page asks for:
+     * `?albumRows=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function albumRowsFromQuery(array $query): bool
+    {
+        return $this->normalizeAlbumRows($query['albumRows'] ?? null);
+    }
+
+    /**
+     * Resolves the album switch the way the two switches of the form header do:
+     * the layout has a state of its own when it is off, so it is a session that
+     * has never held one which adopts the parameter of the request — reloading or
+     * following a link cannot change what the reader left.
+     */
+    private function syncAlbumRows(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('albumRows')) {
+            return;
+        }
+
+        $session->set('albumRows', $this->albumRowsFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizeAlbumRows(mixed $state): bool
+    {
+        return $state === true || $state === '1';
+    }
+
+    /**
      * Whether a reader who never touched a switch of the page sees the oldest
      * records first — the order the settings page chooses for all blocks.
      */
@@ -731,6 +789,7 @@ class SiteController extends Controller
             'forumTextOrder' => $textOrder,
             'titleFromFirstLine' => $this->titleFromFirstLine(),
             'linksToButtons' => $this->linksToButtons(),
+            'albumRows' => $this->albumRows(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -904,6 +963,27 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'linksToButtons',
             $this->normalizeLinksToButtons($this->request->post('linksToButtons')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the switch that lays the album of the form out in rows and answers
+     * with the address that mirrors it. It redraws nothing either: the album it
+     * speaks of lives in the fields of the form, and the page that opens after it
+     * renders the switch the state it was left in.
+     *
+     * @return Response
+     */
+    public function actionAlbumRowsSave(): Response
+    {
+        Yii::$app->session->set(
+            'albumRows',
+            $this->normalizeAlbumRows($this->request->post('albumRows')),
         );
 
         return $this->asJson([

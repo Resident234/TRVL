@@ -154,6 +154,7 @@ $config = [
                 'publication-sort' => 'site/publication-sort',
                 'title-from-first-line-save' => 'site/title-from-first-line-save',
                 'links-to-buttons-save' => 'site/links-to-buttons-save',
+                'album-rows-save' => 'site/album-rows-save',
                 'forum-text-order-save' => 'site/forum-text-order-save',
                 'forum-viewed' => 'site/forum-viewed',
                 'forum-filter-save' => 'site/forum-filter-save',
