@@ -8,6 +8,8 @@
     <br>
 </p>
 
+> This file is the upstream Yii 2 Basic Project Template README retained in the application directory. Its sample installation, Docker, database, and test instructions do not describe the TRVL deployment. Use the repository-root [README](../README.md) for this project, and [TECHNOLOGY_STACK.md](../TECHNOLOGY_STACK.md) for the dependencies actually in use.
+
 Yii 2 Basic Project Template is a skeleton [Yii 2](https://www.yiiframework.com/) application best for
 rapidly creating small projects.
 

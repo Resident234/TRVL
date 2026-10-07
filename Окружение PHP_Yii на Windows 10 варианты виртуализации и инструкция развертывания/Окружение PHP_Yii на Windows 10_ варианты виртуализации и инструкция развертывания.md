@@ -1,5 +1,7 @@
 # Окружение PHP/Yii на Windows 10: варианты виртуализации и инструкция развертывания
 
+> Это отдельное руководство по универсальному шаблону окружения, не инструкция по запуску текущего репозитория TRVL. Оно описывает собственный примерный стек (включая Jenkins, Selenium, Redis и Memcached), которого нет в корневом `docker-compose.yml`. Для TRVL используйте корневой [README.md](../README.md) и [TECHNOLOGY_STACK.md](../TECHNOLOGY_STACK.md).
+
 **Автор:** Manus AI  
 **Дата проверки документации:** 25 августа 2026 г.  
 **Цель:** получить воспроизводимое окружение для разработки и CI/CD со стеком PHP, Yii 2, Phing, PHPUnit, Jenkins, Selenium, PostgreSQL, Memcached, Redis и nginx.

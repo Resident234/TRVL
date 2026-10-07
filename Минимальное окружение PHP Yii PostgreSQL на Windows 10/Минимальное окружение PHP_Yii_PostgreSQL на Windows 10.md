@@ -1,5 +1,7 @@
 # Минимальное окружение PHP/Yii/PostgreSQL на Windows 10
 
+> Это самостоятельная инструкция для отдельного Compose-примера со встроенным PHP-сервером, не инструкция по запуску текущего репозитория TRVL. Корневой проект использует PHP-FPM за nginx и другие порты. Для TRVL используйте корневой [README.md](../README.md) и [TECHNOLOGY_STACK.md](../TECHNOLOGY_STACK.md).
+
 **Целевой состав:** WSL 2, Ubuntu, Docker Desktop, Docker Compose, PHP 8.4, Composer, Yii 2 и PostgreSQL 16.
 
 **Пока не устанавливаются:** nginx, Redis, Memcached, Jenkins, Selenium и Phing.
