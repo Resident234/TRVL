@@ -131,16 +131,17 @@ interface ForumRepositoryInterface extends ForumPublicationMapGatewayInterface
      * (an existing row is left untouched). The viewed element is not
      * published to the channel by itself, so the telegram_id stays
      * empty unless a publication created from it is later sent to
-     * the channel. When the topic has exactly one post, that post is
-     * marked viewed the same way.
+     * the channel. The post that repeats the topic — the one numbered 1
+     * of its thread — is marked viewed the same way.
      */
     public function markTopicViewed(int $topicId): void;
 
     /**
      * Marks a forum post as viewed by the "Просмотрено" button:
      * inserts a publications_post_map row with an empty telegram_id
-     * (an existing row is left untouched). When the post is the only
-     * post of its topic, the topic is marked viewed the same way.
+     * (an existing row is left untouched). When the post is the one
+     * that repeats its topic, the topic is marked viewed the same way;
+     * a reply never marks its topic.
      */
     public function markPostViewed(int $postId): void;
 }
