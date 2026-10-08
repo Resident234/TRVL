@@ -342,6 +342,31 @@ $this->registerCss(
     border-radius: var(--bs-border-radius);
 }
 
+/* The parts of a text and the controls that speak only of them — the row that splits
+   it, the numbering, the distribution of images — stand in a box of their own, and
+   while the publication really is in parts that box is drawn the way the ui-kit
+   draws a column that has reached its end: `card p-3 border border-success done` of
+   tasks.html. That card is one line of the theme's green at the theme's own width
+   and style, a room of `1rem` and corners of `.8rem`. The line is not retyped here:
+   `--bs-border-width`, `--bs-border-style` and `--bs-success-rgb` are the very
+   tokens that card reads, so a group and a finished column cannot drift apart, and
+   the only number written down is the radius, which a card keeps in its own
+   card-scoped `--bs-card-border-radius`, unreadable from anywhere else. Its
+   background and its bottom margin are not taken: the group stands inside the card
+   of the form, and a second underlay under the parts nobody asked for.
+   The box answers the same structural question the frame of a part answers to — a
+   block of parts that is not alone inside it — so the green comes with the first
+   split and goes with the last merge, and a monolithic publication is a plain form
+   rather than a box drawn around one field. `:has()` is what lets an ancestor ask
+   after a descendant's number; a browser that does not know the function drops the
+   rule whole, and the group then stands undrawn with its parts framed inside it
+   exactly as before. */
+.publication-parts-group:has(.publication-text-block:not(:only-child)) {
+    border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
+    padding: 1rem;
+    border-radius: .8rem;
+}
+
 /* What an album refused is named by a notice standing over that same album, and
    the notice is put away by a cross of its own. The cross is the element the ui-kit
    ships for it, `.btn-close`, but the sheet only pins that element into a corner
@@ -758,280 +783,289 @@ CSS
                             
 
                             <!-- Textarea: cloned into one field per part once a text goes past the limit -->
-                            <div id="publicationTextParts">
-                                <div class="mb-3 publication-text-block">
-                                    <?php /* The heading of a part: an optional first line the channel
-                                            draws bold over the text under it. A numbered part moves
-                                            its «Часть N» line in here, to the end of the heading. */ ?>
-                                    <div class="mb-2">
-                                        <label class="form-label mb-1 publication-title-label" for="publicationTitleInput">Заголовок</label>
-                                        <input type="text" class="form-control publication-title-field"
-                                               id="publicationTitleInput" name="publicationTitle"
-                                               placeholder="Жирная первая строка публикации">
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-baseline">
-                                        <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
-                                        <small class="text-muted publication-text-count"></small>
-                                    </div>
-                                    <?php /* The plain text of a part lives in this field: every split,
-                                                merge and counter of the page reads it, and it is what the
-                                                form submits. The editor below paints the highlighting over
-                                                it and keeps the two in step, so it stays hidden. */ ?>
-                                    <div class="publication-editor">
-                                        <textarea class="form-control publication-text-part d-none" id="publicationTextInput"
-                                                  name="publicationText[]" tabindex="-1" aria-hidden="true"
-                                                  placeholder="Введите текст публикации"></textarea>
-                                        <div class="publication-editor-field"></div>
-                                        <input type="hidden" class="publication-format-field"
-                                               name="publicationFormatting[]" value="[]">
-                                    </div>
+                            <?php /* The parts of a text and the controls that speak only of them — the row that
+                                     splits it, the numbering, the distribution of images — make one box of the
+                                     form. While the text really went into parts the box is drawn around them,
+                                     and while it stands for a single publication it is drawn by nothing: the
+                                     answer to that question is the markup itself, the same one the frame of a
+                                     part gives, so the page has no class of its own to keep in step. */ ?>
+                            <div class="publication-parts-group">
+                                <div id="publicationTextParts">
+                                    <div class="mb-3 publication-text-block">
+                                        <?php /* The heading of a part: an optional first line the channel
+                                                draws bold over the text under it. A numbered part moves
+                                                its «Часть N» line in here, to the end of the heading. */ ?>
+                                        <div class="mb-2">
+                                            <label class="form-label mb-1 publication-title-label" for="publicationTitleInput">Заголовок</label>
+                                            <input type="text" class="form-control publication-title-field"
+                                                   id="publicationTitleInput" name="publicationTitle"
+                                                   placeholder="Жирная первая строка публикации">
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-baseline">
+                                            <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
+                                            <small class="text-muted publication-text-count"></small>
+                                        </div>
+                                        <?php /* The plain text of a part lives in this field: every split,
+                                                    merge and counter of the page reads it, and it is what the
+                                                    form submits. The editor below paints the highlighting over
+                                                    it and keeps the two in step, so it stays hidden. */ ?>
+                                        <div class="publication-editor">
+                                            <textarea class="form-control publication-text-part d-none" id="publicationTextInput"
+                                                      name="publicationText[]" tabindex="-1" aria-hidden="true"
+                                                      placeholder="Введите текст публикации"></textarea>
+                                            <div class="publication-editor-field"></div>
+                                            <input type="hidden" class="publication-format-field"
+                                                   name="publicationFormatting[]" value="[]">
+                                        </div>
 
-                                    <?php /* The album of a part, framed like the shared album of the first
-                                            part. The first block never shows its own: its album is the
-                                            shared «Изображения публикации» field under the list, so this
-                                            one stays hidden and disabled — a disabled field is not
-                                            submitted and cannot shift the parts of the list. */ ?>
-                                    <div class="kanban-item publication-field-frame publication-part-album p-3 rounded-2 bg-white d-none mt-2">
-                                            <?php /* The same switch the shared album of the form carries, at the top
-                                                    of the frame and in the block every part is cloned with: the album
-                                                    of a part is rows of its own, and the order of one part says
-                                                    nothing about another. */ ?>
-                                            <div class="form-check form-switch mb-2" data-bs-toggle="popover"
-                                                 data-bs-trigger="hover" data-bs-placement="top-start"
-                                                 data-bs-custom-class="popover-info"
-                                                 data-bs-content="Показывает каждое изображение этой части отдельным полем: её ссылки и её файлы встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал. На другие части переключатель не влияет.">
-                                                <input class="form-check-input publication-album-rows-switch" type="checkbox"
-                                                       role="switch" id="publicationPartAlbumRows">
-                                                <label class="form-check-label" for="publicationPartAlbumRows">
-                                                    <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
+                                        <?php /* The album of a part, framed like the shared album of the first
+                                                part. The first block never shows its own: its album is the
+                                                shared «Изображения публикации» field under the list, so this
+                                                one stays hidden and disabled — a disabled field is not
+                                                submitted and cannot shift the parts of the list. */ ?>
+                                        <div class="kanban-item publication-field-frame publication-part-album p-3 rounded-2 bg-white d-none mt-2">
+                                                <?php /* The same switch the shared album of the form carries, at the top
+                                                        of the frame and in the block every part is cloned with: the album
+                                                        of a part is rows of its own, and the order of one part says
+                                                        nothing about another. */ ?>
+                                                <div class="form-check form-switch mb-2" data-bs-toggle="popover"
+                                                     data-bs-trigger="hover" data-bs-placement="top-start"
+                                                     data-bs-custom-class="popover-info"
+                                                     data-bs-content="Показывает каждое изображение этой части отдельным полем: её ссылки и её файлы встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал. На другие части переключатель не влияет.">
+                                                    <input class="form-check-input publication-album-rows-switch" type="checkbox"
+                                                           role="switch" id="publicationPartAlbumRows">
+                                                    <label class="form-check-label" for="publicationPartAlbumRows">
+                                                        <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
+                                                    </label>
+                                                </div>
+
+                                                <label class="form-label mb-1 publication-part-album-label" for="publicationPartImages">
+                                                    <i class="bi bi-images me-1"></i>Изображения этой части
                                                 </label>
-                                            </div>
 
-                                            <label class="form-label mb-1 publication-part-album-label" for="publicationPartImages">
-                                                <i class="bi bi-images me-1"></i>Изображения этой части
-                                            </label>
+                                                <textarea class="form-control publication-part-album-field" id="publicationPartImages"
+                                                          name="publicationPartImages[]" rows="2" disabled
+                                                          placeholder="По одному URL изображения в строке"></textarea>
 
-                                            <textarea class="form-control publication-part-album-field" id="publicationPartImages"
-                                                      name="publicationPartImages[]" rows="2" disabled
-                                                      placeholder="По одному URL изображения в строке"></textarea>
-
-                                            <?php /* The rows of this album, cloned with the block and rebuilt from
-                                                    its own fields; the mask under them is the third of them, and the
-                                                    one name it carries makes the list of parts the server weaves. */ ?>
-                                            <div class="d-flex flex-column gap-2 publication-album-rows mt-2 d-none">
-                                                <div class="row gx-2 gy-2 align-items-center publication-album-row">
-                                                    <div class="col-sm">
-                                                        <input type="text" class="form-control publication-album-link"
-                                                               placeholder="https://example.com/photo.jpg"
-                                                               aria-label="Адрес изображения">
-                                                        <div class="form-control bg-body-tertiary text-truncate publication-album-file d-none">
-                                                            <i class="bi bi-file-earmark-image me-1"></i>
-                                                            <span class="publication-album-file-name"></span>
+                                                <?php /* The rows of this album, cloned with the block and rebuilt from
+                                                        its own fields; the mask under them is the third of them, and the
+                                                        one name it carries makes the list of parts the server weaves. */ ?>
+                                                <div class="d-flex flex-column gap-2 publication-album-rows mt-2 d-none">
+                                                    <div class="row gx-2 gy-2 align-items-center publication-album-row">
+                                                        <div class="col-sm">
+                                                            <input type="text" class="form-control publication-album-link"
+                                                                   placeholder="https://example.com/photo.jpg"
+                                                                   aria-label="Адрес изображения">
+                                                            <div class="form-control bg-body-tertiary text-truncate publication-album-file d-none">
+                                                                <i class="bi bi-file-earmark-image me-1"></i>
+                                                                <span class="publication-album-file-name"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-sm-auto">
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-icon publication-album-up"
+                                                                    aria-label="Поднять изображение выше"
+                                                                    title="Поднять это изображение на строку выше">
+                                                                <i class="bi bi-arrow-up-short"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-icon publication-album-down"
+                                                                    aria-label="Опустить изображение ниже"
+                                                                    title="Опустить это изображение на строку ниже">
+                                                                <i class="bi bi-arrow-down-short"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-danger btn-icon publication-album-remove"
+                                                                    aria-label="Убрать изображение" title="Убрать это изображение из альбома">
+                                                                <i class="bi bi-x-lg"></i>
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                    <div class="col-sm-auto">
+                                                </div>
+                                                <div class="d-flex justify-content-end publication-album-add-box mt-1 d-none">
+                                                    <button type="button"
+                                                            class="btn btn-primary btn-icon publication-album-add"
+                                                            aria-label="Добавить изображение в альбом"
+                                                            title="Добавить в этот альбом ещё одну ссылку">
+                                                        <i class="bi bi-plus-lg"></i>
+                                                    </button>
+                                                </div>
+                                                <input type="hidden" name="publicationPartImageOrder[]"
+                                                       class="publication-album-order">
+
+                                                <?php /* The companion of the links field: the same album filled from a
+                                                        computer instead of from addresses. One picker per part, so the
+                                                        files a part holds move and merge with the links of that part. */ ?>
+                                                <label class="form-label mb-1 mt-2 publication-part-album-files-label"
+                                                       for="publicationPartImageFiles">
+                                                    <i class="bi bi-file-earmark-image me-1"></i>Файлы этой части
+                                                </label>
+                                                <input type="file" class="form-control publication-part-album-files"
+                                                       id="publicationPartImageFiles" name="publicationPartImageFiles0[]"
+                                                       accept="image/*" multiple disabled>
+
+                                                <?php /* The album goes to a neighbour and comes in behind what that field
+                                                        already holds — the links and the files alike; the field it left
+                                                        stands empty. */ ?>
+                                                <div class="d-flex flex-wrap gap-2 mt-1 publication-album-move">
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                            data-move-album="-1"
+                                                            title="Ссылки и файлы этого поля переедут в предыдущую часть и встанут после тех, что в ней уже есть">
+                                                        <i class="bi bi-arrow-left-short me-1"></i>Переместить изображения в предыдущую часть
+                                                    </button>
+                                                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                            data-move-album="1"
+                                                            title="Ссылки и файлы этого поля переедут в следующую часть и встанут после тех, что в ней уже есть">
+                                                        <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
+                                                    </button>
+                                                </div>
+                                                <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-images-notice"
+                                                     role="status">
+                                                    <span class="publication-notice-text"></span>
+                                                    <button type="button" class="btn-close publication-notice-close"
+                                                            aria-label="Скрыть уведомление"></button>
+                                                </div>
+                                                <?php /* A file the album will not take is named here: the pick stays out
+                                                        of the form, and the album keeps what it already held. */ ?>
+                                                <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-files-notice"
+                                                     role="status">
+                                                    <span class="publication-notice-text"></span>
+                                                    <button type="button" class="btn-close publication-notice-close"
+                                                            aria-label="Скрыть уведомление"></button>
+                                                </div>
+                                                <div class="stacked-images publication-album-strip mt-2 d-none"></div>
+                                                <?php /* The slider of this album, in the shape the ui-kit
+                                                        gives it: the clone of a part block brings its own. */ ?>
+                                                <div class="carousel slide publication-album-carousel mt-2 d-none">
+                                                    <div class="carousel-indicators"></div>
+                                                    <div class="carousel-inner"></div>
+                                                    <button class="carousel-control-prev" type="button" data-bs-slide="prev">
+                                                        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                                                        <span class="visually-hidden">Предыдущее изображение</span>
+                                                    </button>
+                                                    <button class="carousel-control-next" type="button" data-bs-slide="next">
+                                                        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                                                        <span class="visually-hidden">Следующее изображение</span>
+                                                    </button>
+                                                </div>
+                                        </div>
+
+                                        <?php /* The buttons of a part. They come out of the switch
+                                                under the shared «Кнопки-ссылки» field and start
+                                                with the buttons of that field; the first block
+                                                never shows its own, its buttons are the shared
+                                                ones. A hidden box is disabled, so it submits
+                                                nothing and the part goes without a keyboard.
+                                                Every row is one button with the same two fields;
+                                                the rows of a box share one name, so the form
+                                                submits them as the list of buttons of that part.
+                                                The two attributes below are the bases of those
+                                                names: a row gains its name from a base and its own
+                                                id from the row number, both rewritten when the box
+                                                moves to another part. */ ?>
+                                        <div class="publication-part-button publication-button-box d-none mt-2">
+                                            <label class="form-label mb-1" for="publicationPartButtonText0-0">
+                                                <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки этой части
+                                            </label>
+                                            <div class="d-flex flex-column gap-2 publication-button-rows"
+                                                 data-text="publicationPartButtonText0"
+                                                 data-url="publicationPartButtonUrl0">
+                                                <div class="row gx-2 gy-2 align-items-center publication-button-row">
+                                                    <div class="col-sm-4">
+                                                        <input type="text" class="form-control publication-button-text"
+                                                               id="publicationPartButtonText0-0"
+                                                               name="publicationPartButtonText0[]" disabled
+                                                               placeholder="Надпись кнопки">
+                                                    </div>
+                                                    <div class="col-sm">
+                                                        <input type="text" class="form-control publication-button-url"
+                                                               id="publicationPartButtonUrl0-0"
+                                                               name="publicationPartButtonUrl0[]" maxlength="2048" disabled
+                                                               placeholder="https://example.com/poll">
+                                                    </div>
+                                                    <div class="col-sm-auto d-none">
                                                         <button type="button"
-                                                                class="btn btn-outline-secondary btn-icon publication-album-up"
-                                                                aria-label="Поднять изображение выше"
-                                                                title="Поднять это изображение на строку выше">
+                                                                class="btn btn-outline-secondary btn-icon publication-button-up"
+                                                                aria-label="Поднять кнопку-ссылку выше" disabled
+                                                                title="Поднять эту кнопку на строку выше">
                                                             <i class="bi bi-arrow-up-short"></i>
                                                         </button>
                                                         <button type="button"
-                                                                class="btn btn-outline-secondary btn-icon publication-album-down"
-                                                                aria-label="Опустить изображение ниже"
-                                                                title="Опустить это изображение на строку ниже">
+                                                                class="btn btn-outline-secondary btn-icon publication-button-down"
+                                                                aria-label="Опустить кнопку-ссылку ниже" disabled
+                                                                title="Опустить эту кнопку на строку ниже">
                                                             <i class="bi bi-arrow-down-short"></i>
                                                         </button>
                                                         <button type="button"
-                                                                class="btn btn-danger btn-icon publication-album-remove"
-                                                                aria-label="Убрать изображение" title="Убрать это изображение из альбома">
+                                                                class="btn btn-danger btn-icon publication-button-remove"
+                                                                aria-label="Убрать кнопку-ссылку" disabled
+                                                                title="Убрать эту кнопку">
                                                             <i class="bi bi-x-lg"></i>
                                                         </button>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="d-flex justify-content-end publication-album-add-box mt-1 d-none">
-                                                <button type="button"
-                                                        class="btn btn-primary btn-icon publication-album-add"
-                                                        aria-label="Добавить изображение в альбом"
-                                                        title="Добавить в этот альбом ещё одну ссылку">
-                                                    <i class="bi bi-plus-lg"></i>
-                                                </button>
-                                            </div>
-                                            <input type="hidden" name="publicationPartImageOrder[]"
-                                                   class="publication-album-order">
-
-                                            <?php /* The companion of the links field: the same album filled from a
-                                                    computer instead of from addresses. One picker per part, so the
-                                                    files a part holds move and merge with the links of that part. */ ?>
-                                            <label class="form-label mb-1 mt-2 publication-part-album-files-label"
-                                                   for="publicationPartImageFiles">
-                                                <i class="bi bi-file-earmark-image me-1"></i>Файлы этой части
-                                            </label>
-                                            <input type="file" class="form-control publication-part-album-files"
-                                                   id="publicationPartImageFiles" name="publicationPartImageFiles0[]"
-                                                   accept="image/*" multiple disabled>
-
-                                            <?php /* The album goes to a neighbour and comes in behind what that field
-                                                    already holds — the links and the files alike; the field it left
-                                                    stands empty. */ ?>
-                                            <div class="d-flex flex-wrap gap-2 mt-1 publication-album-move">
-                                                <button type="button" class="btn btn-outline-secondary btn-sm"
-                                                        data-move-album="-1"
-                                                        title="Ссылки и файлы этого поля переедут в предыдущую часть и встанут после тех, что в ней уже есть">
-                                                    <i class="bi bi-arrow-left-short me-1"></i>Переместить изображения в предыдущую часть
-                                                </button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm"
-                                                        data-move-album="1"
-                                                        title="Ссылки и файлы этого поля переедут в следующую часть и встанут после тех, что в ней уже есть">
-                                                    <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
-                                                </button>
-                                            </div>
-                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-images-notice"
-                                                 role="status">
-                                                <span class="publication-notice-text"></span>
-                                                <button type="button" class="btn-close publication-notice-close"
-                                                        aria-label="Скрыть уведомление"></button>
-                                            </div>
-                                            <?php /* A file the album will not take is named here: the pick stays out
-                                                    of the form, and the album keeps what it already held. */ ?>
-                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-files-notice"
-                                                 role="status">
-                                                <span class="publication-notice-text"></span>
-                                                <button type="button" class="btn-close publication-notice-close"
-                                                        aria-label="Скрыть уведомление"></button>
-                                            </div>
-                                            <div class="stacked-images publication-album-strip mt-2 d-none"></div>
-                                            <?php /* The slider of this album, in the shape the ui-kit
-                                                    gives it: the clone of a part block brings its own. */ ?>
-                                            <div class="carousel slide publication-album-carousel mt-2 d-none">
-                                                <div class="carousel-indicators"></div>
-                                                <div class="carousel-inner"></div>
-                                                <button class="carousel-control-prev" type="button" data-bs-slide="prev">
-                                                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-                                                    <span class="visually-hidden">Предыдущее изображение</span>
-                                                </button>
-                                                <button class="carousel-control-next" type="button" data-bs-slide="next">
-                                                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
-                                                    <span class="visually-hidden">Следующее изображение</span>
-                                                </button>
-                                            </div>
-                                    </div>
-
-                                    <?php /* The buttons of a part. They come out of the switch
-                                            under the shared «Кнопки-ссылки» field and start
-                                            with the buttons of that field; the first block
-                                            never shows its own, its buttons are the shared
-                                            ones. A hidden box is disabled, so it submits
-                                            nothing and the part goes without a keyboard.
-                                            Every row is one button with the same two fields;
-                                            the rows of a box share one name, so the form
-                                            submits them as the list of buttons of that part.
-                                            The two attributes below are the bases of those
-                                            names: a row gains its name from a base and its own
-                                            id from the row number, both rewritten when the box
-                                            moves to another part. */ ?>
-                                    <div class="publication-part-button publication-button-box d-none mt-2">
-                                        <label class="form-label mb-1" for="publicationPartButtonText0-0">
-                                            <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки этой части
-                                        </label>
-                                        <div class="d-flex flex-column gap-2 publication-button-rows"
-                                             data-text="publicationPartButtonText0"
-                                             data-url="publicationPartButtonUrl0">
-                                            <div class="row gx-2 gy-2 align-items-center publication-button-row">
-                                                <div class="col-sm-4">
-                                                    <input type="text" class="form-control publication-button-text"
-                                                           id="publicationPartButtonText0-0"
-                                                           name="publicationPartButtonText0[]" disabled
-                                                           placeholder="Надпись кнопки">
-                                                </div>
-                                                <div class="col-sm">
-                                                    <input type="text" class="form-control publication-button-url"
-                                                           id="publicationPartButtonUrl0-0"
-                                                           name="publicationPartButtonUrl0[]" maxlength="2048" disabled
-                                                           placeholder="https://example.com/poll">
-                                                </div>
-                                                <div class="col-sm-auto d-none">
-                                                    <button type="button"
-                                                            class="btn btn-outline-secondary btn-icon publication-button-up"
-                                                            aria-label="Поднять кнопку-ссылку выше" disabled
-                                                            title="Поднять эту кнопку на строку выше">
-                                                        <i class="bi bi-arrow-up-short"></i>
-                                                    </button>
-                                                    <button type="button"
-                                                            class="btn btn-outline-secondary btn-icon publication-button-down"
-                                                            aria-label="Опустить кнопку-ссылку ниже" disabled
-                                                            title="Опустить эту кнопку на строку ниже">
-                                                        <i class="bi bi-arrow-down-short"></i>
-                                                    </button>
-                                                    <button type="button"
-                                                            class="btn btn-danger btn-icon publication-button-remove"
-                                                            aria-label="Убрать кнопку-ссылку" disabled
-                                                            title="Убрать эту кнопку">
-                                                        <i class="bi bi-x-lg"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            <button type="button"
+                                                    class="btn btn-primary btn-icon mt-2 float-end ms-3 publication-button-add"
+                                                    aria-label="Добавить кнопку-ссылку" disabled
+                                                    title="Добавить ещё одну кнопку под это сообщение">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
                                         </div>
-                                        <button type="button"
-                                                class="btn btn-primary btn-icon mt-2 float-end ms-3 publication-button-add"
-                                                aria-label="Добавить кнопку-ссылку" disabled
-                                                title="Добавить ещё одну кнопку под это сообщение">
-                                            <i class="bi bi-plus-lg"></i>
-                                        </button>
-                                    </div>
 
-                                    <!-- The row a part is merged with the one under it by;
-                                         the last part of the form has none. -->
-                                    <div class="text-end mt-2 d-none publication-merge-row">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm"
-                                                title="Слить эту часть со следующей в одно поле">
-                                            <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
-                                        </button>
+                                        <!-- The row a part is merged with the one under it by;
+                                             the last part of the form has none. -->
+                                        <div class="text-end mt-2 d-none publication-merge-row">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                    title="Слить эту часть со следующей в одно поле">
+                                                <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
+                                            </button>
+                                        </div>
                                     </div>
+                                </div>
+
+                                <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
+                                <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
+                                            title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
+                                        <i class="bi bi-paragraph me-1"></i>По абзацам
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
+                                            title="Разбить весь текст по переносам строк: каждая строка становится частью">
+                                        <i class="bi bi-list-nested me-1"></i>По строкам
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
+                                            title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
+                                        <i class="bi bi-chat-left-text me-1"></i>По предложениям
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
+                                            title="Разделить часть по курсору, а без курсора — примерно посередине">
+                                        <i class="bi bi-scissors me-1"></i>Разделить
+                                    </button>
+                                </div>
+
+                                <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                     data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                     data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
+                                    <input class="form-check-input" type="checkbox" id="publicationNumberParts">
+                                    <label class="form-check-label" for="publicationNumberParts">
+                                        <i class="bi bi-list-ol me-1"></i>Нумерация частей
+                                    </label>
+                                </div>
+
+                                <!-- The part albums are the submitted fields already, so this one
+                                     never travels to the server: it hands the images of the shared
+                                     field out to the fields of the parts inside the form. -->
+                                <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                     data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                     data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
+                                    <input class="form-check-input" type="checkbox" id="publicationDistributeImages">
+                                    <label class="form-check-label" for="publicationDistributeImages">
+                                        <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
+                                    </label>
                                 </div>
                             </div>
 
-                            <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
-                            <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
-                                        title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
-                                    <i class="bi bi-paragraph me-1"></i>По абзацам
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
-                                        title="Разбить весь текст по переносам строк: каждая строка становится частью">
-                                    <i class="bi bi-list-nested me-1"></i>По строкам
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
-                                        title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
-                                    <i class="bi bi-chat-left-text me-1"></i>По предложениям
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
-                                        title="Разделить часть по курсору, а без курсора — примерно посередине">
-                                    <i class="bi bi-scissors me-1"></i>Разделить
-                                </button>
-                            </div>
-
-                            <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                 data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                 data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
-                                <input class="form-check-input" type="checkbox" id="publicationNumberParts">
-                                <label class="form-check-label" for="publicationNumberParts">
-                                    <i class="bi bi-list-ol me-1"></i>Нумерация частей
-                                </label>
-                            </div>
-
-                            <!-- The part albums are the submitted fields already, so this one
-                                 never travels to the server: it hands the images of the shared
-                                 field out to the fields of the parts inside the form. -->
-                            <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                 data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                 data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
-                                <input class="form-check-input" type="checkbox" id="publicationDistributeImages">
-                                <label class="form-check-label" for="publicationDistributeImages">
-                                    <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
-                                </label>
-                            </div>
 
                             <!-- Attached images -->
                             <div class="mb-3">
