@@ -21,7 +21,7 @@ docker compose exec -T -u appuser -e DB_DSN="pgsql:host=postgres;port=5432;dbnam
 
 Другие команды из `app/composer.json`: `composer tests`, `composer static` и `composer cs`. Для запуска `composer tests` в контейнере также задайте `DB_DSN` на `yii_test`.
 
-Последняя проверка Unit-набора: 180 тестов и 700 assertions (2026-10-06). Functional-набор в текущем Docker-образе не проходит целиком: CAPTCHA требует отсутствующее расширение GD/Imagick, а три проверки входа ожидают устаревший текст интерфейса.
+Последняя проверка Unit-набора: 197 тестов и 746 assertions (2026-10-08). Functional-набор в текущем Docker-образе не проходит целиком: CAPTCHA требует отсутствующее расширение GD/Imagick, а три проверки входа ожидают устаревший текст интерфейса.
 
 ## Архитектурное решение
 
