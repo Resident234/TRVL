@@ -352,8 +352,14 @@ $this->registerCss(
    tokens that card reads, so a group and a finished column cannot drift apart, and
    the only number written down is the radius, which a card keeps in its own
    card-scoped `--bs-card-border-radius`, unreadable from anywhere else. Its
-   background and its bottom margin are not taken: the group stands inside the card
-   of the form, and a second underlay under the parts nobody asked for.
+   background is not taken: the group stands inside the card of the form, and a second
+   underlay under the parts nobody asked for. Its bottom margin is the one number the
+   donor cannot lend: that margin only says where a card stands in a column of the
+   board, while the room under this box is a question of the form it stands in, and the
+   form keeps `mb-3` — 1rem — between any two of its blocks. The margin is written in
+   the same rule as the border, so a box that draws nothing keeps nothing apart: the
+   group of a monolithic publication is left to the margin of its own last row, which
+   reaches the block below on its own.
    The box answers the same structural question the frame of a part answers to — a
    block of parts that is not alone inside it — so the green comes with the first
    split and goes with the last merge, and a monolithic publication is a plain form
@@ -365,6 +371,7 @@ $this->registerCss(
     border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
     padding: 1rem;
     border-radius: .8rem;
+    margin-bottom: 1rem;
 }
 
 /* What an album refused is named by a notice standing over that same album, and
