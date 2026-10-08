@@ -1051,10 +1051,10 @@ CSS
                                     </button>
                                 </div>
 
-                                <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                      data-bs-placement="top-start" data-bs-custom-class="popover-info"
                                      data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
-                                    <input class="form-check-input" type="checkbox" id="publicationNumberParts">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts">
                                     <label class="form-check-label" for="publicationNumberParts">
                                         <i class="bi bi-list-ol me-1"></i>Нумерация частей
                                     </label>
@@ -1063,10 +1063,10 @@ CSS
                                 <!-- The part albums are the submitted fields already, so this one
                                      never travels to the server: it hands the images of the shared
                                      field out to the fields of the parts inside the form. -->
-                                <div class="form-check mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                      data-bs-placement="top-start" data-bs-custom-class="popover-info"
                                      data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
-                                    <input class="form-check-input" type="checkbox" id="publicationDistributeImages">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="publicationDistributeImages">
                                     <label class="form-check-label" for="publicationDistributeImages">
                                         <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
                                     </label>
@@ -1310,11 +1310,11 @@ CSS
                                             publication really has parts. The popover of the box
                                             above it says what a button is; this one says what
                                             the switch does to the boxes of the parts. */ ?>
-                                    <div class="form-check mt-2 d-none" id="publicationButtonEveryPartRow"
+                                    <div class="form-check form-switch mt-2 d-none" id="publicationButtonEveryPartRow"
                                          data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
                                          data-bs-custom-class="popover-info"
                                          data-bs-content="Показывает поля кнопок у каждой части и заполняет их этими же кнопками; надпись и адрес одной части можно поправить после этого.">
-                                        <input class="form-check-input" type="checkbox" id="publicationButtonEveryPart">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationButtonEveryPart">
                                         <label class="form-check-label" for="publicationButtonEveryPart">
                                             Кнопки-ссылки в каждой части
                                         </label>
