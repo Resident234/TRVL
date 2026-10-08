@@ -342,6 +342,30 @@ $this->registerCss(
     border-radius: var(--bs-border-radius);
 }
 
+/* What an album refused is named by a notice standing over that same album, and
+   the notice is put away by a cross of its own. The cross is the element the ui-kit
+   ships for it, `.btn-close`, but the sheet only pins that element into a corner
+   inside `.alert-dismissible`, and these notices are not alerts: left to itself the
+   cross falls below the text, on a line of its own. So the notice states the two
+   halves of that arrangement itself — it is the box the cross is placed in, the
+   cross stands in that box at the inset the notice's own padding leaves, so it
+   comes level with the first line and flush with the column of the text, and the
+   text gives up the width of the cross at the end of every line. */
+.publication-notice {
+    position: relative;
+}
+
+.publication-notice .publication-notice-close {
+    position: absolute;
+    top: .5rem;
+    right: 1rem;
+}
+
+.publication-notice-text {
+    display: block;
+    padding-right: 1.75rem;
+}
+
 /* The icon that adds a button floats at the right of its fields and the notice
    under them runs past it, so both boxes that hold a float own a block
    formatting context: a float only counts towards the height of such a box, and
@@ -863,12 +887,20 @@ CSS
                                                     <i class="bi bi-arrow-right-short me-1"></i>Переместить изображения в следующую часть
                                                 </button>
                                             </div>
-                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
-                                                 role="status"></div>
+                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-images-notice"
+                                                 role="status">
+                                                <span class="publication-notice-text"></span>
+                                                <button type="button" class="btn-close publication-notice-close"
+                                                        aria-label="Скрыть уведомление"></button>
+                                            </div>
                                             <?php /* A file the album will not take is named here: the pick stays out
                                                     of the form, and the album keeps what it already held. */ ?>
-                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
-                                                 role="status"></div>
+                                            <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-files-notice"
+                                                 role="status">
+                                                <span class="publication-notice-text"></span>
+                                                <button type="button" class="btn-close publication-notice-close"
+                                                        aria-label="Скрыть уведомление"></button>
+                                            </div>
                                             <div class="stacked-images publication-album-strip mt-2 d-none"></div>
                                             <?php /* The slider of this album, in the shape the ui-kit
                                                     gives it: the clone of a part block brings its own. */ ?>
@@ -1111,10 +1143,18 @@ CSS
 
                                     <?php /* Named here are the links a fill left out: the shape is the
                                             one the ui-kit gives a day divider inside a chat column. */ ?>
-                                    <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-images-notice"
-                                         id="publicationImagesNotice" role="status"></div>
-                                    <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-files-notice"
-                                         id="publicationImageFilesNotice" role="status"></div>
+                                    <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-images-notice"
+                                         id="publicationImagesNotice" role="status">
+                                        <span class="publication-notice-text"></span>
+                                        <button type="button" class="btn-close publication-notice-close"
+                                                aria-label="Скрыть уведомление"></button>
+                                    </div>
+                                    <div class="bg-primary-subtle px-3 py-2 mt-1 rounded-2 text-break d-none publication-notice publication-files-notice"
+                                         id="publicationImageFilesNotice" role="status">
+                                        <span class="publication-notice-text"></span>
+                                        <button type="button" class="btn-close publication-notice-close"
+                                                aria-label="Скрыть уведомление"></button>
+                                    </div>
                                     <div class="stacked-images publication-album-strip mt-2 d-none" id="publicationImagesPreview"></div>
                                     <?php /* The slider a click on the strip above opens: the shape of
                                             carousel.html, standing empty until the album of this frame
@@ -4768,6 +4808,24 @@ jQuery(document).ready(function () {
             });
         }
 
+        // A notice about the album of a part is put away by its own cross: what the
+        // probe dropped has been read, and the line keeps standing over the strip
+        // and the slider of that album until the next render brings a new list.
+        // One listener on the form, because a part block is cloned with its own
+        // notices and the shared album has two of its own.
+        function watchNoticeDismiss(form) {
+            if (!form) {
+                return;
+            }
+            form.addEventListener('click', function (event) {
+                var cross = event.target.closest('.publication-notice-close');
+
+                if (cross) {
+                    cross.closest('.publication-notice').classList.add('d-none');
+                }
+            });
+        }
+
         // The two albums of a join come together in the place of the first one,
         // and the row of the part that went away closes up.
         function spliceImageGroups(groups, index) {
@@ -6082,6 +6140,9 @@ jQuery(document).ready(function () {
             });
         };
 
+        // What a notice says goes into the holder of its own: the notice is the box
+        // the cross stands in, and writing the text of the box would take the cross
+        // away with it.
         var renderNotice = function (notice, deadUrls) {
             if (!notice) {
                 return;
@@ -6091,7 +6152,8 @@ jQuery(document).ready(function () {
 
                 return;
             }
-            notice.textContent = 'Мёртвые ссылки в изображения не добавлены ('
+            notice.querySelector('.publication-notice-text').textContent =
+                'Мёртвые ссылки в изображения не добавлены ('
                 + deadUrls.length + '): ' + deadUrls.join(', ');
             notice.classList.remove('d-none');
         };
@@ -6118,7 +6180,7 @@ jQuery(document).ready(function () {
 
                 return;
             }
-            notice.textContent = lines.join(' ');
+            notice.querySelector('.publication-notice-text').textContent = lines.join(' ');
             notice.classList.remove('d-none');
         };
 
@@ -6822,6 +6884,7 @@ jQuery(document).ready(function () {
 
         var resetForm = document.querySelector('form[action*="publication-create"]');
         if (resetForm) {
+            watchNoticeDismiss(resetForm);
             resetForm.addEventListener('submit', function () {
                 // A part the user made too long by hand is broken again right
                 // before the fields are read for the request.
