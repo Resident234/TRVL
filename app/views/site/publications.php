@@ -322,6 +322,26 @@ $this->registerCss(
     cursor: auto;
 }
 
+/* The block one part of the form holds is framed the way a card of the board is,
+   and framed all the time: the parts are read one under another, and where one
+   ended and the next began was only guessable from the «Часть N» line, while the
+   fields of the part — its heading, its text, its album — stood loose on the card.
+   The three numbers are the board card's own: the dashed accent its hover rule
+   draws, the `p-3` padding it carries, the `rounded-2` corner it rounds. The
+   cursor of a draggable card is not taken with them: a part of this form cannot be
+   dragged anywhere, and the frame is a reading aid, not a handle.
+   Only a box that holds more than one block is framed, since a frame around the
+   single field of a monolithic publication would say «this is one of several»
+   about a publication that is not several. `:not(:only-child)` reads that off the
+   box itself: `#publicationTextParts` holds nothing but these blocks, so every
+   split, merge, move and rebuild of the parts restates the frame with the number
+   of its children and never with a class someone might forget to refresh. */
+.publication-text-block:not(:only-child) {
+    border: 1px dashed #ff7d5c;
+    padding: 1rem;
+    border-radius: var(--bs-border-radius);
+}
+
 /* The icon that adds a button floats at the right of its fields and the notice
    under them runs past it, so both boxes that hold a float own a block
    formatting context: a float only counts towards the height of such a box, and
