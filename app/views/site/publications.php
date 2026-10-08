@@ -264,6 +264,20 @@ $this->registerCss(
     width: 100%;
 }
 
+/* The hour the channel will stand in the corner of the message, under its text
+   and over its buttons, in the colour the rest of the metadata wears. The card
+   keeps it in the flow rather than in an absolute corner: a long last line of a
+   caption would otherwise run under it, and shortening one line is not
+   something a box laid out over the whole width can be asked to do. */
+.telegram-preview-time {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    text-align: right;
+}
+
 .publication-preview-part {
     margin-bottom: 0;
     white-space: pre-wrap;
@@ -651,7 +665,6 @@ CSS
                                 <i class="bi bi-eye me-1"></i>
                                 Текст обновляется по мере ввода
                             </small>
-                            <span id="previewPublicationAt" class="badge bg-primary-subtle text-primary rounded-pill px-3"></span>
                             <span class="badge bg-primary-subtle text-primary rounded-pill px-3">
                                 до <?= $textLimit ?> символов на часть
                             </span>
@@ -1465,8 +1478,9 @@ $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
 // scroll waits for, how long a picture may think, which step the minutes of
-// the picker take, which format of date the reader reads and how big the
-// files the album picks from a computer may be.
+// the picker take, how far the parts of one publication stand from each other,
+// which format of date the reader reads and how big the files the album picks
+// from a computer may be.
 $scrollEdge = (int)$settings['scrollEdgePx'];
 $probeTimeout = (int)$settings['imageProbeTimeoutMs'];
 $snapRange = (int)$settings['splitSnapRangeChars'];
@@ -1475,6 +1489,7 @@ $horizonHours = (int)$settings['scheduleHorizonHours'];
 $previewLimit = (int)$settings['imagesPreviewLimit'];
 $uploadMaxMb = (int)$settings['imageUploadMaxMb'];
 $uploadLimit = (int)$settings['imageUploadLimit'];
+$partsOffset = (int)$settings['partsOffsetMinutes'];
 $numberingReserve = ChannelService::PARTS_NUMBERING_RESERVE;
 // The longest album the channel takes as one message: the preview of a longer one
 // shows this many tiles and counts the rest behind «+N», because the sender cuts
@@ -1505,6 +1520,7 @@ var __IMAGE_PROBE_TIMEOUT = {$probeTimeout};
 var __SNAP_RANGE = {$snapRange};
 var __MINUTE_STEP = {$minuteStep};
 var __HORIZON_HOURS = {$horizonHours};
+var __PARTS_OFFSET = {$partsOffset};
 var __PREVIEW_LIMIT = {$previewLimit};
 var __UPLOAD_MAX_MB = {$uploadMaxMb};
 var __UPLOAD_LIMIT = {$uploadLimit};
@@ -5677,21 +5693,16 @@ jQuery(document).ready(function () {
             ? sharedAlbumRowsBox.querySelector('.publication-album-row').cloneNode(true)
             : null;
         var publicationAtInput = document.getElementById('publicationAt');
-        var previewPublicationAt = document.getElementById('previewPublicationAt');
         var sourceTypeInput = document.getElementById('publicationSource');
         var sourceIdInput = document.getElementById('publicationSourceId');
         var publishedAtInput = document.getElementById('publicationAt');
         var scheduleModal = document.getElementById('scheduleModal');
 
-        function updatePreviewPublicationAt() {
-            if (!previewPublicationAt) return;
-            var val = publicationAtInput ? publicationAtInput.value : '';
-            previewPublicationAt.textContent = val || '';
-        }
-
         // The field and its calendar are two views of one moment: a value written
         // without moving the picker leaves the dialog that opens over the form on the
-        // day the field does not name.
+        // day the field does not name. The corner each card carries is read from the
+        // same field, so a value written here redraws it — `update` is a later value
+        // of this scope and every call of this function is made after it stands.
         function applyPublicationSlot(value) {
             if (publishedAtInput) {
                 publishedAtInput.value = value;
@@ -5706,7 +5717,7 @@ jQuery(document).ready(function () {
                     }
                 }
             } catch (e) {}
-            updatePreviewPublicationAt();
+            update();
         }
 
         var parseImageUrls = function (raw) {
@@ -6255,6 +6266,31 @@ jQuery(document).ready(function () {
             node.appendChild(fragment);
         }
 
+        // The moment the channel will put in the corner of a part: the slot of the
+        // form moved on by the gap the settings page keeps between the parts, which
+        // is the same shift PublicationsService::saveParts() makes while writing the
+        // records. The number it is shifted by is the place of the part field in the
+        // form, not the place of the card: a part with neither text nor pictures
+        // draws no card and still holds its moment. A part that has left the day of
+        // the slot names that day beside its time, because «00:20» of its own would
+        // read as the night the publication began, and the day comes in the tokens
+        // the portal was set to. A field that names no moment — empty, half-written,
+        // or not a date at all — promises no corner.
+        function previewTimeOf(slotValue, index) {
+            var slot = moment(slotValue, __PICKER_FORMAT, true);
+            if (!slot.isValid()) {
+                return null;
+            }
+            var at = slot.clone().add(index * __PARTS_OFFSET, 'minute');
+
+            return {
+                time: at.format('HH:mm'),
+                date: at.format('YYYY-MM-DD') === slot.format('YYYY-MM-DD')
+                    ? ''
+                    : at.format(__PICKER_FORMAT.split(' ')[0]),
+            };
+        }
+
         // The keyboard of a message: the buttons go into no more than
         // __KEYBOARD_MAX_ROWS rows, shared between them evenly, and the row that
         // takes the odd button is the last one — the same packing the sender puts
@@ -6319,6 +6355,7 @@ jQuery(document).ready(function () {
                         pictures: pictures,
                         entities: message.entities,
                         buttons: buttons[index] || [],
+                        index: index,
                     });
                 }
             });
@@ -6330,18 +6367,26 @@ jQuery(document).ready(function () {
                     pictures: albums[0] || [],
                     entities: [],
                     buttons: buttons[0] || [],
+                    index: 0,
                 });
             }
+
+            var slotValue = publicationAtInput ? publicationAtInput.value : '';
 
             preview.textContent = '';
             shown.forEach(function (one) {
                 var part = document.createElement('div');
                 part.className = 'event-content bg-light-subtle rounded-3 p-3 flex-grow-1 telegram-preview-text';
+                // The hour of the part and the buttons that may stand under it are
+                // read before the album is drawn, because an album fills the whole
+                // bubble only while nothing comes after it.
+                var at = previewTimeOf(slotValue, one.index);
+                var keyboard = renderPreviewKeyboard(one.buttons);
                 // The photos go first and the text of the part is their caption —
                 // in one message of the channel and in several the same way.
                 if (one.pictures.length > 0) {
                     var album = renderAlbumGrid(one.pictures);
-                    if (one.text === '') {
+                    if (one.text === '' && !at && !keyboard) {
                         album.classList.add('album-only');
                     }
                     part.appendChild(album);
@@ -6354,7 +6399,14 @@ jQuery(document).ready(function () {
                     renderFormattedText(body, one.text, one.entities);
                     part.appendChild(body);
                 }
-                var keyboard = renderPreviewKeyboard(one.buttons);
+                // The hour the card will carry in the channel, in the corner under
+                // its text and above its buttons — where a client puts it.
+                if (at) {
+                    var corner = document.createElement('span');
+                    corner.className = 'telegram-preview-time';
+                    corner.textContent = (at.date === '' ? '' : at.date + ' ') + at.time;
+                    part.appendChild(corner);
+                }
                 if (keyboard) {
                     part.appendChild(keyboard);
                 }
@@ -6660,12 +6712,12 @@ jQuery(document).ready(function () {
             imagesInput.addEventListener('input', updateImages);
         }
         if (publicationAtInput) {
-            publicationAtInput.addEventListener('input', updatePreviewPublicationAt);
-            publicationAtInput.addEventListener('change', updatePreviewPublicationAt);
+            publicationAtInput.addEventListener('input', update);
+            publicationAtInput.addEventListener('change', update);
             publicationAtJq
                 .off('.previewPub')
                 .on('apply.daterangepicker.previewPub hide.daterangepicker.previewPub cancel.daterangepicker.previewPub', function () {
-                    updatePreviewPublicationAt();
+                    update();
                 });
         }
         // The part the form starts with is not written by anyone, so its editor
@@ -6675,7 +6727,6 @@ jQuery(document).ready(function () {
         updateCounters();
         updateImages();
         syncAlbumRows();
-        updatePreviewPublicationAt();
 
         var scrollToMiddle = function (log) {
             var scroller = log.closest('.scroll350');
