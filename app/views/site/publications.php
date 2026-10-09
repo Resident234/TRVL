@@ -344,10 +344,10 @@ $this->registerCss(
 
 /* The parts of a text and the controls that speak only of them — the row that splits
    it, the numbering, the distribution of images — stand in a box of their own, and
-   while the publication really is in parts that box is drawn the way the ui-kit
-   draws a column that has reached its end: `card p-3 border border-success done` of
-   tasks.html. That card is one line of the theme's green at the theme's own width
-   and style, a room of `1rem` and corners of `.8rem`. The line is not retyped here:
+   that box is drawn the way the ui-kit draws a column that has reached its end: `card
+   p-3 border border-success done` of tasks.html. That card is one line of the
+   theme's green at the theme's own width and style, a room of `1rem` and corners of
+   `.8rem`. The line is not retyped here:
    `--bs-border-width`, `--bs-border-style` and `--bs-success-rgb` are the very
    tokens that card reads, so a group and a finished column cannot drift apart, and
    the only number written down is the radius, which a card keeps in its own
@@ -357,17 +357,15 @@ $this->registerCss(
    donor cannot lend: that margin only says where a card stands in a column of the
    board, while the room under this box is a question of the form it stands in, and the
    form keeps `mb-3` — 1rem — between any two of its blocks. The margin is written in
-   the same rule as the border, so a box that draws nothing keeps nothing apart: the
-   group of a monolithic publication is left to the margin of its own last row, which
-   reaches the block below on its own.
-   The box answers the same structural question the frame of a part answers to — a
-   block of parts that is not alone inside it — so the green comes with the first
-   split and goes with the last merge, and a monolithic publication is a plain form
-   rather than a box drawn around one field. `:has()` is what lets an ancestor ask
-   after a descendant's number; a browser that does not know the function drops the
-   rule whole, and the group then stands undrawn with its parts framed inside it
-   exactly as before. */
-.publication-parts-group:has(.publication-text-block:not(:only-child)) {
+   the same rule as the border, so a box that draws nothing keeps nothing apart.
+   The box is drawn by the group standing, not by the number of parts standing inside
+   it: the row that splits, the numbering and the distribution of images speak of the
+   parts before the first cut as much as after it, and a reader who has not split the
+   text is still reading those controls. What the number of parts decides is the frame
+   of one part — `:not(:only-child)` says «this is one of several» about a block that
+   is — and that question is answered one level inside this box, which keeps no
+   predicate of its own. */
+.publication-parts-group {
     border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
     padding: 1rem;
     border-radius: .8rem;
@@ -792,10 +790,10 @@ CSS
                             <!-- Textarea: cloned into one field per part once a text goes past the limit -->
                             <?php /* The parts of a text and the controls that speak only of them — the row that
                                      splits it, the numbering, the distribution of images — make one box of the
-                                     form. While the text really went into parts the box is drawn around them,
-                                     and while it stands for a single publication it is drawn by nothing: the
-                                     answer to that question is the markup itself, the same one the frame of a
-                                     part gives, so the page has no class of its own to keep in step. */ ?>
+                                     form, and the green round about them is drawn by that box standing: it is
+                                     the same box before the first cut as after the last merge. Nothing of the
+                                     split is counted for it, so the page keeps no class of its own to keep in
+                                     step when the parts are rebuilt. */ ?>
                             <div class="publication-parts-group">
                                 <div id="publicationTextParts">
                                     <div class="mb-3 publication-text-block">
