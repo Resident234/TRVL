@@ -315,11 +315,52 @@ $this->registerCss(
    orange hover and the move cursor of a draggable item while the form is being
    filled. The three classes of the board rule are repeated here so this one wins
    on specificity, not on the order the sheets were loaded in. The frame is named
-   for what it holds — buttons, the shared album, the album of a part — since the
-   same border stands around all three. */
+   for what it holds — buttons, the shared album, the album of a part — and the
+   colour it is drawn with is read off a token of its own instead of being typed
+   here: two of the three frames hold the images of the publication, and a frame
+   that wears a blue line must not flash the grey of the board back the moment the
+   pointer crosses it. The hover rule pins the style as well as the colour, the way
+   the shorthand it replaces did: the board gives a card it crosses a dashed accent,
+   and a rule that only answers the colour would leave the line of the form dashed
+   while the pointer rests on it. */
+.kanban-board .kanban-items .kanban-item.publication-field-frame {
+    border-color: var(--publication-frame-border);
+}
+
 .kanban-board .kanban-items .kanban-item.publication-field-frame:hover {
-    border: 1px solid #dfe5ea;
+    border-style: solid;
+    border-color: var(--publication-frame-border);
     cursor: auto;
+}
+
+/* The line of a frame is one of two colours, and which one is answered by what
+   stands inside it: the grey the board gives every card of its column, or the blue
+   of the theme for the frames a file picker stands in — which is exactly the
+   difference between the album of a publication and the addresses of its buttons.
+   `:has()` asks the frame about its own descendants, so the album of every part
+   carries the colour with it when the template is cloned and no script has to keep
+   a class in step with the markup. */
+.publication-field-frame {
+    --publication-frame-border: #dfe5ea;
+}
+
+.publication-field-frame:has(input[type=file]) {
+    --publication-frame-border: rgba(var(--bs-primary-rgb), 1);
+}
+
+/* The switch that hands the images of the first part out to the parts is a control
+   of the images, so it is drawn with the same blue as the frames it works on. Two
+   numbers of this box are not free. The radius is the pill of the theme: the donor
+   this line is taken from is `rounded-circle` on a 2rem square, and 50% of a row
+   479px wide is a lens, not a corner. The left room is the `2.5em` the row already
+   keeps for its toggle plus the room of the line, because the sheet hangs a switch
+   on a negative margin into that padding and a border drawn across it leaves the
+   toggle standing outside the box. The room under the row belongs to the `mb-3` the
+   form gives every block and is not written here a second time. */
+.publication-image-control {
+    border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-primary-rgb), 1);
+    border-radius: var(--bs-border-radius-pill);
+    padding: .5rem 1rem .5rem calc(2.5em + 1rem);
 }
 
 /* The block one part of the form holds is framed the way a card of the board is,
@@ -1080,7 +1121,7 @@ CSS
                                     <!-- The part albums are the submitted fields already, so this one
                                          never travels to the server: it hands the images of the shared
                                          field out to the fields of the parts inside the form. -->
-                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                    <div class="form-check form-switch mb-3 publication-image-control" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
                                          data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
                                         <input class="form-check-input" type="checkbox" role="switch" id="publicationDistributeImages">
