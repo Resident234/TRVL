@@ -342,34 +342,50 @@ $this->registerCss(
     border-radius: var(--bs-border-radius);
 }
 
-/* The parts of a text and the controls that speak only of them — the row that splits
-   it, the numbering, the distribution of images — stand in a box of their own, and
-   that box is drawn the way the ui-kit draws a column that has reached its end: `card
-   p-3 border border-success done` of tasks.html. That card is one line of the
-   theme's green at the theme's own width and style, a room of `1rem` and corners of
-   `.8rem`. The line is not retyped here:
-   `--bs-border-width`, `--bs-border-style` and `--bs-success-rgb` are the very
-   tokens that card reads, so a group and a finished column cannot drift apart, and
-   the only number written down is the radius, which a card keeps in its own
-   card-scoped `--bs-card-border-radius`, unreadable from anywhere else. Its
-   background is not taken: the group stands inside the card of the form, and a second
-   underlay under the parts nobody asked for. Its bottom margin is the one number the
-   donor cannot lend: that margin only says where a card stands in a column of the
-   board, while the room under this box is a question of the form it stands in, and the
-   form keeps `mb-3` — 1rem — between any two of its blocks. The margin is written in
-   the same rule as the border, so a box that draws nothing keeps nothing apart.
-   The box is drawn by the group standing, not by the number of parts standing inside
-   it: the row that splits, the numbering and the distribution of images speak of the
-   parts before the first cut as much as after it, and a reader who has not split the
-   text is still reading those controls. What the number of parts decides is the frame
-   of one part — `:not(:only-child)` says «this is one of several» about a block that
-   is — and that question is answered one level inside this box, which keeps no
-   predicate of its own. */
-.publication-parts-group {
+/* The controls of the split — the row that splits, the numbering, the distribution of
+   images — stand in a green box of their own, and only one green line is drawn at a
+   time. While the text is one part the line goes round the controls alone: the title and
+   the text of a publication are no controls of the split, and a reader who never cut the
+   text should not see them wrapped in a box that speaks of cutting. Once the text is cut,
+   the line moves out to the whole group, so the parts and the controls that made them
+   read as one work — and the controls inside it stop drawing a line, because a box in a
+   box says nothing a box has not said already.
+   Both lines are drawn the way the ui-kit draws a column that has reached its end: `card
+   p-3 border border-success done` of tasks.html. That card is one line of the theme's
+   green at the theme's own width and style, a room of `1rem` and corners of `.8rem`. The
+   line is not retyped here:
+   `--bs-border-width`, `--bs-border-style` and `--bs-success-rgb` are the very tokens
+   that card reads, so a box and a finished column cannot drift apart, and the only number
+   written down is the radius, which a card keeps in its own card-scoped
+   `--bs-card-border-radius`, unreadable from anywhere else. Neither takes a background:
+   both stand inside the card of the form, and a second underlay nobody asked for.
+   Which of the two draws is read off the parts themselves — `:has()` over the very
+   `:not(:only-child)` a part uses for its own dashed frame — so the script of the page
+   keeps no class to refresh when the parts are rebuilt, and a split, a merge or a move
+   restates the line with the number of blocks it leaves behind. The bottom margin is the
+   one number the donor cannot lend: that margin only says where a card stands in a column
+   of the board, while the room under this box is a question of the form it stands in, and
+   the form keeps `mb-3` — 1rem — between any two of its blocks. It is written with the
+   border and taken back with it, so the box that draws keeps the room and the box that
+   draws nothing keeps nothing apart. */
+.publication-parts-controls {
     border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
     padding: 1rem;
     border-radius: .8rem;
     margin-bottom: 1rem;
+}
+
+.publication-parts-group:has(.publication-text-block:not(:only-child)) {
+    border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
+    padding: 1rem;
+    border-radius: .8rem;
+    margin-bottom: 1rem;
+}
+
+.publication-parts-group:has(.publication-text-block:not(:only-child)) .publication-parts-controls {
+    border: 0;
+    padding: 0;
+    margin-bottom: 0;
 }
 
 /* What an album refused is named by a notice standing over that same album, and
@@ -790,9 +806,11 @@ CSS
                             <!-- Textarea: cloned into one field per part once a text goes past the limit -->
                             <?php /* The parts of a text and the controls that speak only of them — the row that
                                      splits it, the numbering, the distribution of images — make one box of the
-                                     form, and the green round about them is drawn by that box standing: it is
-                                     the same box before the first cut as after the last merge. Nothing of the
-                                     split is counted for it, so the page keeps no class of its own to keep in
+                                     form, and the green goes round whichever of the two the reader is looking
+                                     at: while the text is one part, the controls stand in the line on their
+                                     own, and once it is cut, the line moves out to this whole group and the
+                                     controls inside it stop drawing one. Which of the two draws is counted off
+                                     the parts themselves, so the page keeps no class of its own to keep in
                                      step when the parts are rebuilt. */ ?>
                             <div class="publication-parts-group">
                                 <div id="publicationTextParts">
@@ -1029,45 +1047,47 @@ CSS
                                     </div>
                                 </div>
 
-                                <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
-                                <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
-                                            title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
-                                        <i class="bi bi-paragraph me-1"></i>По абзацам
-                                    </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
-                                            title="Разбить весь текст по переносам строк: каждая строка становится частью">
-                                        <i class="bi bi-list-nested me-1"></i>По строкам
-                                    </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
-                                            title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
-                                        <i class="bi bi-chat-left-text me-1"></i>По предложениям
-                                    </button>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
-                                            title="Разделить часть по курсору, а без курсора — примерно посередине">
-                                        <i class="bi bi-scissors me-1"></i>Разделить
-                                    </button>
-                                </div>
+                                <div class="publication-parts-controls">
+                                    <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
+                                    <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
+                                                title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
+                                            <i class="bi bi-paragraph me-1"></i>По абзацам
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
+                                                title="Разбить весь текст по переносам строк: каждая строка становится частью">
+                                            <i class="bi bi-list-nested me-1"></i>По строкам
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
+                                                title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
+                                            <i class="bi bi-chat-left-text me-1"></i>По предложениям
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
+                                                title="Разделить часть по курсору, а без курсора — примерно посередине">
+                                            <i class="bi bi-scissors me-1"></i>Разделить
+                                        </button>
+                                    </div>
 
-                                <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                     data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                     data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts">
-                                    <label class="form-check-label" for="publicationNumberParts">
-                                        <i class="bi bi-list-ol me-1"></i>Нумерация частей
-                                    </label>
-                                </div>
+                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts">
+                                        <label class="form-check-label" for="publicationNumberParts">
+                                            <i class="bi bi-list-ol me-1"></i>Нумерация частей
+                                        </label>
+                                    </div>
 
-                                <!-- The part albums are the submitted fields already, so this one
-                                     never travels to the server: it hands the images of the shared
-                                     field out to the fields of the parts inside the form. -->
-                                <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                     data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                     data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="publicationDistributeImages">
-                                    <label class="form-check-label" for="publicationDistributeImages">
-                                        <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
-                                    </label>
+                                    <!-- The part albums are the submitted fields already, so this one
+                                         never travels to the server: it hands the images of the shared
+                                         field out to the fields of the parts inside the form. -->
+                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationDistributeImages">
+                                        <label class="form-check-label" for="publicationDistributeImages">
+                                            <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
 
