@@ -348,19 +348,21 @@ $this->registerCss(
     --publication-frame-border: rgba(var(--bs-primary-rgb), 1);
 }
 
-/* The switch that hands the images of the first part out to the parts is a control
-   of the images, so it is drawn with the same blue as the frames it works on. Two
-   numbers of this box are not free. The radius is the pill of the theme: the donor
-   this line is taken from is `rounded-circle` on a 2rem square, and 50% of a row
-   479px wide is a lens, not a corner. The left room is the `2.5em` the row already
-   keeps for its toggle plus the room of the line, because the sheet hangs a switch
-   on a negative margin into that padding and a border drawn across it leaves the
-   toggle standing outside the box. The room under the row belongs to the `mb-3` the
-   form gives every block and is not written here a second time. */
-.publication-image-control {
-    border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-primary-rgb), 1);
-    border-radius: var(--bs-border-radius-pill);
-    padding: .5rem 1rem .5rem calc(2.5em + 1rem);
+/* The switch that hands the images of the first part out to the parts, and the switch that
+   lays an album out as rows, work on the images themselves, so their toggles are ringed with
+   the same blue as the frames they stand in. It is the toggle that is a control and the text
+   beside it is not, so the ring sits on the input and nothing is drawn around the row. The
+   rule answers only its colour: the corner and the thickness of a switch belong to the
+   vendored sheet, and a rule that retyped either would move a control the person clicks.
+   Keying the selector on `.form-check-input` alongside the class puts the ring at the weight
+   the vendored state rules are written at, and the sheet of this form is read after them —
+   the focus line the vendored sheet paints for a switch loses to the ring, and the rule for
+   a switch that is on gives it the blue of the theme on its own, so a switch of the images
+   reads one blue off and on. The class rides the template node a part is cloned with, which
+   is how the album of every part arrives ringed while the script of the page learns nothing
+   about it. */
+.form-check-input.publication-image-control {
+    border-color: rgba(var(--bs-primary-rgb), 1);
 }
 
 /* The block one part of the form holds is framed the way a card of the board is,
@@ -896,8 +898,8 @@ CSS
                                                      data-bs-trigger="hover" data-bs-placement="top-start"
                                                      data-bs-custom-class="popover-info"
                                                      data-bs-content="Показывает каждое изображение этой части отдельным полем: её ссылки и её файлы встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал. На другие части переключатель не влияет.">
-                                                    <input class="form-check-input publication-album-rows-switch" type="checkbox"
-                                                           role="switch" id="publicationPartAlbumRows">
+                                                    <input class="form-check-input publication-album-rows-switch publication-image-control"
+                                                           type="checkbox" role="switch" id="publicationPartAlbumRows">
                                                     <label class="form-check-label" for="publicationPartAlbumRows">
                                                         <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
                                                     </label>
@@ -1121,10 +1123,11 @@ CSS
                                     <!-- The part albums are the submitted fields already, so this one
                                          never travels to the server: it hands the images of the shared
                                          field out to the fields of the parts inside the form. -->
-                                    <div class="form-check form-switch mb-3 publication-image-control" data-bs-toggle="popover" data-bs-trigger="hover"
+                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
                                          data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationDistributeImages">
+                                        <input class="form-check-input publication-image-control" type="checkbox" role="switch"
+                                               id="publicationDistributeImages">
                                         <label class="form-check-label" for="publicationDistributeImages">
                                             <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
                                         </label>
@@ -1150,8 +1153,8 @@ CSS
                                          data-bs-trigger="hover" data-bs-placement="top-start"
                                          data-bs-custom-class="popover-info"
                                          data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме.">
-                                        <input class="form-check-input publication-album-rows-switch" type="checkbox"
-                                               role="switch" id="publicationAlbumRows"
+                                        <input class="form-check-input publication-album-rows-switch publication-image-control"
+                                               type="checkbox" role="switch" id="publicationAlbumRows"
                                                <?= $albumRows ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationAlbumRows">
                                             <i class="bi bi-card-list me-1"></i>Каждое изображение в своём поле
