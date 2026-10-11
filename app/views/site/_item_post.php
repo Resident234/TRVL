@@ -28,11 +28,27 @@ $isSent = $record->telegramId !== null;
         <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="Редактировать">
             <i class="bi bi-pencil-square"></i>
         </a>
-        <?= PublicationsUi::deleteForm($record->id, 'post') ?>
-        <?php if (!$isSent): ?>
-            <?= PublicationsUi::publishForm($record->id, 'post') ?>
+        <?php if ($record->partGroupId === null): ?>
+            <?= PublicationsUi::deleteForm($record->id, 'post') ?>
         <?php endif ?>
-        <?= PublicationsUi::toDraftForm($record->id) ?>
+        <?php if (!$isSent): ?>
+            <?php if ($record->partReleased): ?>
+                <?= PublicationsUi::publishForm($record->id, 'post') ?>
+            <?php elseif ($record->partReleasable): ?>
+                <?php /* A part of a group starts here, one after another: the queue
+                        takes it with the time it was saved with, and the part below
+                        it waits for this one to reach the channel. */ ?>
+                <?= PublicationsUi::releasePartForm($record->partGroupId, $record->partOrder, $record->publishedAt ?? '') ?>
+            <?php else: ?>
+                <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" disabled
+                        title="Сначала дождитесь публикацию предыдущей части">
+                    <i class="bi bi-send"></i>
+                </button>
+            <?php endif ?>
+        <?php endif ?>
+        <?php if ($record->partGroupId === null): ?>
+            <?= PublicationsUi::toDraftForm($record->id) ?>
+        <?php endif ?>
     </div>
     <?php if ($heading !== ''): ?>
         <p class="mb-1 fw-bold"><?= Html::encode($heading) ?></p>

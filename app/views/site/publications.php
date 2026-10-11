@@ -18,6 +18,7 @@ declare(strict_types=1);
 /** @var bool $titleFromFirstLine whether a fill of the forum cuts its first line into the heading */
 /** @var bool $linksToButtons whether the addresses of a text become link buttons on their own */
 /** @var bool $albumRows whether the album of the form shows its pictures as rows */
+/** @var bool $partsPublication whether every part gets its own time and its own button */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -844,7 +845,12 @@ CSS
                             <input type="hidden" name="forumEntityType" id="forumEntityType" value="">
                             <input type="hidden" name="forumEntityId" id="forumEntityId" value="">
                             <input type="hidden" name="publicationTz" id="publicationTz" value="">
-                            
+                            <input type="hidden" name="publicationPartGroupId" id="publicationPartGroupId" value="">
+                            <?php /* Says the server that the parts of this submission are one group whose
+                                     publication is started part by part. The page fills it on the submit, and
+                                     only while the switch of the parts is on: a draft and a plain publication
+                                     leave it empty. */ ?>
+                            <input type="hidden" name="individualParts" id="publicationIndividualParts" value="">
 
                             <!-- Textarea: cloned into one field per part once a text goes past the limit -->
                             <?php /* The parts of a text and the controls that speak only of them — the row that
@@ -883,7 +889,15 @@ CSS
                                             <input type="hidden" class="publication-format-field"
                                                    name="publicationFormatting[]" value="[]">
                                         </div>
-
+                                        <div class="publication-part-schedule d-none mt-2">
+                                            <label class="form-label mb-1 publication-part-at-label">Дата и время публикации</label>
+                                            <div class="input-group">
+                                                <input type="text" class="form-control publication-part-at publication-datepicker-time"
+                                                       name="publicationPartAt[]" autocomplete="off" disabled>
+                                                <button type="button" class="btn btn-outline-success publication-part-schedule-button"
+                                                        disabled title="Поставить часть в очередь"><i class="bi bi-send"></i></button>
+                                            </div>
+                                        </div>
                                         <?php /* The album of a part, framed like the shared album of the first
                                                 part. The first block never shows its own: its album is the
                                                 shared «Изображения публикации» field under the list, so this
@@ -1109,13 +1123,22 @@ CSS
                                             <i class="bi bi-scissors me-1"></i>Разделить
                                         </button>
                                     </div>
-
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
                                          data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
                                         <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts">
                                         <label class="form-check-label" for="publicationNumberParts">
                                             <i class="bi bi-list-ol me-1"></i>Нумерация частей
+                                        </label>
+                                    </div>
+
+                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Добавляет каждой части дату и отдельную кнопку постановки в очередь. Следующая часть станет доступна после фактической публикации предыдущей.">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationPartsIndividually"
+                                            <?= $partsPublication ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="publicationPartsIndividually">
+                                            <i class="bi bi-send-check me-1"></i>Публиковать части отдельно
                                         </label>
                                     </div>
 
@@ -1636,6 +1659,7 @@ $sortUrl = \yii\helpers\Url::to(['site/publication-sort']);
 $titleSwitchSaveUrl = \yii\helpers\Url::to(['site/title-from-first-line-save']);
 $linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
 $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
+$partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
@@ -1667,6 +1691,7 @@ var __SORT_URL = '{$sortUrl}';
 var __TITLE_SWITCH_URL = '{$titleSwitchSaveUrl}';
 var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
 var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
+var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
@@ -2956,6 +2981,36 @@ jQuery(document).ready(function () {
         });
     }
 
+    // The switch that gives every part its own publication time and its own
+    // button keeps its state the way the switches above it do: the server stores
+    // it and answers with the address that mirrors it. The rows of the parts the
+    // page draws on the change of the switch by itself, so only a save the server
+    // refused has to bring them back — and `sync` is that drawing, which lives in
+    // the scope of the form.
+    function watchPartsPublicationSwitch(sync) {
+        var input = document.getElementById('publicationPartsIndividually');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            var state = input.checked;
+            sync();
+            postForJson(__PARTS_PUBLICATION_SAVE_URL, { partsPublication: state ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                })
+                .catch(function (error) {
+                    // The session kept the state it was asked with, so the switch
+                    // goes back to the one it was rendered with — and the rows of
+                    // the parts go back with it.
+                    input.checked = !state;
+                    sync();
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
     // The height the block of the forum topics is written in depends on the
     // header of the layout, and CSS reads no neighbour: that header takes the
     // height of whatever its breakpoint leaves standing in it — the 46px brand
@@ -3063,6 +3118,10 @@ jQuery(document).ready(function () {
         // draws it blank, and a clone of it is what adding appends to a box.
         var buttonRowTemplate = buttonRowsOf(sharedButtonBox)[0].cloneNode(true);
         var numberPartsInput = document.getElementById('publicationNumberParts');
+        var partsIndividualInput = document.getElementById('publicationPartsIndividually');
+        var partGroupIdInput = document.getElementById('publicationPartGroupId');
+        var individualPartsInput = document.getElementById('publicationIndividualParts');
+        var mainPublicationAt = document.getElementById('publicationAt');
         var mergeRowTemplate = partsBox.querySelector('.publication-merge-row').cloneNode(true);
         var distributeImagesInput = document.getElementById('publicationDistributeImages');
         var linksToButtonsInput = document.getElementById('publicationLinksToButtons');
@@ -5035,9 +5094,65 @@ jQuery(document).ready(function () {
 
         function updateMergeRows() {
             var rows = mergeRows();
+            var visible = rows.length === textParts().length - 1;
+
+            rows.forEach(function (row) {
+                row.classList.toggle('d-none', !visible);
+            });
+        }
+
+        // The rows of the parts' own publication times appear with the switch of
+        // the parts: the first of them carries the time the whole form was given,
+        // every part below it one interval of the settings more than the part
+        // above. Only the first part starts from the form — its button is the
+        // submit of the form itself, which saves all the parts and puts the first
+        // one into the queue. A part below it waits until the one above has
+        // reached the channel and is started from the list of publications, so its
+        // button stays off here.
+        function updatePartSchedules() {
+            var rows = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-schedule'));
+            var enabled = partsIndividualInput.checked && textParts().length > 1;
+            var base = moment(mainPublicationAt.value, pickerFormat, true);
+            var previous = null;
+
+            if (!base.isValid()) {
+                base = computeNextPublicationSlot();
+            }
 
             rows.forEach(function (row, index) {
-                row.classList.toggle('d-none', index === rows.length - 1);
+                var input = row.querySelector('.publication-part-at');
+                var button = row.querySelector('.publication-part-schedule-button');
+
+                row.classList.toggle('d-none', !enabled);
+                input.disabled = !enabled;
+                input.id = 'publicationPartAt' + (index + 1);
+                row.querySelector('.publication-part-at-label').setAttribute('for', input.id);
+
+                if (!input.dataset.userChanged) {
+                    input.value = index === 0 ? mainPublicationAt.value
+                        : base.clone().add(index * __PARTS_OFFSET, 'minute').format(pickerFormat);
+                }
+
+                var time = moment(input.value, pickerFormat, true);
+                var invalid = enabled && index > 0 && (!time.isValid()
+                    || (previous !== null && previous.isValid() && !time.isAfter(previous)));
+                input.setCustomValidity(invalid ? 'Время части должно быть позже времени предыдущей части.' : '');
+                input.classList.toggle('is-invalid', invalid);
+                previous = time;
+
+                button.disabled = !enabled || index > 0;
+
+                if (index === 0) {
+                    button.type = 'submit';
+                    button.name = 'action';
+                    button.value = 'publish';
+                    button.title = 'Сохранить части и поставить первую в очередь';
+                    return;
+                }
+                button.type = 'button';
+                button.removeAttribute('name');
+                button.removeAttribute('value');
+                button.title = 'Часть становится доступной в списке публикаций после предыдущей';
             });
         }
 
@@ -5070,6 +5185,8 @@ jQuery(document).ready(function () {
             // headings of the parts, so both are read while the fields still exist.
             var carriedFiles = files === undefined ? readFileGroups() : files;
             var carriedTitles = titles === undefined ? readTitles() : titles;
+            var carriedTimes = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-at'))
+                .map(function (input) { return { value: input.value, changed: input.dataset.userChanged || '' }; });
 
             // The fields are replaced, and with them the selection the popup points at.
             hideSelectionActions();
@@ -5083,12 +5200,17 @@ jQuery(document).ready(function () {
                     block.parentNode.removeChild(block);
                 });
             mergeRows().forEach(function (row) { row.remove(); });
+            Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-schedule')).slice(1)
+                .forEach(function (row) { row.remove(); });
             values.forEach(function (value, index) {
                 if (index === 0) {
                     seedPart(source, value, (formats || [])[0]);
                     return;
                 }
                 var block = partTemplate.cloneNode(true);
+                var partAt = block.querySelector('.publication-part-at');
+                partAt.value = (carriedTimes[index] || {}).value || '';
+                partAt.dataset.userChanged = (carriedTimes[index] || {}).changed || '';
                 var field = block.querySelector('.publication-text-part');
                 field.id = 'publicationTextInput' + (index + 1);
                 block.querySelector('.publication-text-label').setAttribute('for', field.id);
@@ -5135,6 +5257,7 @@ jQuery(document).ready(function () {
                 mergeRow.classList.remove('d-none');
                 partsBox.appendChild(mergeRow);
                 partsBox.appendChild(block);
+                setupDateTimePicker(jQuery(partAt));
                 field.value = value;
                 field.__formatting = (formats || [])[index] || [];
             });
@@ -5167,6 +5290,7 @@ jQuery(document).ready(function () {
             clearNotices();
 
             updateMergeRows();
+            updatePartSchedules();
             updateAlbumMoves();
             linkifyParts();
             applyPartNumbers();
@@ -6659,6 +6783,13 @@ jQuery(document).ready(function () {
                 update();
             });
         }
+        mainPublicationAt.addEventListener('change', updatePartSchedules);
+        partsBox.addEventListener('input', function (event) {
+            if (event.target.classList.contains('publication-part-at')) {
+                event.target.dataset.userChanged = '1';
+                updatePartSchedules();
+            }
+        });
         if (distributeImagesInput) {
             distributeImagesInput.addEventListener('change', distributeImages);
         }
@@ -6990,10 +7121,25 @@ jQuery(document).ready(function () {
         var resetForm = document.querySelector('form[action*="publication-create"]');
         if (resetForm) {
             watchNoticeDismiss(resetForm);
-            resetForm.addEventListener('submit', function () {
+            resetForm.addEventListener('submit', function (event) {
                 // A part the user made too long by hand is broken again right
                 // before the fields are read for the request.
                 splitIfNeeded();
+                // Parts make one group of a publication only when the reader asked
+                // for it and the text really is cut: a draft and a plain
+                // publication carry no word about a group, so the field of the
+                // parts goes empty with them.
+                var group = partsIndividualInput.checked && textParts().length > 1
+                    && sourceTypeInput.value === 'new'
+                    && event.submitter && event.submitter.value === 'publish';
+                individualPartsInput.value = group ? '1' : '';
+                if (group) {
+                    if (!partGroupIdInput.value) {
+                        partGroupIdInput.value = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                            .map(function (value) { return value.toString(16).padStart(2, '0'); }).join('');
+                    }
+                    updatePartSchedules();
+                }
                 applyPartNumbers();
                 if (sourceTypeInput && sourceIdInput && sourceTypeInput.value === 'new') {
                     sourceIdInput.value = '';
@@ -7036,6 +7182,19 @@ jQuery(document).ready(function () {
             }
             if (distributeImagesInput) {
                 distributeImagesInput.checked = false;
+            }
+            // The group the form has saved is not the group of the next one: its
+            // id has gone into the records with the parts themselves, and a time
+            // the reader typed for a part of that group is no time of this form.
+            Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-at')).forEach(function (input) {
+                input.value = '';
+                delete input.dataset.userChanged;
+            });
+            if (partGroupIdInput) {
+                partGroupIdInput.value = '';
+            }
+            if (individualPartsInput) {
+                individualPartsInput.value = '';
             }
             // The record just saved has its addresses in the rows already; the next
             // one starts from a blank text, so the waiting for them starts over. The
@@ -7084,7 +7243,8 @@ jQuery(document).ready(function () {
             }
             event.preventDefault();
             ajaxInFlight = true;
-            postForBlocks(form.getAttribute('action'), new FormData(form, event.submitter))
+            var formData = new FormData(form, event.submitter);
+            postForBlocks(form.getAttribute('action'), formData)
                 .then(function (payload) {
                     if (!payload || !payload.ok) {
                         // A record the server did not take leaves the form as the reader
@@ -7416,6 +7576,11 @@ jQuery(document).ready(function () {
         // rows: a save the server refused has to leave the album in the state the
         // page was rendered with, not in the one the reader clicked it into.
         watchAlbumRowsSwitch(syncAlbumRows);
+
+        // And so is the switch of the parts, which is drawn into the rows of their
+        // own times and buttons: a save the server refused has to leave the form
+        // with the rows it was rendered with.
+        watchPartsPublicationSwitch(updatePartSchedules);
 
         // The height of the forum block is the page under the sticky header, so
         // the header is measured once the lists are wired and again whenever the

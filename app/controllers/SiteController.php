@@ -140,6 +140,8 @@ class SiteController extends Controller
                     'title-from-first-line-save' => ['post'],
                     'links-to-buttons-save' => ['post'],
                     'album-rows-save' => ['post'],
+                    'parts-publication-save' => ['post'],
+                    'publication-part-schedule' => ['post'],
                     'forum-text-order-save' => ['post'],
                     'forum-viewed' => ['post'],
                     'forum-post-page' => ['post'],
@@ -299,6 +301,7 @@ class SiteController extends Controller
         $this->syncTitleFromFirstLine();
         $this->syncLinksToButtons();
         $this->syncAlbumRows();
+        $this->syncPartsPublication();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
@@ -320,7 +323,8 @@ class SiteController extends Controller
             || $this->forumTextOrderFromQuery($query) !== $this->forumTextOrder()
             || $this->titleFromFirstLineFromQuery($query) !== $this->titleFromFirstLine()
             || $this->linksToButtonsFromQuery($query) !== $this->linksToButtons()
-            || $this->albumRowsFromQuery($query) !== $this->albumRows();
+            || $this->albumRowsFromQuery($query) !== $this->albumRows()
+            || $this->partsPublicationFromQuery($query) !== $this->partsPublication();
     }
 
     /**
@@ -438,6 +442,10 @@ class SiteController extends Controller
 
         if ($this->albumRows()) {
             $url['albumRows'] = '1';
+        }
+
+        if ($this->partsPublication()) {
+            $url['partsPublication'] = '1';
         }
 
         return $url;
@@ -790,6 +798,7 @@ class SiteController extends Controller
             'titleFromFirstLine' => $this->titleFromFirstLine(),
             'linksToButtons' => $this->linksToButtons(),
             'albumRows' => $this->albumRows(),
+            'partsPublication' => $this->partsPublication(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -984,6 +993,76 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'albumRows',
             $this->normalizeAlbumRows($this->request->post('albumRows')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Whether the parts of a split publication each get their own publish button
+     * and their own publication time — the state of the switch next to
+     * «Нумерация частей», kept in the session so a reload reads the form the way
+     * the reader left it.
+     */
+    private function partsPublication(): bool
+    {
+        return $this->normalizePartsPublication(Yii::$app->session->get('partsPublication'));
+    }
+
+    /**
+     * The state of the switch of the parts the address of the page asks for:
+     * `?partsPublication=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function partsPublicationFromQuery(array $query): bool
+    {
+        return $this->normalizePartsPublication($query['partsPublication'] ?? null);
+    }
+
+    /**
+     * Resolves the switch of the parts the way the album switch does: it is a
+     * session that has never held a state which adopts the parameter of the
+     * request, so reloading cannot change what the reader left.
+     */
+    private function syncPartsPublication(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('partsPublication')) {
+            return;
+        }
+
+        $session->set('partsPublication', $this->partsPublicationFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizePartsPublication(mixed $state): bool
+    {
+        return $state === true || $state === '1';
+    }
+
+    /**
+     * Stores the state of the switch of the parts and answers with the address that
+     * mirrors it, exactly like the album switch does. It redraws nothing: the parts
+     * live in the fields of the form, and their own buttons are put there by the
+     * script that reads the switch.
+     *
+     * @return Response
+     */
+    public function actionPartsPublicationSave(): Response
+    {
+        Yii::$app->session->set(
+            'partsPublication',
+            $this->normalizePartsPublication($this->request->post('partsPublication')),
         );
 
         return $this->asJson([
@@ -1254,6 +1333,10 @@ class SiteController extends Controller
         $sourceId = $this->request->post('publicationSourceId');
         $sourceId = $sourceId === null || $sourceId === '' ? null : (int)$sourceId;
         $forumRef = $this->forumRefFromRequest();
+        $individualParts = $this->partsPublication()
+            && $this->request->post('individualParts') === '1' && count($texts) > 1;
+        $partTimes = (array)$this->request->post('publicationPartAt', []);
+        $partGroupId = trim((string)$this->request->post('publicationPartGroupId', ''));
 
         $ok = false;
         try {
@@ -1271,6 +1354,9 @@ class SiteController extends Controller
                     $action,
                     $forumRef,
                     $userTz ?: null,
+                    $individualParts,
+                    array_values($partTimes),
+                    $partGroupId,
                 );
                 Yii::$app->session->setFlash('success', $action === 'draft'
                     ? 'Черновик сохранён.'
@@ -1740,6 +1826,32 @@ class SiteController extends Controller
                 throw new InvalidArgumentException('Не указана публикуемая запись.');
             }
             Yii::$app->session->setFlash('success', 'Публикация сохранена и будет отправлена в канал.');
+            $ok = true;
+        } catch (InvalidArgumentException $e) {
+            Yii::$app->session->setFlash('error', $e->getMessage());
+        }
+
+        return $this->finishPublicationsRequest($ok);
+    }
+
+    /**
+     * Lets one part of a stored group into the queue by the button of its row in
+     * the posts list: the part takes the time that row carries and starts only
+     * after the part above it has reached the channel.
+     *
+     * @return Response
+     */
+    public function actionPublicationPartSchedule(): Response
+    {
+        $groupId = trim((string)$this->request->post('publicationPartGroupId', ''));
+        $order = (int)$this->request->post('publicationPartOrder', 0);
+        $publishedAt = (string)$this->request->post('publicationAt', '');
+        $userTz = (string)$this->request->post('publicationTz', '');
+
+        $ok = false;
+        try {
+            $this->publications->releasePart($groupId, $order, $publishedAt, $userTz ?: null);
+            Yii::$app->session->setFlash('success', 'Часть поставлена в очередь публикации.');
             $ok = true;
         } catch (InvalidArgumentException $e) {
             Yii::$app->session->setFlash('error', $e->getMessage());

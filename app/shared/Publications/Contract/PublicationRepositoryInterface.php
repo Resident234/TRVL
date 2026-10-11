@@ -99,6 +99,31 @@ interface PublicationRepositoryInterface
     public function storeTelegramId(int $id, int $telegramId, string $publishedAt, string $now): void;
 
     /**
+     * Whether a group of parts carrying this id is already stored.
+     */
+    public function groupExists(string $groupId): bool;
+
+    /**
+     * Stores the parts of one publication as an ordered group: only its first
+     * part enters the queue, the rest wait until they are released one by one.
+     *
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
+     *
+     * @return int the id of the first part
+     */
+    public function createStagedGroup(array $parts, string $groupId, string $now): int;
+
+    /**
+     * @return PublicationData[] the parts of a group, ordered by their number
+     */
+    public function findPartGroup(string $groupId): array;
+
+    /**
+     * Lets one part of a group into the queue with the given publication time.
+     */
+    public function releasePart(string $groupId, int $partOrder, string $publishedAt, string $now): void;
+
+    /**
      * Finds a post by id.
      */
     public function findPost(int $id): ?PublicationData;

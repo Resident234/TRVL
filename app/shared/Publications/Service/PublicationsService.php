@@ -196,15 +196,26 @@ final class PublicationsService
      * goes out as a plain message, and the heading of a numbered part takes the
      * «Часть N» line out of its text and puts it at the end of that heading.
      *
+     * $individualParts is the switch of the form read at the submit: with it the
+     * parts are stored as one group, of which only the first part enters the
+     * queue — the rest wait there until each is released in its turn. $partTimes
+     * is then the time every part was given in its own field, in the order of the
+     * parts, and a part whose field came back empty takes the offset of the
+     * settings as the plain sequence does. $partGroupId is the group the form made
+     * up for this publication; without it, or when a group of that id already
+     * stands in the records, nothing is saved over it.
+     *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
      * @param MessageEntities[] $formats
      * @param LinkButtons[] $buttons
      * @param string[] $titles
+     * @param string[] $partTimes
      * @throws InvalidArgumentException when a part carries neither text nor its own
      * album or is longer than the Telegram limit, when its formatting does not fit
-     * it, when one of its buttons is half-filled or malformed, or when the date is
-     * invalid
+     * it, when one of its buttons is half-filled or malformed, when the date is
+     * invalid, or when the parts of a group are given times that do not follow
+     * each other
      */
     public function saveParts(
         array $texts,
@@ -216,6 +227,9 @@ final class PublicationsService
         string $action,
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
+        bool $individualParts = false,
+        array $partTimes = [],
+        string $partGroupId = '',
     ): void {
         $parts = [];
         $formatting = [];
@@ -277,17 +291,32 @@ final class PublicationsService
         $firstAt = $this->normalizeDate($publishedAt, $userTimezone);
         $rows = [];
         foreach ($parts as $index => $text) {
+            $partAt = $individualParts && isset($partTimes[$index]) && trim((string)$partTimes[$index]) !== ''
+                ? $this->normalizeDate((string)$partTimes[$index], $userTimezone)
+                : $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes());
+            if ($index > 0 && $partAt <= $rows[$index - 1]['publishedAt']) {
+                throw new InvalidArgumentException('Время каждой следующей части должно быть позже предыдущей.');
+            }
             $rows[] = [
                 'text' => $text,
                 'imageUrls' => $albums[$index] ?? [],
                 'formatting' => $formatting[$index],
                 'buttons' => $keyboard[$index],
                 'title' => $headings[$index],
-                'publishedAt' => $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes()),
+                'publishedAt' => $partAt,
             ];
         }
 
-        $this->bindForumRef($this->publications->createPosts($rows, $now), $forumRef);
+        if ($individualParts) {
+            $groupId = preg_match('/^[a-f0-9]{32}$/', $partGroupId) === 1 ? $partGroupId : bin2hex(random_bytes(16));
+            if ($this->publications->groupExists($groupId)) {
+                throw new InvalidArgumentException('Эта группа частей уже сохранена. Обновите форму и отправьте ещё раз.');
+            }
+            $firstId = $this->publications->createStagedGroup($rows, $groupId, $now);
+        } else {
+            $firstId = $this->publications->createPosts($rows, $now);
+        }
+        $this->bindForumRef($firstId, $forumRef);
     }
 
     /**
@@ -575,9 +604,64 @@ final class PublicationsService
         if ($post === null) {
             throw new InvalidArgumentException("Публикация #{$id} не найдена.");
         }
+        $this->assertPartInOrder($post);
 
         $now = $this->now();
-        $this->publications->updatePost($id, $post->text, $post->imageUrls, $now, $now, $post->formatting, $post->buttons, $post->title);
+        $this->publishPost($post, $now);
+    }
+
+    /**
+     * Sends one waiting part of a group into the queue with the time the list
+     * gives it, which is the only way a part after the first one starts.
+     *
+     * Only the part above holds it back: the parts below wait for this one in
+     * their turn, so their planned times take a later value when they are
+     * released themselves.
+     *
+     * @throws InvalidArgumentException when the part is not stored, is already
+     * in the queue, stands above a part that has not reached the channel yet,
+     * or takes a time that does not follow the part above it
+     */
+    public function releasePart(string $groupId, int $order, string $publishedAt, ?string $userTimezone = null): void
+    {
+        $parts = $this->publications->findPartGroup($groupId);
+        $part = $parts[$order - 1] ?? null;
+        if ($part === null) {
+            throw new InvalidArgumentException('Часть публикации не найдена.');
+        }
+        if ($part->partReleased) {
+            throw new InvalidArgumentException('Часть уже поставлена в очередь.');
+        }
+        if (!$part->partReleasable) {
+            throw new InvalidArgumentException('Сначала нужно опубликовать предыдущую часть.');
+        }
+
+        $at = $this->normalizeDate($publishedAt, $userTimezone);
+        if ($order > 1 && $at <= (string)$parts[$order - 2]->publishedAt) {
+            throw new InvalidArgumentException('Время части должно быть позже времени предыдущей части.');
+        }
+
+        $this->publications->releasePart($groupId, $order, $at, $this->now());
+    }
+
+    /**
+     * The parts of one publication reach the channel one after another, so the
+     * button that sends a post at once must not carry a part below one that has
+     * not gone out yet.
+     *
+     * @throws InvalidArgumentException when a part above this one is still waiting
+     */
+    private function assertPartInOrder(PublicationData $post): void
+    {
+        if ($post->partGroupId === null || $post->partOrder === null) {
+            return;
+        }
+
+        foreach ($this->publications->findPartGroup($post->partGroupId) as $part) {
+            if ($part->partOrder < $post->partOrder && $part->telegramId === null) {
+                throw new InvalidArgumentException('Сначала нужно опубликовать предыдущую часть.');
+            }
+        }
     }
 
     /**

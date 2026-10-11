@@ -34,6 +34,10 @@ final readonly class PublicationData
 
     /**
      * @param string[] $imageUrls
+     * @param bool $partReleased whether the queue may take this part; a part of a
+     *        group stays out of the queue until it is released, one after another
+     * @param bool $partReleasable whether a part still waiting may be released now,
+     *        which is true once its previous part has reached the channel
      */
     public function __construct(
         public int $id,
@@ -47,6 +51,10 @@ final readonly class PublicationData
         public MessageEntities $formatting = new MessageEntities(),
         public LinkButtons $buttons = new LinkButtons(),
         public string $title = '',
+        public ?string $partGroupId = null,
+        public ?int $partOrder = null,
+        public bool $partReleased = true,
+        public bool $partReleasable = false,
     ) {
     }
 

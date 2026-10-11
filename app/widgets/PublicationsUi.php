@@ -52,6 +52,18 @@ final class PublicationsUi
             . 'title="Опубликовать"><i class="bi bi-send"></i></button></form>';
     }
 
+    public static function releasePartForm(string $groupId, int $order, string $publishedAt): string
+    {
+        return '<form method="post" action="' . Url::to(['site/publication-part-schedule']) . '" class="d-inline" data-ajax>'
+            . self::csrf()
+            . '<input type="hidden" name="publicationPartGroupId" value="' . Html::encode($groupId) . '">'
+            . '<input type="hidden" name="publicationPartOrder" value="' . $order . '">'
+            . '<input type="hidden" name="publicationAt" value="' . Html::encode($publishedAt) . '">'
+            . '<input type="hidden" name="publicationTz" value="UTC">'
+            . '<button type="submit" class="btn btn-sm btn-outline-success rounded-pill px-3" title="Поставить часть в очередь">'
+            . '<i class="bi bi-send"></i></button></form>';
+    }
+
     public static function toDraftForm(int $id, ?string $source = null, string $title = 'Переместить в черновик'): string
     {
         $sourceField = $source === null
