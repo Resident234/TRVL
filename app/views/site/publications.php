@@ -373,16 +373,16 @@ $this->registerCss(
    draws, the `p-3` padding it carries, the `rounded-2` corner it rounds. The
    cursor of a draggable card is not taken with them: a part of this form cannot be
    dragged anywhere, and the frame is a reading aid, not a handle.
-   Only a box that holds more than one block is framed, since a frame around the
-   single field of a monolithic publication would say «this is one of several»
-   about a publication that is not several. `:not(:only-child)` reads that off the
-   box itself: `#publicationTextParts` holds nothing but these blocks, so every
-   split, merge, move and rebuild of the parts restates the frame with the number
-   of its children and never with a class someone might forget to refresh. */
-.publication-text-block:not(:only-child) {
+   Only parts with a sibling part below them are framed. The merge row between
+   them stays outside both frames. */
+#publicationTextParts:has(> .publication-text-block + .publication-merge-row + .publication-text-block) > .publication-text-block {
     border: 1px dashed #ff7d5c;
     padding: 1rem;
     border-radius: var(--bs-border-radius);
+}
+
+.publication-merge-row {
+    margin: -.5rem 0 1rem;
 }
 
 /* The controls of the split — the row that splits, the numbering, the distribution of
@@ -402,8 +402,8 @@ $this->registerCss(
    written down is the radius, which a card keeps in its own card-scoped
    `--bs-card-border-radius`, unreadable from anywhere else. Neither takes a background:
    both stand inside the card of the form, and a second underlay nobody asked for.
-   Which of the two draws is read off the parts themselves — `:has()` over the very
-   `:not(:only-child)` a part uses for its own dashed frame — so the script of the page
+    Which of the two draws is read off the parts themselves — `:has()` over the sibling
+    parts and merge rows that separate them — so the script of the page
    keeps no class to refresh when the parts are rebuilt, and a split, a merge or a move
    restates the line with the number of blocks it leaves behind. The bottom margin is the
    one number the donor cannot lend: that margin only says where a card stands in a column
@@ -418,14 +418,14 @@ $this->registerCss(
     margin-bottom: 1rem;
 }
 
-.publication-parts-group:has(.publication-text-block:not(:only-child)) {
+.publication-parts-group:has(#publicationTextParts > .publication-text-block + .publication-merge-row + .publication-text-block) {
     border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
     padding: 1rem;
     border-radius: .8rem;
     margin-bottom: 1rem;
 }
 
-.publication-parts-group:has(.publication-text-block:not(:only-child)) .publication-parts-controls {
+.publication-parts-group:has(#publicationTextParts > .publication-text-block + .publication-merge-row + .publication-text-block) .publication-parts-controls {
     border: 0;
     padding: 0;
     margin-bottom: 0;
@@ -1079,14 +1079,13 @@ CSS
                                             </button>
                                         </div>
 
-                                        <!-- The row a part is merged with the one under it by;
-                                             the last part of the form has none. -->
-                                        <div class="text-end mt-2 d-none publication-merge-row">
-                                            <button type="button" class="btn btn-outline-secondary btn-sm"
-                                                    title="Слить эту часть со следующей в одно поле">
-                                                <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
-                                            </button>
-                                        </div>
+                                    </div>
+                                    <!-- The row between a part and the one under it; the last part has none. -->
+                                    <div class="text-center d-none publication-merge-row">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                title="Слить эту часть со следующей в одно поле">
+                                            <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
+                                        </button>
                                     </div>
                                 </div>
 
@@ -3064,6 +3063,7 @@ jQuery(document).ready(function () {
         // draws it blank, and a clone of it is what adding appends to a box.
         var buttonRowTemplate = buttonRowsOf(sharedButtonBox)[0].cloneNode(true);
         var numberPartsInput = document.getElementById('publicationNumberParts');
+        var mergeRowTemplate = partsBox.querySelector('.publication-merge-row').cloneNode(true);
         var distributeImagesInput = document.getElementById('publicationDistributeImages');
         var linksToButtonsInput = document.getElementById('publicationLinksToButtons');
         var titleFromFirstLineInput = document.getElementById('publicationTitleFromFirstLine');
@@ -5028,8 +5028,7 @@ jQuery(document).ready(function () {
             });
         }
 
-        // Every part but the last one carries the row that merges it with the
-        // neighbour below, so the last row of the form stays hidden.
+        // Each row separates one part from the part below it.
         function mergeRows() {
             return Array.prototype.slice.call(partsBox.querySelectorAll('.publication-merge-row'));
         }
@@ -5083,7 +5082,7 @@ jQuery(document).ready(function () {
                 .forEach(function (block) {
                     block.parentNode.removeChild(block);
                 });
-
+            mergeRows().forEach(function (row) { row.remove(); });
             values.forEach(function (value, index) {
                 if (index === 0) {
                     seedPart(source, value, (formats || [])[0]);
@@ -5132,6 +5131,9 @@ jQuery(document).ready(function () {
                 groupBoxes.setAttribute('data-url', 'publicationPartButtonUrl' + (index - 1));
                 nameButtonRows(block.querySelector('.publication-part-button'));
 
+                var mergeRow = mergeRowTemplate.cloneNode(true);
+                mergeRow.classList.remove('d-none');
+                partsBox.appendChild(mergeRow);
                 partsBox.appendChild(block);
                 field.value = value;
                 field.__formatting = (formats || [])[index] || [];
