@@ -607,7 +607,16 @@ final class PublicationsService
         $this->assertPartInOrder($post);
 
         $now = $this->now();
-        $this->publishPost($post, $now);
+        $this->publications->updatePost(
+            $id,
+            $post->text,
+            $post->imageUrls,
+            $now,
+            $now,
+            $post->formatting,
+            $post->buttons,
+            $post->title,
+        );
     }
 
     /**

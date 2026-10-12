@@ -204,7 +204,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         string $title,
     ): void {
         $existing = $this->findPost($id);
-        if ($existing !== null && $existing->partGroupId !== null) {
+        if ($existing !== null && !$existing->partReleased) {
             throw new InvalidArgumentException('Часть отдельной публикации нельзя редактировать отдельно.');
         }
 
