@@ -889,14 +889,21 @@ CSS
                                             <input type="hidden" class="publication-format-field"
                                                    name="publicationFormatting[]" value="[]">
                                         </div>
+                                        <?php /* Every part of a split carries its own time and its own
+                                                «Опубликовать». Only the first of them is a live button: it is
+                                                the submit of the form, which saves all the parts and releases
+                                                the first. A part below it has no row to release yet — the
+                                                group is written when the form is saved — so its button stands
+                                                off and the line under the field says where it opens. */ ?>
                                         <div class="publication-part-schedule d-none mt-2">
                                             <label class="form-label mb-1 publication-part-at-label">Дата и время публикации</label>
                                             <div class="input-group">
                                                 <input type="text" class="form-control publication-part-at publication-datepicker-time"
                                                        name="publicationPartAt[]" autocomplete="off" disabled>
                                                 <button type="button" class="btn btn-outline-success publication-part-schedule-button"
-                                                        disabled title="Поставить часть в очередь"><i class="bi bi-send"></i></button>
+                                                        disabled><i class="bi bi-send me-1"></i>Опубликовать</button>
                                             </div>
+                                            <div class="form-text text-muted publication-part-schedule-hint d-none"></div>
                                         </div>
                                         <?php /* The album of a part, framed like the shared album of the first
                                                 part. The first block never shows its own: its album is the
@@ -5104,11 +5111,12 @@ jQuery(document).ready(function () {
         // The rows of the parts' own publication times appear with the switch of
         // the parts: the first of them carries the time the whole form was given,
         // every part below it one interval of the settings more than the part
-        // above. Only the first part starts from the form — its button is the
-        // submit of the form itself, which saves all the parts and puts the first
-        // one into the queue. A part below it waits until the one above has
-        // reached the channel and is started from the list of publications, so its
-        // button stays off here.
+        // above. Every row wears the same «Опубликовать», but only the first part
+        // starts from the form — its button is the submit of the form itself, which
+        // saves all the parts and puts the first one into the queue. A part below it
+        // waits until the one above has reached the channel and is started from the
+        // list of publications, so its button stays off and the line under the field
+        // says so where the button itself cannot.
         function updatePartSchedules() {
             var rows = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-schedule'));
             var enabled = partsIndividualInput.checked && textParts().length > 1;
@@ -5122,6 +5130,7 @@ jQuery(document).ready(function () {
             rows.forEach(function (row, index) {
                 var input = row.querySelector('.publication-part-at');
                 var button = row.querySelector('.publication-part-schedule-button');
+                var hint = row.querySelector('.publication-part-schedule-hint');
 
                 row.classList.toggle('d-none', !enabled);
                 input.disabled = !enabled;
@@ -5141,6 +5150,8 @@ jQuery(document).ready(function () {
                 previous = time;
 
                 button.disabled = !enabled || index > 0;
+                hint.textContent = 'Часть становится доступной в списке публикаций после предыдущей';
+                hint.classList.toggle('d-none', index === 0);
 
                 if (index === 0) {
                     button.type = 'submit';
@@ -5152,7 +5163,6 @@ jQuery(document).ready(function () {
                 button.type = 'button';
                 button.removeAttribute('name');
                 button.removeAttribute('value');
-                button.title = 'Часть становится доступной в списке публикаций после предыдущей';
             });
         }
 
