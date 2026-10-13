@@ -382,8 +382,13 @@ $this->registerCss(
     border-radius: var(--bs-border-radius);
 }
 
+/* The row that merges a part with the one under it belongs to neither frame, and its two
+   margins are read off each other: the block above leaves `1rem` under itself, the row
+   climbs a quarter of that room, and the rest of it is what the row keeps under itself —
+   so the handle stands as far from the line above as from the line below instead of
+   hugging the upper frame. */
 .publication-merge-row {
-    margin: -.5rem 0 1rem;
+    margin: -.25rem 0 .75rem;
 }
 
 /* The controls of the split — the row that splits, the numbering, the distribution of
