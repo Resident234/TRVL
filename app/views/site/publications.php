@@ -437,6 +437,23 @@ $this->registerCss(
     margin-bottom: 0;
 }
 
+/* A control that works on the parts wears the green the parts are wrapped in. The switch of
+   the heading cut a first line out of a fill while the text was one publication; while the
+   text is cut it works on every part — the first sentence of a part whose heading field is
+   still empty goes to that field — so the line of the group reaches its toggle too. The ring
+   reads the parts from the same `:has()` the box of the group reads them with, a merge row
+   between two text blocks, so a split cannot ring the toggle and leave the box plain, or the
+   other way round. Only the colour is answered: the vendored sheet gives a switch its
+   thickness, its corner and its room, and a rule that retyped either would move a control the
+   person clicks. The ring stands on the toggle and not on the row it opens: the words beside a
+   switch are no control, and neither is the block they stand in. Keying the selector on
+   `.form-check-input` beside the class puts it above the state rules of the sheet, and the
+   card in front of it puts it above the rest of the form — the reading costs the script of the
+   page nothing, since both classes ride the markup. */
+.publication-post-card:has(#publicationTextParts > .publication-text-block + .publication-merge-row + .publication-text-block) .form-check-input.publication-heading-switch {
+    border-color: rgba(var(--bs-success-rgb), 1);
+}
+
 /* What an album refused is named by a notice standing over that same album, and
    the notice is put away by a cross of its own. The cross is the element the ui-kit
    ships for it, `.btn-close`, but the sheet only pins that element into a corner
@@ -812,7 +829,7 @@ CSS
                 </div>
 
                 <!-- New post form -->
-                <div class="card p-3 border border-warning in-progress">
+                <div class="card p-3 border border-warning in-progress publication-post-card">
                     <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
                         <div class="d-flex align-items-center gap-2">
                             <span class="icon-box sm bg-warning-subtle border border-warning rounded-circle">
@@ -824,15 +841,21 @@ CSS
                                switch its first line goes to the heading field of the part it
                                fills, so the line a topic stands in front of its own text — or
                                the line an author opened a post with — is drawn bold over that
-                               text instead of being its first words. The state of the switch
-                               lives in the session, like the filters of the block above and the
-                               order of the lists, so a reload reads the form the way the reader
-                               left it and the address of the page says it too. */ ?>
+                               text instead of being its first words. While the text is cut the
+                               same switch works over every part: the first sentence of a part
+                               whose heading field is still empty goes into it, since a part can
+                               open with several short sentences standing on one line. A heading
+                               the reader already wrote is left alone, and a text is never cut
+                               when nothing would be left of it. The state of the switch lives in
+                               the session, like the filters of the block above and the order of
+                               the lists, so a reload reads the form the way the reader left it
+                               and the address of the page says it too. Its toggle wears the
+                               green of the parts while the text is cut into them. */ ?>
                         <div class="form-check form-switch mb-0"
                              data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
                              data-bs-custom-class="popover-info"
-                             data-bs-content="При подгрузке из блока «Форум» первую строку текста пишет в поле «Заголовок», а остальное оставляет в тексте. У тофика первой строкой стоит его название, у поста — первая набранная им строка. Текст из одной строки не режет: поле «Текст публикации» тогда осталось бы пустым.">
-                            <input class="form-check-input" type="checkbox" role="switch"
+                             data-bs-content="При подгрузке из блока «Форум» первую строку текста пишет в поле «Заголовок», а остальное оставляет в тексте. У тофика первой строкой стоит его название, у поста — первая набранная им строка. Пока текст разбит на части, в заголовок каждой части с пустым полем уходит первое предложение её текста: первой строкой в части может идти несколько коротких предложений. Если после заголовка ничего не остаётся, текст не режется, а уже заполненный заголовок остаётся как есть. Пока части есть, рамка переключателя зелёная — он работает с частями.">
+                            <input class="form-check-input publication-heading-switch" type="checkbox" role="switch"
                                    id="publicationTitleFromFirstLine"
                                    <?= $titleFromFirstLine ? 'checked' : '' ?>>
                             <label class="form-check-label" for="publicationTitleFromFirstLine">
@@ -5335,14 +5358,17 @@ jQuery(document).ready(function () {
             var bare = bareParts();
             var text = bare.values.join('\n\n');
             var parts = splitIntoParts(text);
+            var headed = headingsFromParts(parts,
+                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)),
+                readTitles());
 
             // The whole text is cut anew, so the albums of the parts come together
             // in the first of them: none of the new parts is the one a list was
             // written for.
-            setTextParts(parts,
+            setTextParts(headed.values,
                 asTexts(flattenGroups(readImageGroups())),
                 flattenGroups(readFileGroups()),
-                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)));
+                headed.formats, headed.titles);
 
             return true;
         }
@@ -5370,6 +5396,85 @@ jQuery(document).ready(function () {
                 : { title: heading, text: rest };
         }
 
+        // The heading of a part is its first sentence, not its first line: the split
+        // can lay one part per paragraph, and the line a part opens with may hold
+        // several short sentences. Where a sentence ends is the rule of the «По
+        // предложениям» split, so it is read from endsSentence() rather than guessed
+        // here. A sentence that is all the part holds is handed back whole, the same
+        // refusal the first line of a fill makes.
+        function firstSentenceAsHeading(text) {
+            var raw = String(text);
+            var from = raw.search(/\S/);
+            var cut = -1;
+
+            for (var index = from + 1; index < raw.length; index += 1) {
+                if (endsSentence(raw, index)) {
+                    cut = index;
+                    break;
+                }
+            }
+
+            // The heading travels in a single-line field, so a sentence running over
+            // a line break arrives as one line of it.
+            var heading = cut < 0 ? '' : raw.slice(from, cut).replace(/\s+/g, ' ').trim();
+            var rest = cut < 0 ? '' : raw.slice(cut).replace(/^\s+/, '');
+
+            return heading === '' || rest === ''
+                ? { title: '', text: raw }
+                : { title: heading, text: rest };
+        }
+
+        // The headings of the parts a split has just made: a part whose heading field
+        // is empty takes its first sentence out of its own text, and whatever stands
+        // behind the sentence keeps the highlighting it had. A heading that is
+        // already there is left alone — it is the name of a topic the fill put there,
+        // or a line the reader wrote. A part holding no second sentence is handed back
+        // by firstSentenceAsHeading() exactly as it stood, so nothing is written for it.
+        function cutHeadingsFromParts(values, formats, titles, on) {
+            var kept = {
+                values: (values || []).slice(),
+                formats: (formats || []).slice(),
+                titles: (titles || []).slice()
+            };
+
+            // A text the form still keeps in one field takes its heading from its
+            // first line, which is the fill above doing that, not this.
+            if (!on || kept.values.length < 2) {
+                return kept;
+            }
+
+            kept.values.forEach(function (value, index) {
+                if ((kept.titles[index] || '').trim() !== '') {
+                    return;
+                }
+
+                var heading = firstSentenceAsHeading(value);
+
+                // The text the part keeps is the tail of the value it had, so the
+                // spans of the part are read from where that tail begins.
+                kept.formats[index] = takeEntities(
+                    kept.formats[index] || [],
+                    value.length - heading.text.length,
+                    Number.MAX_SAFE_INTEGER
+                );
+                kept.values[index] = heading.text;
+                kept.titles[index] = heading.title;
+            });
+
+            return kept;
+        }
+
+        // The one read of the switch of the header behind the pass, so every rebuild
+        // of the parts hands over its lists and says nothing of the field.
+        function headingsFromParts(values, formats, titles) {
+            return cutHeadingsFromParts(
+                values,
+                formats,
+                titles,
+                titleFromFirstLineInput && titleFromFirstLineInput.checked
+            );
+        }
+
         // The text of a record or a forum post arrives as one run of it, and the
         // album that comes with it belongs to its first part — the field of the
         // fill writes that one, so the parts of this list start out empty.
@@ -5378,12 +5483,15 @@ jQuery(document).ready(function () {
         // record, which opens the first of those parts; a forum post has none.
         function loadText(text, formatting, title) {
             var parts = splitIntoParts(text);
-
-            setTextParts(parts,
-                emptyGroups(parts.length),
-                emptyFileGroups(parts.length),
+            var headed = headingsFromParts(parts,
                 formatsOfParts(parts, text, formatting || []),
                 [title || '']);
+
+            setTextParts(headed.values,
+                emptyGroups(parts.length),
+                emptyFileGroups(parts.length),
+                headed.formats,
+                headed.titles);
         }
 
         // The buttons a record was saved with: the jsonb column of its row holds
@@ -5592,9 +5700,11 @@ jQuery(document).ready(function () {
             files.splice(index + 1, 0, []);
             titles.splice(index + 1, 0, '');
 
-            setTextParts(bare.values.slice(0, index)
+            var headed = headingsFromParts(bare.values.slice(0, index)
                 .concat([head, tail])
-                .concat(bare.values.slice(index + 1)), asTexts(groups), files, formats, titles);
+                .concat(bare.values.slice(index + 1)), formats, titles);
+
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles);
 
             caretOfPart(textParts()[index + 1], 0);
         }
@@ -5672,13 +5782,17 @@ jQuery(document).ready(function () {
                 });
             });
 
-            setTextParts(parts.length > 0 ? parts : [''],
+            var values = parts.length > 0 ? parts : [''];
+            // The whole run is laid out again, so the only heading the publication
+            // keeps is the one it opens with.
+            var headed = headingsFromParts(values,
+                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)),
+                [readTitles()[0] || '']);
+
+            setTextParts(headed.values,
                 asTexts(flattenGroups(readImageGroups())),
                 flattenGroups(readFileGroups()),
-                formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)),
-                // The whole run is laid out again, so the only heading that survives
-                // is the one the publication opens with.
-                [readTitles()[0] || '']);
+                headed.formats, headed.titles);
         }
 
         // --- joining two neighbouring parts -------------------------------------
@@ -7461,8 +7575,10 @@ jQuery(document).ready(function () {
                     // the switch of the form header asks for that.
                     var parts = threadTextParts(entities);
                     var heading = firstLineAsHeading(parts[0]);
-                    setTextParts([heading.text].concat(parts.slice(1)),
-                        undefined, undefined, undefined, [heading.title]);
+                    var headed = headingsFromParts([heading.text].concat(parts.slice(1)),
+                        [], [heading.title]);
+                    setTextParts(headed.values,
+                        undefined, undefined, headed.formats, headed.titles);
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
                         writeImages(index, raw);
                     });
