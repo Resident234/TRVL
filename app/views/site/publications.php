@@ -1934,9 +1934,41 @@ function partNumberPrefix(text) {
     return match ? match[0] : '';
 }
 
-// The heading a part goes out with and the text under it: the heading of a
-// numbered part takes the number off the head of its text and stands at the end
-// of it, so a part never carries «Часть 2» twice.
+// The number a heading of a part opens with, as the field of the heading holds it:
+// the twin of the line above, which the same number makes inside the text of the
+// part. A heading carries the number first and its own words behind it, so the pair
+// of them reads as the message the channel gets.
+var HEADING_NUMBER = /^Часть \d+[.:]?\s*/;
+
+function headingNumberPrefix(index) {
+    return 'Часть ' + (index + 1) + '. ';
+}
+
+function stripHeadingNumber(title) {
+    return String(title || '').replace(HEADING_NUMBER, '');
+}
+
+// The heading of a part with the number of its place in front of it, or with no
+// number at all: the number is written from the place of the part over whatever the
+// field held, so a rebuild never piles a second copy of it on, and the click that
+// takes the numbers off takes them off the very fields they were written into.
+function numberHeading(title, index, on) {
+    var bare = stripHeadingNumber(title);
+
+    return on ? (headingNumberPrefix(index) + bare).replace(/\s+$/, '') : bare;
+}
+
+function numberHeadings(titles, on) {
+    return (titles || []).map(function (title, index) {
+        return numberHeading(title, index, on);
+    });
+}
+
+// The heading a part goes out with and the text under it: the heading of a numbered
+// part stands at the head of its message, and the line of the number the text opens
+// with only leaves the body — it goes to the heading a second time only while the
+// heading holds no number of its own, which is how a part went out before the number
+// was written into the field of the heading.
 function splitHeading(title, text) {
     var heading = title.trim();
 
@@ -1951,7 +1983,9 @@ function splitHeading(title, text) {
     }
 
     return {
-        heading: heading + '. ' + prefix.replace(/\s+$/, ''),
+        heading: HEADING_NUMBER.test(heading)
+            ? heading
+            : heading + '. ' + prefix.replace(/\s+$/, ''),
         gap: text.length > prefix.length ? '\n\n' : '',
         body: text.slice(prefix.length),
         moved: prefix.length
@@ -5108,6 +5142,28 @@ jQuery(document).ready(function () {
             });
         }
 
+        // The two switches a number written into a heading stands under: the numbering
+        // of the parts, which makes the number, and the heading out of the first line
+        // of the part, which makes the field it is written into.
+        function headingNumbersOn() {
+            return !!(titleFromFirstLineInput && titleFromFirstLineInput.checked
+                && isNumbered());
+        }
+
+        // The number of every part in front of the heading of that part, and off it
+        // again: the headings are rewritten by the place of the part, so a part added,
+        // a part taken away and either of the two switches are all one and the same
+        // pass over the fields. A single field is not a part of a split, so it wears
+        // no number — the line of the text above makes the same refusal.
+        function applyHeadingNumbers() {
+            var fields = titleFields();
+            var on = headingNumbersOn() && fields.length >= 2;
+
+            numberHeadings(readTitles(), on).forEach(function (title, index) {
+                fields[index].value = title;
+            });
+        }
+
         function updateCounters() {
             var titles = readTitles();
 
@@ -5335,6 +5391,7 @@ jQuery(document).ready(function () {
             updateAlbumMoves();
             linkifyParts();
             applyPartNumbers();
+            applyHeadingNumbers();
             updateCounters();
             updateImages();
             writeFormattingFields();
@@ -5425,11 +5482,14 @@ jQuery(document).ready(function () {
         }
 
         // The headings of the parts a split has just made: a part whose heading field
-        // is empty takes its first sentence out of its own text, and whatever stands
-        // behind the sentence keeps the highlighting it had. A heading that is
-        // already there is left alone — it is the name of a topic the fill put there,
-        // or a line the reader wrote. A part holding no second sentence is handed back
-        // by firstSentenceAsHeading() exactly as it stood, so nothing is written for it.
+        // holds nothing of its own takes its first sentence out of its own text, and
+        // whatever stands behind the sentence keeps the highlighting it had. A heading
+        // that is already there is left alone — it is the name of a topic the fill put
+        // there, or a line the reader wrote. The number of the part the field opens with
+        // is not such a heading: it is the page that wrote it, and a field holding
+        // nothing but it is as empty as one that holds nothing. A part holding no second
+        // sentence is handed back by firstSentenceAsHeading() exactly as it stood, so
+        // nothing is written for it.
         function cutHeadingsFromParts(values, formats, titles, on) {
             var kept = {
                 values: (values || []).slice(),
@@ -5444,7 +5504,7 @@ jQuery(document).ready(function () {
             }
 
             kept.values.forEach(function (value, index) {
-                if ((kept.titles[index] || '').trim() !== '') {
+                if (stripHeadingNumber(kept.titles[index] || '').trim() !== '') {
                     return;
                 }
 
@@ -5464,15 +5524,22 @@ jQuery(document).ready(function () {
             return kept;
         }
 
-        // The one read of the switch of the header behind the pass, so every rebuild
-        // of the parts hands over its lists and says nothing of the field.
+        // The one read of the switches of the header behind the pass, so every rebuild
+        // of the parts hands over its lists and says nothing of the field. The number
+        // of a part goes in front of the heading its own part took, and comes off it
+        // again where either of the two switches stands off.
         function headingsFromParts(values, formats, titles) {
-            return cutHeadingsFromParts(
+            var headed = cutHeadingsFromParts(
                 values,
                 formats,
                 titles,
-                titleFromFirstLineInput && titleFromFirstLineInput.checked
+                !!(titleFromFirstLineInput && titleFromFirstLineInput.checked)
             );
+
+            headed.titles = numberHeadings(headed.titles,
+                headingNumbersOn() && headed.values.length >= 2);
+
+            return headed;
         }
 
         // The text of a record or a forum post arrives as one run of it, and the
@@ -6911,6 +6978,19 @@ jQuery(document).ready(function () {
             numberPartsInput.addEventListener('change', function () {
                 splitIfNeeded();
                 applyPartNumbers();
+                applyHeadingNumbers();
+                updateCounters();
+                update();
+            });
+        }
+        // The same click on the switch of the header writes the number of the parts
+        // into the fields of the headings or takes it off them: the two switches stand
+        // behind one rule, so the rule is rewritten in both of their hands, and the
+        // headings themselves are left as the split made them — a sentence is cut out
+        // of a text where the parts are made, not where a switch is clicked.
+        if (titleFromFirstLineInput) {
+            titleFromFirstLineInput.addEventListener('change', function () {
+                applyHeadingNumbers();
                 updateCounters();
                 update();
             });
@@ -7273,6 +7353,7 @@ jQuery(document).ready(function () {
                     updatePartSchedules();
                 }
                 applyPartNumbers();
+                applyHeadingNumbers();
                 if (sourceTypeInput && sourceIdInput && sourceTypeInput.value === 'new') {
                     sourceIdInput.value = '';
                 }

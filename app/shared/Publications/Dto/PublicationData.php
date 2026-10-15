@@ -108,6 +108,12 @@ final readonly class PublicationData
      * text count from its very beginning, prefix and all, so the prefix they lose
      * is what the heading gains.
      *
+     * A heading that opens with its number already wears it where the form shows it,
+     * which is the shape the page writes when the numbering of the parts and the
+     * heading out of the first line both stand; the line of the text then only leaves
+     * the body. A heading that carries no number is a record of before that rule, and
+     * it goes out the way it always did — the number at the end of it.
+     *
      * @return array{string, string, int}
      */
     private function splitHeader(): array
@@ -127,9 +133,24 @@ final readonly class PublicationData
         }
 
         return [
-            $title . '. ' . rtrim($matches[0]),
+            $this->headingCarriesItsNumber($title)
+                ? $title
+                : $title . '. ' . rtrim($matches[0]),
             substr($this->text, strlen($matches[0])),
             MessageEntities::utf16Length($matches[0]),
         ];
+    }
+
+    /**
+     * Whether the heading of this part opens with the number of its part, which is
+     * what the form writes into the field when the numbering stands under it. The
+     * twin of the match the page makes over the heading of a part there.
+     */
+    private function headingCarriesItsNumber(string $title): bool
+    {
+        return preg_match(
+            '/^' . preg_quote(self::NUMBERING_PREFIX, '/') . ' \d+[.:]?\s*/u',
+            $title,
+        ) === 1;
     }
 }
