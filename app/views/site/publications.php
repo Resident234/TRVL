@@ -901,9 +901,33 @@ CSS
                                                    id="publicationTitleInput" name="publicationTitle"
                                                    placeholder="Жирная первая строка публикации">
                                         </div>
+                                        <?php /* The line that names the part. Its two arrows trade
+                                                this part with the one above or below it, and the rebuild
+                                                counts the numbers, names the fields and hands over the
+                                                shared album by the new places. An arrow stands out of
+                                                reach exactly when the part it trades with is missing, so
+                                                the first of them cannot climb and the last cannot fall;
+                                                both start there, as a form of one field has no part to
+                                                trade with until the rebuild of a split enables them. */ ?>
                                         <div class="d-flex justify-content-between align-items-baseline">
                                             <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
-                                            <small class="text-muted publication-text-count"></small>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <button type="button" disabled
+                                                        class="btn btn-outline-secondary btn-icon publication-part-up"
+                                                        data-move-part="-1"
+                                                        aria-label="Поднять часть выше"
+                                                        title="Поменять эту часть местами с предыдущей">
+                                                    <i class="bi bi-arrow-up-short"></i>
+                                                </button>
+                                                <button type="button" disabled
+                                                        class="btn btn-outline-secondary btn-icon publication-part-down"
+                                                        data-move-part="1"
+                                                        aria-label="Опустить часть ниже"
+                                                        title="Поменять эту часть местами со следующей">
+                                                    <i class="bi bi-arrow-down-short"></i>
+                                                </button>
+                                                <small class="text-muted publication-text-count ms-1"></small>
+                                            </div>
                                         </div>
                                         <?php /* The plain text of a part lives in this field: every split,
                                                     merge and counter of the page reads it, and it is what the
@@ -4114,6 +4138,13 @@ jQuery(document).ready(function () {
             };
         }
 
+        // The blocks the parts are drawn in, in the order of the parts: one block
+        // holds the text, the heading, the album and the buttons of one part, and
+        // the arrows of a part find the place it stands on in this list.
+        function partBlocks() {
+            return Array.prototype.slice.call(partsBox.querySelectorAll('.publication-text-block'));
+        }
+
         function textParts() {
             return Array.prototype.slice.call(partsBox.querySelectorAll('.publication-text-part'));
         }
@@ -4674,6 +4705,18 @@ jQuery(document).ready(function () {
             return groups.map(function (urls) {
                 return urls.join('\n');
             });
+        }
+
+        // Two places of a list traded where they stand: a part is one place in each
+        // of the lists the rebuild reads, and moving it over its neighbour changes
+        // nothing but the two places those lists hold for them.
+        function exchange(values, first, second) {
+            var held = values[first];
+
+            values[first] = values[second];
+            values[second] = held;
+
+            return values;
         }
 
         // An album that is not handed to a part of its own goes to the first of
@@ -5277,6 +5320,18 @@ jQuery(document).ready(function () {
             });
         }
 
+        // An arrow of a part reaches exactly the neighbour it trades with: the first
+        // of them has no part above it and the last has none below, and a form that
+        // still holds one field has neither. Both stay standing, out of reach.
+        function updatePartMoves() {
+            var blocks = partBlocks();
+
+            blocks.forEach(function (block, index) {
+                block.querySelector('.publication-part-up').disabled = index === 0;
+                block.querySelector('.publication-part-down').disabled = index === blocks.length - 1;
+            });
+        }
+
         // `groups` is the album of every part, the shared field taking the first
         // of them. Without it the lists that are already in the form keep their
         // part, and only the parts that appear get an empty one. `files` holds
@@ -5399,6 +5454,7 @@ jQuery(document).ready(function () {
             updateMergeRows();
             updatePartSchedules();
             updateAlbumMoves();
+            updatePartMoves();
             linkifyParts();
             applyPartNumbers();
             applyHeadingNumbers();
@@ -5963,6 +6019,43 @@ jQuery(document).ready(function () {
 
             field.focus();
             field.setSelectionRange(at, at);
+        }
+
+        // A part traded with its neighbour: the five lists the parts are rebuilt from
+        // exchange the two places the move touches, and the rebuild does the rest —
+        // it counts the numbers again, names the fields and the labels by the new
+        // places, and hands the shared album of the first part over to whichever part
+        // now stands first. The time of a row stays on the place it was given, so a
+        // part that moved takes the schedule of the place it came to, not its own.
+        function movePart(button, step) {
+            var blocks = partBlocks();
+            var index = blocks.indexOf(button.closest('.publication-text-block'));
+            var other = index + step;
+
+            if (index < 0 || other < 0 || other >= blocks.length) {
+                return;
+            }
+
+            var bare = bareParts();
+            var groups = alignGroups(readImageGroups(), bare.values.length);
+            var files = alignGroups(readFileGroups(), bare.values.length);
+            var titles = readTitles();
+            // The caret is counted over what stands in the field, where the line of
+            // the number goes before the text of the part; a caret left inside that
+            // line stands at the head of the text it moves to.
+            var at = Math.max(0, (bare.fields[index].selectionStart || 0)
+                - (bare.fields[index].value.length - bare.values[index].length));
+
+            exchange(bare.values, index, other);
+            exchange(bare.formats, index, other);
+            exchange(groups, index, other);
+            exchange(files, index, other);
+            exchange(titles, index, other);
+
+            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles);
+
+            // The caret marks the part that moved, now standing in its new place.
+            caretOfPart(textParts()[other], at);
         }
 
         // --- moving a selection of text between two parts ----------------------
@@ -7159,6 +7252,16 @@ jQuery(document).ready(function () {
                 imageTargets().indexOf(album.querySelector('.publication-part-album-field')),
                 parseInt(button.getAttribute('data-move-album'), 10)
             );
+        });
+        // The arrows that trade a part with its neighbour, of the cloned parts too.
+        partsBox.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-move-part]');
+
+            if (!button) {
+                return;
+            }
+
+            movePart(button, parseInt(button.getAttribute('data-move-part'), 10));
         });
         if (selectionPopup) {
             // The popup is placed against the viewport, which a transformed
