@@ -124,11 +124,13 @@ final readonly class PublicationData
             return ['', '', 0];
         }
 
-        if (preg_match(
+        $matched = preg_match(
             '/^' . preg_quote(self::NUMBERING_PREFIX, '/') . ' (\d+)[.:]?\s*(\n|$)/u',
             $this->text,
             $matches,
-        ) !== 1) {
+        );
+
+        if ($matched !== 1) {
             return [$title, $this->text, 0];
         }
 
