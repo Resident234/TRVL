@@ -5130,15 +5130,25 @@ jQuery(document).ready(function () {
             return parts.length > 0 ? parts : [''];
         }
 
+        // The line of the number stands at the head of the text of a part only while
+        // the number has nowhere else to live: with both switches of the form standing
+        // the same way the number is written in front of the heading of the part, and a
+        // second copy of it in the text would reach the channel as «Часть 4» over the
+        // body and «Часть 4. …» over the message. Taking either of the two switches off
+        // brings the line back — the fields are rewritten from their bare text every
+        // time, so the same pass that refuses to write the line takes the one that
+        // stands there off.
         function applyPartNumbers() {
             var fields = textParts();
             if (fields.length < 2) {
                 return;
             }
 
+            var numbered = isNumbered() && !headingNumbersOn();
+
             fields.forEach(function (field, index) {
                 var bare = stripPartNumber(field.value);
-                field.value = isNumbered() ? 'Часть ' + (index + 1) + '\n\n' + bare : bare;
+                field.value = numbered ? 'Часть ' + (index + 1) + '\n\n' + bare : bare;
             });
         }
 
@@ -6987,9 +6997,13 @@ jQuery(document).ready(function () {
         // into the fields of the headings or takes it off them: the two switches stand
         // behind one rule, so the rule is rewritten in both of their hands, and the
         // headings themselves are left as the split made them — a sentence is cut out
-        // of a text where the parts are made, not where a switch is clicked.
+        // of a text where the parts are made, not where a switch is clicked. The line
+        // of the number asks this switch as well, so the click that takes the number
+        // off a heading puts it back at the head of the text of its part: a part
+        // cannot be left with no number in either of the two places.
         if (titleFromFirstLineInput) {
             titleFromFirstLineInput.addEventListener('change', function () {
+                applyPartNumbers();
                 applyHeadingNumbers();
                 updateCounters();
                 update();
