@@ -899,22 +899,18 @@ CSS
                                         <?php /* The heading of a part: an optional first line the channel
                                                 draws bold over the text under it. A numbered part moves
                                                 its «Часть N» line in here, to the end of the heading. */ ?>
-                                        <div class="mb-2">
-                                            <label class="form-label mb-1 publication-title-label" for="publicationTitleInput">Заголовок</label>
-                                            <input type="text" class="form-control publication-title-field"
-                                                   id="publicationTitleInput" name="publicationTitle"
-                                                   placeholder="Жирная первая строка публикации">
-                                        </div>
-                                        <?php /* The line that names the part. Its two arrows trade
-                                                this part with the one above or below it, and the rebuild
-                                                counts the numbers, names the fields and hands over the
-                                                shared album by the new places. An arrow stands out of
-                                                reach exactly when the part it trades with is missing, so
-                                                the first of them cannot climb and the last cannot fall;
-                                                both start there, as a form of one field has no part to
-                                                trade with until the rebuild of a split enables them. */ ?>
-                                        <div class="d-flex justify-content-between align-items-baseline">
-                                            <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
+                                        <?php /* The line the block opens with: the label of the heading
+                                                field at its left end and the two arrows of the part at its
+                                                right, so a part is traded with a neighbour from the corner
+                                                above the heading, before any text of it. The rebuild counts
+                                                the numbers, names the fields and hands over the shared album
+                                                by the new places. An arrow stands out of reach exactly when
+                                                the part it trades with is missing, so the first of them
+                                                cannot climb and the last cannot fall; both start there, as a
+                                                form of one field has no part to trade with until the rebuild
+                                                of a split enables them. */ ?>
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <label class="form-label mb-0 publication-title-label" for="publicationTitleInput">Заголовок</label>
                                             <div class="d-flex align-items-center gap-1">
                                                 <button type="button" disabled
                                                         class="btn btn-outline-secondary btn-icon publication-part-up"
@@ -930,8 +926,16 @@ CSS
                                                         title="Поменять эту часть местами со следующей">
                                                     <i class="bi bi-arrow-down-short"></i>
                                                 </button>
-                                                <small class="text-muted publication-text-count ms-1"></small>
                                             </div>
+                                        </div>
+                                        <input type="text" class="form-control publication-title-field mb-2"
+                                               id="publicationTitleInput" name="publicationTitle"
+                                               placeholder="Жирная первая строка публикации">
+                                        <?php /* The line that names the text of the part and carries the
+                                               counter of it at its right end. */ ?>
+                                        <div class="d-flex justify-content-between align-items-baseline">
+                                            <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
+                                            <small class="text-muted publication-text-count"></small>
                                         </div>
                                         <?php /* The plain text of a part lives in this field: every split,
                                                     merge and counter of the page reads it, and it is what the
