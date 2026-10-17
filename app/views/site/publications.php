@@ -642,17 +642,21 @@ $this->registerCss(
     min-height: 0;
 }
 
-/* The three list blocks stand half the window tall. The theme pins their scroll
-   hosts at `height: 350px`, which is no fraction of any screen: a third of a
-   1080px window, and taller than the whole visible list in a short one. The
-   height is asked of the window itself rather than of the space under the sticky
-   header — the forum block above takes that space because it may not scroll the
-   document at all, while these three sit in a page that does — and the list gets
-   whatever the header of the card and its padding leave it, by the same two flex
-   rules. A block holding one post, or none, keeps its half window exactly as it
+/* The three list blocks stand 95% of what a person sees tall. The theme pins
+   their scroll hosts at `height: 350px`, which is no fraction of any screen: a
+   third of a 1080px window, and taller than the whole visible list in a short
+   one. The height is asked of the space the sticky header leaves, not of the
+   window: that header is no one number either (64px on a desktop window, 70px
+   below `lg`), so the rule reads the `--app-header-height` the page script
+   measures off the live element and the forum block above already asks the same
+   space for — a list there scrolls inside its block instead of the document
+   scrolling, while these three sit in a page that does, and 5% of the visible
+   area stays free so a block never sits flush against the bottom edge. The list
+   gets whatever the header of the card and its padding leave it, by the same two
+   flex rules. A block holding one post, or none, keeps its 95% exactly as it
    kept its 350px. */
 .card.publication-list-block {
-    height: 50vh;
+    height: calc((100vh - var(--app-header-height, 64px)) * 0.95);
 }
 
 .publication-list-block > .card-body {
