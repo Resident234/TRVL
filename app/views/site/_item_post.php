@@ -18,6 +18,8 @@ $isSent = $record->telegramId !== null;
      data-title="<?= Html::encode($record->title) ?>"
      data-source-type="post" data-source-id="<?= $record->id ?>"
      data-published-at-utc="<?= Html::encode($record->publishedAt ?? '') ?>"
+     data-part-group-id="<?= Html::encode($record->partGroupId ?? '') ?>"
+     data-habitat="<?= $record->telegramId !== null ? 'channel' : 'post' ?>"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
     <div class="d-flex align-items-center gap-2 mb-1">
         <?php if ($record->telegramId !== null): ?>
@@ -28,9 +30,8 @@ $isSent = $record->telegramId !== null;
         <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="Редактировать">
             <i class="bi bi-pencil-square"></i>
         </a>
-        <?php if ($record->partGroupId === null): ?>
-            <?= PublicationsUi::deleteForm($record->id, 'post') ?>
-        <?php endif ?>
+        <?= PublicationsUi::deleteForm($record->id, 'post') ?>
+
         <?php if (!$isSent): ?>
             <?php if ($record->partReleased): ?>
                 <?= PublicationsUi::publishForm($record->id, 'post') ?>
@@ -46,9 +47,7 @@ $isSent = $record->telegramId !== null;
                 </button>
             <?php endif ?>
         <?php endif ?>
-        <?php if ($record->partGroupId === null): ?>
-            <?= PublicationsUi::toDraftForm($record->id) ?>
-        <?php endif ?>
+        <?= PublicationsUi::toDraftForm($record->id) ?>
     </div>
     <?php if ($heading !== ''): ?>
         <p class="mb-1 fw-bold"><?= Html::encode($heading) ?></p>
@@ -60,6 +59,7 @@ $isSent = $record->telegramId !== null;
         'Создано' => $record->createdAt,
         'Обновлено' => $record->updatedAt,
     ]) ?>
+    <?= PublicationsUi::partBadge($record) ?>
     <?= PublicationsUi::statusBadge($record, $now) ?>
     <span class="badge bg-warning text-dark mt-2 d-none editing-badge">Редактируется</span>
 </div>

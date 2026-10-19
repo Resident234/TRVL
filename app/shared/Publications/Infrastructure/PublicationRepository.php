@@ -37,7 +37,8 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allDrafts(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, formatting, button, title, NULL AS telegram_id, NULL AS published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, button, title, NULL AS telegram_id, NULL AS published_at, created_at, updated_at, '
+            . $this->awayPartColumns() . $this->partGroupTotal('publications_draft')
             . ' FROM {{%publications_draft}}'
             . $this->order('updated_at', $oldestFirst),
             $limit,
@@ -62,8 +63,10 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        string $groupId = '',
+        int $partOrder = 0,
     ): int {
-        return $this->insertReturningId('{{%publications_draft}}', [
+        return $this->insertReturningId('{{%publications_draft}}', array_merge([
             'text' => $text,
             'image_urls' => $imageUrls,
             'formatting' => $formatting->toArray(),
@@ -71,7 +74,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'title' => $title,
             'created_at' => $now,
             'updated_at' => $now,
-        ]);
+        ], $this->groupColumns($groupId, $partOrder, true)));
     }
 
     public function createPost(
@@ -82,8 +85,11 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        string $groupId = '',
+        int $partOrder = 0,
+        bool $partReleased = true,
     ): int {
-        return $this->insertReturningId('{{%publications_post}}', [
+        return $this->insertReturningId('{{%publications_post}}', array_merge([
             'text' => $text,
             'image_urls' => $imageUrls,
             'formatting' => $formatting->toArray(),
@@ -92,36 +98,49 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'published_at' => $publishedAt,
             'created_at' => $now,
             'updated_at' => $now,
-        ]);
+        ], $this->groupColumns($groupId, $partOrder, $partReleased)));
     }
 
     /**
      * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
+     * @param string $groupId the id that binds these parts into one publication,
+     *        empty when the rows are separate publications of their own
      */
-    public function createPosts(array $parts, string $now): int
+    public function createPosts(array $parts, string $now, string $groupId = ''): int
     {
-        return $this->insertParts('{{%publications_post}}', $parts, $now, true);
+        return $this->insertParts('{{%publications_post}}', $parts, $now, true, $groupId);
     }
 
+    /**
+     * Whether a group of parts carrying this id is already stored, in whichever
+     * of the three blocks its parts happen to rest: a publication that broke
+     * into fragments is still the group it was written as.
+     */
     public function groupExists(string $groupId): bool
     {
         return (bool)$this->db->createCommand(
-            'SELECT EXISTS(SELECT 1 FROM {{%publications_post}} WHERE part_group_id = :group)',
+            'SELECT EXISTS('
+            . 'SELECT 1 FROM ('
+            . 'SELECT part_group_id FROM {{%publications_post}}'
+            . ' UNION ALL SELECT part_group_id FROM {{%publications_draft}}'
+            . ' UNION ALL SELECT part_group_id FROM {{%publications_deleted}}'
+            . ') group_homes WHERE group_homes.part_group_id = :group'
+            . ')',
             [':group' => $groupId],
         )->queryScalar();
     }
 
     public function createStagedGroup(array $parts, string $groupId, string $now): int
     {
-        return $this->insertParts('{{%publications_post}}', $parts, $now, true, $groupId);
+        return $this->insertParts('{{%publications_post}}', $parts, $now, true, $groupId, true);
     }
 
     /**
      * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string}> $parts
      */
-    public function createDrafts(array $parts, string $now): int
+    public function createDrafts(array $parts, string $now, string $groupId = ''): int
     {
-        return $this->insertParts('{{%publications_draft}}', $parts, $now, false);
+        return $this->insertParts('{{%publications_draft}}', $parts, $now, false, $groupId);
     }
 
     public function findDueForPublishing(string $now): array
@@ -158,6 +177,39 @@ final class PublicationRepository implements PublicationRepositoryInterface
         );
     }
 
+    /**
+     * Every live part of one publication, in the order of its places, no matter
+     * which block it currently lives in. Each row also says which block that
+     * is, so the form can badge it: 'channel' for a part that already reached
+     * Telegram, 'post', 'draft' or 'deleted' for the rest.
+     *
+     * @return PublicationData[]
+     */
+    public function findGroupRows(string $groupId): array
+    {
+        $front = 'id, text, image_urls, formatting, button, title, ';
+        $back = 'created_at, updated_at, part_group_id, part_order, part_released, ';
+
+        return $this->hydrateAll(
+            'SELECT * FROM ('
+            . 'SELECT ' . $front . 'telegram_id, published_at, NULL::timestamp AS deleted_at, ' . $back
+            . "CASE WHEN telegram_id IS NOT NULL THEN 'channel' ELSE 'post' END AS habitat"
+            . ' FROM {{%publications_post}}'
+            . ' UNION ALL'
+            . ' SELECT ' . $front
+            . 'NULL::integer AS telegram_id, NULL::timestamp AS published_at, NULL::timestamp AS deleted_at, ' . $back
+            . "'draft' AS habitat"
+            . ' FROM {{%publications_draft}}'
+            . ' UNION ALL'
+            . ' SELECT ' . $front . 'telegram_id, published_at, deleted_at, ' . $back
+            . "'deleted' AS habitat"
+            . ' FROM {{%publications_deleted}}'
+            . ') group_part WHERE group_part.part_group_id = :group'
+            . ' ORDER BY group_part.part_order ASC',
+            [':group' => $groupId],
+        );
+    }
+
     public function releasePart(string $groupId, int $partOrder, string $publishedAt, string $now): void
     {
         $changed = $this->db
@@ -187,7 +239,8 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, formatting, button, title, NULL AS telegram_id, NULL AS published_at, created_at, updated_at'
+            'SELECT id, text, image_urls, formatting, button, title, NULL AS telegram_id, NULL AS published_at, created_at, updated_at, '
+            . $this->awayPartColumns() . $this->partGroupTotal('publications_draft')
             . ' FROM {{%publications_draft}} WHERE id = :id',
             [':id' => $id],
         );
@@ -202,23 +255,25 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        ?int $partOrder = null,
     ): void {
-        $existing = $this->findPost($id);
-        if ($existing !== null && !$existing->partReleased) {
-            throw new InvalidArgumentException('Часть отдельной публикации нельзя редактировать отдельно.');
+        $columns = [
+            'text' => $text,
+            'image_urls' => $imageUrls,
+            'formatting' => $formatting->toArray(),
+            'button' => $buttons->toArray(),
+            'title' => $title,
+            'published_at' => $publishedAt,
+            'updated_at' => $now,
+        ];
+
+        if ($partOrder !== null) {
+            $columns['part_order'] = $partOrder;
         }
 
         $this->db
             ->createCommand()
-            ->update('{{%publications_post}}', [
-                'text' => $text,
-                'image_urls' => $imageUrls,
-                'formatting' => $formatting->toArray(),
-                'button' => $buttons->toArray(),
-                'title' => $title,
-                'published_at' => $publishedAt,
-                'updated_at' => $now,
-            ], ['id' => $id])
+            ->update('{{%publications_post}}', $columns, ['id' => $id])
             ->execute();
     }
 
@@ -230,17 +285,24 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        ?int $partOrder = null,
     ): void {
+        $columns = [
+            'text' => $text,
+            'image_urls' => $imageUrls,
+            'formatting' => $formatting->toArray(),
+            'button' => $buttons->toArray(),
+            'title' => $title,
+            'updated_at' => $now,
+        ];
+
+        if ($partOrder !== null) {
+            $columns['part_order'] = $partOrder;
+        }
+
         $this->db
             ->createCommand()
-            ->update('{{%publications_draft}}', [
-                'text' => $text,
-                'image_urls' => $imageUrls,
-                'formatting' => $formatting->toArray(),
-                'button' => $buttons->toArray(),
-                'title' => $title,
-                'updated_at' => $now,
-            ], ['id' => $id])
+            ->update('{{%publications_draft}}', $columns, ['id' => $id])
             ->execute();
     }
 
@@ -249,9 +311,6 @@ final class PublicationRepository implements PublicationRepositoryInterface
         $post = $this->findPost($id);
         if ($post === null) {
             throw new InvalidArgumentException("Публикация #{$id} не найдена.");
-        }
-        if ($post->partGroupId !== null) {
-            throw new InvalidArgumentException('Часть отдельной публикации нельзя удалить отдельно.');
         }
 
         $this->db
@@ -279,7 +338,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
 
     public function insertPostWithHistory(PublicationData $post, string $now): int
     {
-        return $this->insertReturningId('{{%publications_post}}', [
+        return $this->insertReturningId('{{%publications_post}}', array_merge([
             'telegram_id' => $post->telegramId,
             'text' => $post->text,
             'image_urls' => $post->imageUrls,
@@ -289,12 +348,12 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'published_at' => $post->publishedAt ?? $now,
             'created_at' => $post->createdAt,
             'updated_at' => $now,
-        ]);
+        ], $this->partCarriage($post)));
     }
 
     public function insertDraftWithHistory(PublicationData $draft, string $now): int
     {
-        return $this->insertReturningId('{{%publications_draft}}', [
+        return $this->insertReturningId('{{%publications_draft}}', array_merge([
             'text' => $draft->text,
             'image_urls' => $draft->imageUrls,
             'formatting' => $draft->formatting->toArray(),
@@ -302,32 +361,42 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'title' => $draft->title,
             'created_at' => $draft->createdAt,
             'updated_at' => $now,
-        ]);
+        ], $this->partCarriage($draft)));
     }
 
     public function archiveEdited(PublicationData $post, string $now): void
     {
+        $columns = [
+            'telegram_id' => $post->telegramId,
+            'text' => $post->text,
+            'image_urls' => $post->imageUrls,
+            'formatting' => $post->formatting->toArray(),
+            'button' => $post->buttons->toArray(),
+            'title' => $post->title,
+            'published_at' => $post->publishedAt ?? $now,
+            'created_at' => $post->createdAt,
+            'updated_at' => $now,
+            'edited_at' => null,
+        ];
+
+        // The archive carries the group and the place of a part but not the state of
+        // its queue: a row that reached the channel never waits there again.
+        if (isset($post->partGroupId) && $post->partGroupId !== '' && isset($post->partOrder)) {
+            $columns['part_group_id'] = $post->partGroupId;
+            $columns['part_order'] = $post->partOrder;
+        }
+
         $this->db
             ->createCommand()
-            ->insert('{{%publications_edited}}', [
-                'telegram_id' => $post->telegramId,
-                'text' => $post->text,
-                'image_urls' => $post->imageUrls,
-                'formatting' => $post->formatting->toArray(),
-                'button' => $post->buttons->toArray(),
-                'title' => $post->title,
-                'published_at' => $post->publishedAt ?? $now,
-                'created_at' => $post->createdAt,
-                'updated_at' => $now,
-                'edited_at' => null,
-            ])
+            ->insert('{{%publications_edited}}', $columns)
             ->execute();
     }
 
     public function allDeleted(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, deleted_at'
+            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, deleted_at, '
+            . $this->awayPartColumns() . $this->partGroupTotal('publications_deleted')
             . ' FROM {{%publications_deleted}}'
             . $this->order('updated_at', $oldestFirst),
             $limit,
@@ -343,7 +412,8 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDeleted(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, deleted_at'
+            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, deleted_at, '
+            . $this->awayPartColumns() . $this->partGroupTotal('publications_deleted')
             . ' FROM {{%publications_deleted}} WHERE id = :id',
             [':id' => $id],
         );
@@ -376,7 +446,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
 
     public function insertDeletedWithHistory(PublicationData $record, string $now): int
     {
-        return $this->insertReturningId('{{%publications_deleted}}', [
+        return $this->insertReturningId('{{%publications_deleted}}', array_merge([
             'telegram_id' => $record->telegramId,
             'text' => $record->text,
             'image_urls' => $record->imageUrls,
@@ -387,7 +457,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'created_at' => $record->createdAt,
             'updated_at' => $now,
             'deleted_at' => null,
-        ]);
+        ], $this->partCarriage($record)));
     }
 
     public function storeDeletedAt(int $id, string $deletedAt): void
@@ -421,13 +491,22 @@ final class PublicationRepository implements PublicationRepositoryInterface
      * transaction, so a failure halfway through the list gives back an
      * empty table rather than a publication cut in pieces.
      *
-     * A group id turns those rows into the parts of a publication that goes out
-     * one part at a time: only the first of them enters the queue right away.
+     * A group id turns those rows into the parts of one publication: they keep
+     * their order and belong to each other wherever they later move. A staged
+     * group sends only its first part into the queue and holds the rest back;
+     * every other group stands released, and so does a draft, which has no
+     * queue of its own.
      *
      * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt?: string}> $parts
      */
-    private function insertParts(string $table, array $parts, string $now, bool $scheduled, string $groupId = ''): int
-    {
+    private function insertParts(
+        string $table,
+        array $parts,
+        string $now,
+        bool $scheduled,
+        string $groupId = '',
+        bool $staged = false,
+    ): int {
         $ids = [];
         $transaction = $this->db->beginTransaction();
         try {
@@ -449,7 +528,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 if ($groupId !== '') {
                     $columns['part_group_id'] = $groupId;
                     $columns['part_order'] = $index + 1;
-                    $columns['part_released'] = $index === 0;
+                    $columns['part_released'] = !$staged || $index === 0;
                 }
 
                 $ids[] = $this->insertReturningId($table, $columns);
@@ -463,6 +542,43 @@ final class PublicationRepository implements PublicationRepositoryInterface
         }
 
         return $ids[0];
+    }
+
+    /**
+     * The group columns a part carries with it when it moves from one table to
+     * another: leaving the posts table for the drafts or the deleted list never
+     * stops a row from being the same part of the same publication.
+     *
+     * @return array<string, mixed>
+     */
+    private function partCarriage(PublicationData $record): array
+    {
+        if ($record->partGroupId === null || $record->partOrder === null) {
+            return [];
+        }
+
+        return $this->groupColumns($record->partGroupId, $record->partOrder, $record->partReleased);
+    }
+
+    /**
+     * The three columns that bind a row written from scratch to the group of
+     * parts it joins: which publication it belongs to, which of its parts this
+     * one is, and whether the queue may already take it. A row written without a
+     * group id says nothing of a group at all.
+     *
+     * @return array<string, mixed>
+     */
+    private function groupColumns(string $groupId, int $partOrder, bool $partReleased): array
+    {
+        if ($groupId === '') {
+            return [];
+        }
+
+        return [
+            'part_group_id' => $groupId,
+            'part_order' => $partOrder,
+            'part_released' => $partReleased,
+        ];
     }
 
     /**
@@ -502,7 +618,38 @@ final class PublicationRepository implements PublicationRepositoryInterface
             . 'SELECT 1 FROM {{%publications_post}} previous WHERE previous.part_group_id = {{%publications_post}}.part_group_id '
             . 'AND previous.part_order = {{%publications_post}}.part_order - 1 '
             . 'AND previous.telegram_id IS NOT NULL'
-            . ') THEN TRUE ELSE FALSE END AS part_releasable';
+            . ') THEN TRUE ELSE FALSE END AS part_releasable, '
+            . $this->partGroupTotal('publications_post');
+    }
+
+    /**
+     * The group columns of the tables that hold no queue: which publication a
+     * row is a part of, which place it holds, and whether the queue may already
+     * take it — the flag travels with the row, so a part that was held back
+     * comes back to the posts table still held back.
+     */
+    private function awayPartColumns(): string
+    {
+        return 'part_group_id, part_order, part_released, ';
+    }
+
+    /**
+     * How many parts the publication of this row has, counted over every block
+     * a part can live in: moving between them never stops a row from being a
+     * part. A row outside a group has no total.
+     */
+    private function partGroupTotal(string $table): string
+    {
+        $group = '{{%' . $table . '}}.part_group_id';
+
+        return 'CASE WHEN ' . $group . ' IS NULL THEN NULL ELSE ('
+            . 'SELECT COUNT(*) FROM {{%publications_post}} post_part'
+            . ' WHERE post_part.part_group_id = ' . $group . ')'
+            . ' + (SELECT COUNT(*) FROM {{%publications_draft}} draft_part'
+            . ' WHERE draft_part.part_group_id = ' . $group . ')'
+            . ' + (SELECT COUNT(*) FROM {{%publications_deleted}} deleted_part'
+            . ' WHERE deleted_part.part_group_id = ' . $group . ')'
+            . ' END AS part_group_total';
     }
 
     /**
@@ -519,6 +666,34 @@ final class PublicationRepository implements PublicationRepositoryInterface
             return null;
         }
 
+        return self::toData($row);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     * @return PublicationData[]
+     */
+    private function hydrateAll(string $sql, array $params = []): array
+    {
+        $rows = $this->db
+            ->createCommand($sql)
+            ->bindValues($params)
+            ->queryAll(PDO::FETCH_ASSOC);
+
+        return array_map(self::toData(...), $rows);
+    }
+
+    /**
+     * The row of any of the three publication tables as a DTO. The group
+     * columns are read when the query carries them: `part_releasable`,
+     * `part_group_total` and `habitat` are derived in SQL rather than stored,
+     * so a plain read of a table has none of them and the DTO falls back to
+     * what a row outside a group says about itself.
+     *
+     * @param array<string, mixed> $row
+     */
+    private static function toData(array $row): PublicationData
+    {
         return new PublicationData(
             (int)$row['id'],
             (string)$row['text'],
@@ -537,41 +712,10 @@ final class PublicationRepository implements PublicationRepositoryInterface
             ($row['part_order'] ?? null) === null ? null : (int)$row['part_order'],
             !array_key_exists('part_released', $row) || filter_var($row['part_released'], FILTER_VALIDATE_BOOLEAN),
             array_key_exists('part_releasable', $row) && filter_var($row['part_releasable'], FILTER_VALIDATE_BOOLEAN),
-        );
-    }
-
-    /**
-     * @param array<string, int|string> $params
-     * @return PublicationData[]
-     */
-    private function hydrateAll(string $sql, array $params = []): array
-    {
-        $rows = $this->db
-            ->createCommand($sql)
-            ->bindValues($params)
-            ->queryAll(PDO::FETCH_ASSOC);
-
-        return array_map(
-            static fn (array $row): PublicationData => new PublicationData(
-                (int)$row['id'],
-                (string)$row['text'],
-                self::decodeImageUrls($row['image_urls']),
-                $row['telegram_id'] === null ? null : (int)$row['telegram_id'],
-                $row['published_at'] === null ? null : (string)$row['published_at'],
-                (string)$row['created_at'],
-                (string)$row['updated_at'],
-                array_key_exists('deleted_at', $row)
-                    ? ($row['deleted_at'] === null ? null : (string)$row['deleted_at'])
-                    : null,
-                MessageEntities::fromStored($row['formatting']),
-                LinkButtons::fromStored($row['button']),
-                (string)$row['title'],
-                ($row['part_group_id'] ?? null) === null ? null : (string)$row['part_group_id'],
-                ($row['part_order'] ?? null) === null ? null : (int)$row['part_order'],
-                !array_key_exists('part_released', $row) || filter_var($row['part_released'], FILTER_VALIDATE_BOOLEAN),
-                array_key_exists('part_releasable', $row) && filter_var($row['part_releasable'], FILTER_VALIDATE_BOOLEAN),
-            ),
-            $rows,
+            array_key_exists('part_group_total', $row) && $row['part_group_total'] !== null
+                ? (int)$row['part_group_total']
+                : null,
+            array_key_exists('habitat', $row) && $row['habitat'] !== null ? (string)$row['habitat'] : null,
         );
     }
 

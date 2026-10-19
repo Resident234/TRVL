@@ -42,6 +42,10 @@ interface PublicationRepositoryInterface
 
     /**
      * Creates a draft from the form data. Returns the new row id.
+     *
+     * A group id and a place write the row as one part of an existing group,
+     * which is how a part the form invented joins the parts it was loaded with.
+     * A draft has no queue of its own, so its part stands released.
      */
     public function createDraft(
         string $text,
@@ -50,11 +54,17 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        string $groupId = '',
+        int $partOrder = 0,
     ): int;
 
     /**
-     * Creates a scheduled (or immediately due) post from the form
-     * data. Returns the new row id.
+     * Creates a scheduled (or immediately due) post from the form data. Returns
+     * the new row id.
+     *
+     * A group id and a place write the row as one part of an existing group;
+     * $partReleased says whether the queue may take it at once or it waits for
+     * the part above it, which is what keeps a new part from slipping ahead.
      */
     public function createPost(
         string $text,
@@ -64,6 +74,9 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        string $groupId = '',
+        int $partOrder = 0,
+        bool $partReleased = true,
     ): int;
 
     /**
@@ -73,18 +86,25 @@ interface PublicationRepositoryInterface
      * publication time. Returns the id of the first part, the record a
      * forum link is bound to.
      *
+     * A group id binds the rows into one publication that keeps being a
+     * group wherever its parts later move; without one every part is a
+     * publication of its own. A plain group is released to the queue in
+     * full — only createStagedGroup() holds the lower parts back.
+     *
      * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
      */
-    public function createPosts(array $parts, string $now): int;
+    public function createPosts(array $parts, string $now, string $groupId = ''): int;
 
     /**
      * Creates the parts of one long publication as separate drafts in a
      * single transaction, with the same all-or-nothing guarantee and the
-     * same first part id as createPosts().
+     * same first part id as createPosts(). A draft has no queue of its
+     * own, so every part of it stands released and a later move to the
+     * posts table sends it out at its time.
      *
      * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string}> $parts
      */
-    public function createDrafts(array $parts, string $now): int;
+    public function createDrafts(array $parts, string $now, string $groupId = ''): int;
 
     /**
      * @return PublicationData[] posts with an empty telegram_id and a due
@@ -119,6 +139,16 @@ interface PublicationRepositoryInterface
     public function findPartGroup(string $groupId): array;
 
     /**
+     * Every live part of a group, ordered by its number, read from all three
+     * blocks at once: a publication keeps belonging to itself while its parts
+     * lie in the posts list, in drafts or in the deleted list. Each row says
+     * where it lives ('channel', 'post', 'draft' or 'deleted').
+     *
+     * @return PublicationData[]
+     */
+    public function findGroupRows(string $groupId): array;
+
+    /**
      * Lets one part of a group into the queue with the given publication time.
      */
     public function releasePart(string $groupId, int $partOrder, string $publishedAt, string $now): void;
@@ -136,7 +166,8 @@ interface PublicationRepositoryInterface
     /**
      * Updates a scheduled post: text, image urls, formatting, buttons, title
      * and published_at from the form; updated_at is set to $now, created_at
-     * stays untouched.
+     * stays untouched. A place rewrites the rank of the row inside its group,
+     * which is what the form gives it; without one the row keeps its place.
      */
     public function updatePost(
         int $id,
@@ -147,11 +178,14 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        ?int $partOrder = null,
     ): void;
 
     /**
      * Updates a draft: text, image urls, formatting, buttons and title from
-     * the form; updated_at is set to $now, created_at stays untouched.
+     * the form; updated_at is set to $now, created_at stays untouched. A place
+     * rewrites the rank of the row inside its group, which is what the form
+     * gives it; without one the row keeps its place.
      */
     public function updateDraft(
         int $id,
@@ -161,6 +195,7 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        ?int $partOrder = null,
     ): void;
 
     /**

@@ -30,6 +30,9 @@ final class PublicationRepositoryTest extends Unit
         Yii::$app->getDb()
             ->createCommand('TRUNCATE TABLE {{%publications_deleted}} RESTART IDENTITY')
             ->execute();
+        Yii::$app->getDb()
+            ->createCommand('TRUNCATE TABLE {{%publications_edited}} RESTART IDENTITY')
+            ->execute();
         $this->_repository = new PublicationRepository(Yii::$app->getDb());
     }
 
@@ -413,5 +416,437 @@ final class PublicationRepositoryTest extends Unit
         $this->assertSame('Восстанавливаемый черновик', $drafts[0]->text);
         $this->assertNull($drafts[0]->publishedAt);
         $this->assertSame('2026-09-10 09:00:00', $drafts[0]->createdAt);
+    }
+
+    public function testCreateDraftsMarksEveryPartOfOneGroup(): void
+    {
+        $this->_repository->createDrafts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+
+        $drafts = $this->_repository->allDrafts();
+
+        $this->assertSame(
+            [
+                'abababababababababababababababab',
+                'abababababababababababababababab',
+            ],
+            array_column($drafts, 'partGroupId'),
+            'Every draft of a split publication must come back with the group it belongs to.',
+        );
+
+        // Both rows carry the same `updated_at`, which is what the list orders by,
+        // so their relative order is the database's — the place in the group is
+        // read against the text of its own row instead.
+        $ordersByPart = array_column($drafts, 'partOrder', 'text');
+        $totalsByPart = array_column($drafts, 'partGroupTotal', 'text');
+        ksort($ordersByPart);
+        ksort($totalsByPart);
+
+        $this->assertSame(
+            ['Часть 1' => 1, 'Часть 2' => 2],
+            $ordersByPart,
+            'Every draft of a split publication must come back with the place it holds in the group.',
+        );
+        $this->assertSame(
+            ['Часть 1' => 2, 'Часть 2' => 2],
+            $totalsByPart,
+            'A draft part must know how many parts its publication has.',
+        );
+        $this->assertSame(
+            [true, true],
+            array_column($drafts, 'partReleased'),
+            'A draft carries no queue: every part of it stands released, so a later move to the posts table sends it out.',
+        );
+    }
+
+    public function testCreateDraftsLeavesASingleRowUngrouped(): void
+    {
+        $this->_repository->createDraft('Одна часть', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
+
+        $draft = $this->_repository->allDrafts()[0];
+
+        $this->assertNull($draft->partGroupId);
+        $this->assertNull($draft->partOrder);
+        $this->assertNull($draft->partGroupTotal);
+    }
+
+    public function testPlainPostsOfASplitKeepEveryPartReleasableToTheQueue(): void
+    {
+        $this->_repository->createPosts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:32:00'],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+
+        $posts = $this->_repository->allPosts();
+
+        $this->assertSame(
+            ['abababababababababababababababab', 'abababababababababababababababab', 'abababababababababababababababab'],
+            array_column($posts, 'partGroupId'),
+            'A split publication is a group even when its parts do not go out one after another.',
+        );
+        $this->assertSame(
+            [true, true, true],
+            array_column($posts, 'partReleased'),
+            'Only a staged group holds its parts back: a plain one keeps all of them for the queue.',
+        );
+        $this->assertCount(
+            3,
+            $this->_repository->findDueForPublishing('2026-09-10 21:35:00'),
+            'The queue must still take every part of a plain split publication.',
+        );
+    }
+
+    public function testGroupTotalCountsThePartsLivingInAnyBlock(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:32:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+
+        // The publication breaks into fragments: part 2 goes to drafts, part 3 to
+        // the deleted list, and part 1 stays where it was written.
+        $second = $this->_repository->findPost(2);
+        $this->_repository->deletePost(2);
+        $this->_repository->insertDraftWithHistory($second, '2026-09-10 11:00:00');
+        $third = $this->_repository->findPost(3);
+        $this->_repository->deletePost(3);
+        $this->_repository->insertDeletedWithHistory($third, '2026-09-10 11:00:00');
+
+        $this->assertSame(
+            [3],
+            array_column($this->_repository->allPosts(), 'partGroupTotal'),
+            'A part left in the posts table must still count the parts that moved away.',
+        );
+        $this->assertSame(
+            3,
+            $this->_repository->allDrafts()[0]->partGroupTotal,
+            'A part in drafts must count the whole publication.',
+        );
+        $this->assertSame(
+            3,
+            $this->_repository->allDeleted()[0]->partGroupTotal,
+            'A part in the deleted list must count the whole publication.',
+        );
+    }
+
+    public function testFindGroupRowsReturnsEveryLivePartInItsPlace(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+        $this->_repository->createDrafts([
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Чужая часть', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+        ], '2026-09-10 10:00:00', 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd');
+
+        $rows = $this->_repository->findGroupRows('abababababababababababababababab');
+
+        $this->assertSame(
+            ['Часть 1', 'Часть 2'],
+            array_map(static fn (PublicationData $row): string => $row->text, $rows),
+            'Every live part of the group must come back, in the order of its places.',
+        );
+        $this->assertSame([1, 2], array_column($rows, 'partOrder'));
+        $this->assertSame([], $this->_repository->findGroupRows('efefefefefefefefefefefefefefefef'));
+    }
+
+    public function testFindGroupRowsReadsTheDraftsAndTheDeletedRowsOfAGroup(): void
+    {
+        $this->_repository->createDrafts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+        $draft = $this->_repository->findDraft(2);
+        $this->_repository->deleteDraft(2);
+        $this->_repository->insertDeletedWithHistory($draft, '2026-09-10 11:00:00');
+
+        $rows = $this->_repository->findGroupRows('abababababababababababababababab');
+
+        $this->assertCount(2, $rows, 'A part living outside the posts table must still reach the form.');
+        $this->assertSame(
+            ['draft', 'deleted'],
+            array_map(static fn (PublicationData $row): string => (string)$row->habitat, $rows),
+            'Every part of the group must say which block it lives in, so the form can badge it.',
+        );
+    }
+
+    public function testWaitingPartKeepsItsStateAcrossTheMoveToDeletedAndBack(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+
+        $this->assertTrue($this->_repository->findPost(1)->partReleased);
+        $this->assertFalse($this->_repository->findPost(2)->partReleased);
+
+        $second = $this->_repository->findPost(2);
+        $this->_repository->deletePost(2);
+        $this->_repository->insertDeletedWithHistory($second, '2026-09-10 11:00:00');
+        $record = $this->_repository->findDeleted(1);
+        $this->assertNotNull($record->partGroupId);
+        $this->assertSame(2, $record->partOrder);
+        $this->assertFalse($record->partReleased, 'A part held back must stay held back in the deleted list.');
+
+        $this->_repository->deleteDeleted(1);
+        $this->_repository->insertPostWithHistory($record, '2026-09-10 12:00:00');
+
+        $releasedByPlace = array_column($this->_repository->allPosts(), 'partReleased', 'partOrder');
+        ksort($releasedByPlace);
+        $this->assertSame(
+            [1 => true, 2 => false],
+            $releasedByPlace,
+            'A part that comes back to the posts table must not slip into the queue ahead of the part above it.',
+        );
+    }
+
+    public function testGroupExistsSeesAGroupStoredOutsideThePostsTable(): void
+    {
+        $this->_repository->createDrafts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+
+        $this->assertTrue(
+            $this->_repository->groupExists('abababababababababababababababab'),
+            'A group that already rests in drafts must not be written over by a stale form.',
+        );
+        $this->assertFalse($this->_repository->groupExists('efefefefefefefefefefefefefefefef'));
+    }
+
+    public function testMovedPartKeepsItsGroupAndPlace(): void
+    {
+        $this->_repository->createPosts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+
+        $first = $this->_repository->findPost(1);
+        $this->_repository->deletePost(1);
+        $this->_repository->insertDraftWithHistory($first, '2026-09-10 11:00:00');
+
+        $draft = $this->_repository->findDraft(1);
+        $this->assertSame('abababababababababababababababab', $draft->partGroupId);
+        $this->assertSame(1, $draft->partOrder);
+        $this->assertSame(2, $draft->partGroupTotal, 'The draft fragment must count its sibling still in the posts table.');
+    }
+
+    public function testCreatePostWritesOneMorePartOfAnExistingGroup(): void
+    {
+        $id = $this->_repository->createPost(
+            'Новая часть',
+            [],
+            '2026-09-10 21:40:00',
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+            'abababababababababababababababab',
+            3,
+            false,
+        );
+
+        $post = $this->_repository->findPost($id);
+        $this->assertNotNull($post);
+        $this->assertSame('abababababababababababababababab', $post->partGroupId);
+        $this->assertSame(3, $post->partOrder);
+        $this->assertFalse($post->partReleased, 'A part written under a waiting one is held back with it.');
+    }
+
+    public function testCreatePostOfItsOwnKeepsTheGroupColumnsEmpty(): void
+    {
+        $id = $this->_repository->createPost(
+            'Просто публикация',
+            [],
+            '2026-09-10 21:40:00',
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+        );
+
+        $post = $this->_repository->findPost($id);
+        $this->assertNotNull($post);
+        $this->assertNull($post->partGroupId, 'A publication of its own claims no group.');
+        $this->assertNull($post->partOrder);
+    }
+
+    public function testCreateDraftWritesOneMorePartOfAnExistingGroup(): void
+    {
+        $id = $this->_repository->createDraft(
+            'Новая часть',
+            [],
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+            'abababababababababababababababab',
+            2,
+        );
+
+        $draft = $this->_repository->findDraft($id);
+        $this->assertNotNull($draft);
+        $this->assertSame('abababababababababababababababab', $draft->partGroupId);
+        $this->assertSame(2, $draft->partOrder);
+    }
+
+    public function testUpdatePostRewritesThePlaceOfAPart(): void
+    {
+        $this->_repository->createPosts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+
+        $this->_repository->updatePost(
+            1,
+            'Первая часть переписана',
+            [],
+            '2026-09-10 21:31:00',
+            '2026-09-10 11:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+            2,
+        );
+        $this->_repository->updatePost(
+            2,
+            'Вторая часть переписана',
+            [],
+            '2026-09-10 21:30:00',
+            '2026-09-10 11:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+        );
+
+        $moved = $this->_repository->findPost(1);
+        $this->assertNotNull($moved);
+        $this->assertSame(2, $moved->partOrder, 'The form gives a part the place it stands in.');
+        $this->assertSame('abababababababababababababababab', $moved->partGroupId);
+
+        $untouched = $this->_repository->findPost(2);
+        $this->assertNotNull($untouched);
+        $this->assertSame(
+            2,
+            $untouched->partOrder,
+            'A save that names no place leaves the row of a part where it stands.',
+        );
+    }
+
+    public function testUpdateDraftRewritesThePlaceOfAPart(): void
+    {
+        $this->_repository->createDrafts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+        ], '2026-09-10 10:00:00', 'abababababababababababababababab');
+
+        $this->_repository->updateDraft(
+            2,
+            'Вторая часть переписана',
+            [],
+            '2026-09-10 11:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+            1,
+        );
+
+        $moved = $this->_repository->findDraft(2);
+        $this->assertNotNull($moved);
+        $this->assertSame(1, $moved->partOrder);
+        $this->assertSame('abababababababababababababababab', $moved->partGroupId);
+        $this->assertSame('2026-09-10 10:00:00', $moved->createdAt);
+    }
+
+    public function testReleasePartOpensTheRowThatWaitsAndNobodyBelowIt(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:32:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+
+        $this->_repository->releasePart('abababababababababababababababab', 2, '2026-09-10 21:35:00', '2026-09-10 11:00:00');
+
+        $second = $this->_repository->findPost(2);
+        $this->assertNotNull($second);
+        $this->assertTrue($second->partReleased, 'The release opens the queue of the row it names.');
+        $this->assertSame('2026-09-10 21:35:00', $second->publishedAt, 'The row takes the time the reader gave it.');
+        $this->assertSame('2026-09-10 11:00:00', $second->updatedAt);
+
+        $releasedByPlace = array_column($this->_repository->allPosts(), 'partReleased', 'partOrder');
+        ksort($releasedByPlace);
+        $this->assertSame(
+            [1 => true, 2 => true, 3 => false],
+            $releasedByPlace,
+            'A part below a newly released one waits for it in its turn.',
+        );
+
+        $due = $this->_repository->findDueForPublishing('2026-09-10 21:40:00');
+        $this->assertSame(
+            ['Часть 1', 'Часть 2'],
+            array_map(static fn (PublicationData $post): string => $post->text, $due),
+            'The queue reads the released part and leaves the one still held back.',
+        );
+    }
+
+    public function testReleasePartRefusesARowTheQueueAlreadyHolds(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+
+        $this->_repository->releasePart('abababababababababababababababab', 2, '2026-09-10 21:35:00', '2026-09-10 11:00:00');
+
+        foreach ([1, 2] as $place) {
+            try {
+                $this->_repository->releasePart('abababababababababababababababab', $place, '2026-09-10 22:00:00', '2026-09-10 12:00:00');
+                $this->fail('Часть на месте ' . $place . ' уже стоит в очереди и должна была быть отказана.');
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame('Часть уже поставлена в очередь.', $e->getMessage());
+            }
+        }
+
+        $second = $this->_repository->findPost(2);
+        $this->assertNotNull($second);
+        $this->assertSame(
+            '2026-09-10 21:35:00',
+            $second->publishedAt,
+            'A refused release must not move the time of the row it refused.',
+        );
+    }
+
+    public function testArchivingAnEditedPartKeepsItsGroupAndItsPlace(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+
+        $first = $this->_repository->findPost(1);
+        $this->assertNotNull($first);
+        $this->_repository->archiveEdited($first, '2026-09-10 12:00:00');
+
+        $archived = Yii::$app->getDb()
+            ->createCommand('SELECT part_group_id, part_order FROM {{%publications_edited}} ORDER BY id ASC')
+            ->queryAll();
+
+        $this->assertCount(1, $archived);
+        $this->assertSame(
+            'abababababababababababababababab',
+            $archived[0]['part_group_id'],
+            'The archived copy of an edited part says which publication it was a part of.',
+        );
+        $this->assertSame(
+            1,
+            (int)$archived[0]['part_order'],
+            'The archived copy keeps the place the part held in its group.',
+        );
     }
 }

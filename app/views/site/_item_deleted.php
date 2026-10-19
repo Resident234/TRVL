@@ -18,6 +18,8 @@ $isSent = $record->telegramId !== null;
      data-title="<?= Html::encode($record->title) ?>"
      data-source-type="deleted" data-source-id="<?= $record->id ?>"
      data-published-at-utc="<?= Html::encode($record->publishedAt ?? '') ?>"
+     data-part-group-id="<?= Html::encode($record->partGroupId ?? '') ?>"
+     data-habitat="deleted"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
     <div class="d-flex align-items-center gap-2 mb-1">
         <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="Редактировать">
@@ -38,6 +40,7 @@ $isSent = $record->telegramId !== null;
         'Обновлено' => $record->updatedAt,
         'Удалено' => $record->deletedAt,
     ]) ?>
+    <?= PublicationsUi::partBadge($record) ?>
     <span class="badge <?= $record->deletedAt === null ? 'bg-danger' : 'bg-dark' ?> mt-2">
         <?= $record->deletedAt === null ? 'Удалено' : 'Удалено из канала' ?>
     </span>

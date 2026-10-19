@@ -38,6 +38,10 @@ final readonly class PublicationData
      *        group stays out of the queue until it is released, one after another
      * @param bool $partReleasable whether a part still waiting may be released now,
      *        which is true once its previous part has reached the channel
+     * @param int|null $partGroupTotal how many parts of the group the record has
+     *        alive in any of the three tables, which is what its row badges
+     * @param string|null $habitat where the record lives, as the group read names
+     *        it: 'channel', 'post', 'draft' or 'deleted'
      */
     public function __construct(
         public int $id,
@@ -55,7 +59,82 @@ final readonly class PublicationData
         public ?int $partOrder = null,
         public bool $partReleased = true,
         public bool $partReleasable = false,
+        public ?int $partGroupTotal = null,
+        public ?string $habitat = null,
     ) {
+    }
+
+    /**
+     * The record as it goes into another of the three tables: the content it is
+     * given there and the time it is sent at, while its id, the moment it was
+     * written, the group it belongs to, its place in that group and the state of
+     * the queue stay its own. Moving between the blocks never stops a row from
+     * being the same part of the same publication.
+     *
+     * @param string[] $imageUrls
+     */
+    public function movedTo(
+        string $text,
+        array $imageUrls,
+        ?int $telegramId,
+        ?string $publishedAt,
+        MessageEntities $formatting,
+        LinkButtons $buttons,
+        string $title,
+    ): PublicationData {
+        return new PublicationData(
+            $this->id,
+            $text,
+            $imageUrls,
+            $telegramId,
+            $publishedAt,
+            $this->createdAt,
+            $this->updatedAt,
+            null,
+            $formatting,
+            $buttons,
+            $title,
+            $this->partGroupId,
+            $this->partOrder,
+            $this->partReleased,
+        );
+    }
+
+    /**
+     * The record at another place of its group: the part it is stays the same
+     * part of the same publication, only its rank among them follows the form,
+     * which is where the two arrows of a part put it. A record that belongs to
+     * no group has no place to be moved to and stays as it is.
+     *
+     * A record carried into the block that holds the queue also takes the queue
+     * flag of the place it is given: outside that block a row keeps its own flag,
+     * and only the parts standing above it say whether the queue may take it.
+     */
+    public function standsAt(int $partOrder, ?bool $released = null): PublicationData
+    {
+        if ($this->partGroupId === null) {
+            return $this;
+        }
+
+        return new PublicationData(
+            $this->id,
+            $this->text,
+            $this->imageUrls,
+            $this->telegramId,
+            $this->publishedAt,
+            $this->createdAt,
+            $this->updatedAt,
+            $this->deletedAt,
+            $this->formatting,
+            $this->buttons,
+            $this->title,
+            $this->partGroupId,
+            $partOrder,
+            $released ?? $this->partReleased,
+            $this->partReleasable,
+            $this->partGroupTotal,
+            $this->habitat,
+        );
     }
 
     /**

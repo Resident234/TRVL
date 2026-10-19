@@ -10,6 +10,7 @@ use app\models\LoginForm;
 use app\shared\Forum\Contract\ForumRepositoryInterface;
 use app\shared\Forum\Service\ParserSettingsService;
 use app\shared\Publications\Dto\ForumPublicationRef;
+use app\shared\Publications\Dto\PublicationData;
 use app\shared\Publications\Service\PublicationsService;
 use app\shared\Settings\Service\PublicationSettingsService;
 use app\shared\Telegram\Dto\LinkButtons;
@@ -142,6 +143,7 @@ class SiteController extends Controller
                     'album-rows-save' => ['post'],
                     'parts-publication-save' => ['post'],
                     'publication-part-schedule' => ['post'],
+                    'publication-part-group' => ['post'],
                     'forum-text-order-save' => ['post'],
                     'forum-viewed' => ['post'],
                     'forum-post-page' => ['post'],
@@ -1362,9 +1364,33 @@ class SiteController extends Controller
                     ? 'Черновик сохранён.'
                     : 'Публикация сохранена и будет отправлена в канал в заданное время.');
             } else {
+                if (preg_match('/^[a-f0-9]{32}$/', $partGroupId) === 1) {
+                    // The form was opened on a part of a group and holds all of
+                    // them: each goes back to the row it was taken out of.
+                    $this->publications->saveGroupFromForm(
+                        $texts,
+                        $imageGroups,
+                        $formats,
+                        $buttons,
+                        $titles,
+                        $this->publicationSlotsFromRequest(count($texts)),
+                        array_values($partTimes),
+                        $publishedAt,
+                        $action,
+                        $partGroupId,
+                        $userTz ?: null,
+                    );
+                    Yii::$app->session->setFlash('success', 'Изменения сохранены.');
+
+                    $ok = true;
+
+                    return $this->finishPublicationsRequest($ok);
+                }
+
                 if (count($texts) > 1) {
                     throw new InvalidArgumentException(
-                        'Разбитую на части публикацию можно сохранить только как новую запись.',
+                        'В форме несколько частей, а открытая запись их не имеет: сохраните эту публикацию '
+                        . 'одним полем текста или отправьте её как новую запись.',
                     );
                 }
 
@@ -1478,6 +1504,33 @@ class SiteController extends Controller
         }
 
         return $titles;
+    }
+
+    /**
+     * The row every part of the form goes back to. Each text block of the form
+     * carries, in a hidden field of its own, the block and the id of the record
+     * it was loaded with, so a save rewrites that very row rather than making a
+     * copy of it. A part the reader wrote himself — and one a cut gave birth to —
+     * brings nothing here and is written as a new row of the group.
+     *
+     * @return array<int, array{id: int|null, source: string}>
+     */
+    private function publicationSlotsFromRequest(int $parts): array
+    {
+        $raw = $this->request->post('publicationPartSlot', '');
+        $fields = is_array($raw) ? array_values($raw) : [$raw];
+
+        $slots = [];
+        for ($index = 0; $index < $parts; $index++) {
+            $held = isset($fields[$index]) ? json_decode((string)$fields[$index], true) : null;
+            $id = is_array($held) && isset($held['id']) ? (int)$held['id'] : null;
+            $slots[] = [
+                'id' => $id,
+                'source' => is_array($held) && isset($held['source']) ? (string)$held['source'] : '',
+            ];
+        }
+
+        return $slots;
     }
 
     /**
@@ -1858,6 +1911,57 @@ class SiteController extends Controller
         }
 
         return $this->finishPublicationsRequest($ok);
+    }
+
+    /**
+     * Answers what the form has to load when a part of a stored group is opened
+     * for editing: every part of that group which still lives in the publications
+     * and the drafts blocks, and of the deleted block only the row the reader
+     * clicked. Each part comes with the block it came out of, so the form can
+     * say where every one of them lives and send each one back there.
+     *
+     * @return Response
+     */
+    public function actionPublicationPartGroup(): Response
+    {
+        $groupId = trim((string)$this->request->post('publicationPartGroupId', ''));
+        $source = (string)$this->request->post('publicationSource', '');
+        $sourceId = (int)$this->request->post('publicationId', 0);
+
+        if (preg_match('/^[a-f0-9]{32}$/', $groupId) !== 1) {
+            return $this->asJson(['ok' => false, 'error' => 'Группа частей не названа.']);
+        }
+
+        $rows = $this->publications->formRowsOfGroup($groupId, $source, $sourceId);
+
+        return $this->asJson([
+            'ok' => true,
+            'parts' => array_map([$this, 'partFormPayload'], $rows),
+        ]);
+    }
+
+    /**
+     * One row of a group as the form reads it. `source` is the block the row is
+     * moved back to, `habitat` is what its badge says, and the album, the
+     * highlighting and the keyboard come in the same shapes the list rows of
+     * that block already carry in their own attributes.
+     */
+    private function partFormPayload(PublicationData $row): array
+    {
+        $habitat = (string)$row->habitat;
+
+        return [
+            'id' => $row->id,
+            'source' => $habitat === 'draft' || $habitat === 'deleted' ? $habitat : 'post',
+            'habitat' => $habitat,
+            'order' => (int)$row->partOrder,
+            'text' => $row->text,
+            'title' => $row->title,
+            'images' => implode("\n", $row->imageUrls),
+            'formatting' => $row->formatting->toJson(),
+            'buttons' => $row->buttons->toJson(),
+            'publishedAt' => (string)($row->publishedAt ?? ''),
+        ];
     }
 
     /**

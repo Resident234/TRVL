@@ -117,6 +117,35 @@ final class PublicationsService
     }
 
     /**
+     * The parts a form takes when one of them is opened for editing: the whole
+     * publication as it still lives in the publications and the drafts blocks,
+     * in the order of its parts. The deleted block keeps its parts out of the
+     * form — a row is only brought back one at a time, so of that block the
+     * form takes the very row the reader clicked and leaves its neighbours
+     * where they lie.
+     *
+     * @return PublicationData[]
+     */
+    public function formRowsOfGroup(string $groupId, string $source, int $sourceId): array
+    {
+        $rows = [];
+
+        foreach ($this->publications->findGroupRows($groupId) as $row) {
+            if ($row->habitat !== 'deleted') {
+                $rows[] = $row;
+
+                continue;
+            }
+
+            if ($source === 'deleted' && $row->id === $sourceId) {
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * Saves the form data as a draft. When the form was filled from a
      * forum topic or post, a map row with an empty telegram_id is
      * inserted and the "forum entity - publication" link is remembered
@@ -201,9 +230,11 @@ final class PublicationsService
      * queue — the rest wait there until each is released in its turn. $partTimes
      * is then the time every part was given in its own field, in the order of the
      * parts, and a part whose field came back empty takes the offset of the
-     * settings as the plain sequence does. $partGroupId is the group the form made
-     * up for this publication; without it, or when a group of that id already
-     * stands in the records, nothing is saved over it.
+     * settings as the plain sequence does. Several parts are one publication
+     * wherever they are saved from, so a draft and a plain sequence carry the
+     * group too; $partGroupId is the id the form made up for it, and a form that
+     * brings none gets one here. When the records already hold a group of that
+     * id, nothing is saved over it — the form is stale and says so.
      *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
@@ -271,6 +302,15 @@ final class PublicationsService
 
         $now = $this->now();
 
+        // Several parts are one publication wherever they go out from, so the
+        // group is written for a draft and for a plain sequence too. The id the
+        // form carries is kept — a second save of the same form must not write a
+        // second copy over the parts it already stored.
+        $groupId = preg_match('/^[a-f0-9]{32}$/', $partGroupId) === 1 ? $partGroupId : bin2hex(random_bytes(16));
+        if ($this->publications->groupExists($groupId)) {
+            throw new InvalidArgumentException('Эта группа частей уже сохранена. Обновите форму и отправьте ещё раз.');
+        }
+
         if ($action === 'draft') {
             $rows = [];
             foreach ($parts as $index => $text) {
@@ -283,7 +323,7 @@ final class PublicationsService
                 ];
             }
 
-            $this->bindForumRef($this->publications->createDrafts($rows, $now), $forumRef);
+            $this->bindForumRef($this->publications->createDrafts($rows, $now, $groupId), $forumRef);
 
             return;
         }
@@ -307,15 +347,9 @@ final class PublicationsService
             ];
         }
 
-        if ($individualParts) {
-            $groupId = preg_match('/^[a-f0-9]{32}$/', $partGroupId) === 1 ? $partGroupId : bin2hex(random_bytes(16));
-            if ($this->publications->groupExists($groupId)) {
-                throw new InvalidArgumentException('Эта группа частей уже сохранена. Обновите форму и отправьте ещё раз.');
-            }
-            $firstId = $this->publications->createStagedGroup($rows, $groupId, $now);
-        } else {
-            $firstId = $this->publications->createPosts($rows, $now);
-        }
+        $firstId = $individualParts
+            ? $this->publications->createStagedGroup($rows, $groupId, $now)
+            : $this->publications->createPosts($rows, $now, $groupId);
         $this->bindForumRef($firstId, $forumRef);
     }
 
@@ -540,17 +574,14 @@ final class PublicationsService
         $draft = $this->publications->deleteDraft($id);
         $now = $this->now();
         $postId = $this->publications->insertPostWithHistory(
-            new PublicationData(
-                $draft->id,
+            $draft->movedTo(
                 $draft->text,
                 $draft->imageUrls,
                 null,
                 $now,
-                $draft->createdAt,
-                $draft->updatedAt,
-                formatting: $draft->formatting,
-                buttons: $draft->buttons,
-                title: $draft->title,
+                $draft->formatting,
+                $draft->buttons,
+                $draft->title,
             ),
             $now,
         );
@@ -572,17 +603,14 @@ final class PublicationsService
         $draft = $this->publications->deleteDraft($id);
         $now = $this->now();
         $postId = $this->publications->insertPostWithHistory(
-            new PublicationData(
-                $draft->id,
+            $draft->movedTo(
                 $draft->text,
                 $draft->imageUrls,
                 null,
                 $this->normalizeDate($publishedAt, $userTimezone),
-                $draft->createdAt,
-                $draft->updatedAt,
-                formatting: $draft->formatting,
-                buttons: $draft->buttons,
-                title: $draft->title,
+                $draft->formatting,
+                $draft->buttons,
+                $draft->title,
             ),
             $now,
         );
@@ -908,17 +936,14 @@ final class PublicationsService
             if ($action === 'draft') {
                 // deleted + "Сохранить": restore as a draft.
                 $draftId = $this->publications->insertDraftWithHistory(
-                    new PublicationData(
-                        $record->id,
+                    $record->movedTo(
                         $text,
                         $imageUrls,
                         null,
                         null,
-                        $record->createdAt,
-                        $record->updatedAt,
-                        formatting: $formatting,
-                        buttons: $buttons,
-                        title: $title,
+                        $formatting,
+                        $buttons,
+                        $title,
                     ),
                     $now,
                 );
@@ -929,17 +954,14 @@ final class PublicationsService
 
             // deleted + "Опубликовать": restore as a scheduled post.
             $postId = $this->publications->insertPostWithHistory(
-                new PublicationData(
-                    $record->id,
+                $record->movedTo(
                     $text,
                     $imageUrls,
                     null,
                     $this->normalizeDate($publishedAt, $userTimezone),
-                    $record->createdAt,
-                    $record->updatedAt,
-                    formatting: $formatting,
-                    buttons: $buttons,
-                    title: $title,
+                    $formatting,
+                    $buttons,
+                    $title,
                 ),
                 $now,
             );
@@ -960,17 +982,14 @@ final class PublicationsService
             // 5) draft + "Опубликовать": move to posts.
             $draft = $this->publications->deleteDraft($sourceId);
             $postId = $this->publications->insertPostWithHistory(
-                new PublicationData(
-                    $draft->id,
+                $draft->movedTo(
                     $text,
                     $imageUrls,
                     null,
                     $this->normalizeDate($publishedAt, $userTimezone),
-                    $draft->createdAt,
-                    $draft->updatedAt,
-                    formatting: $formatting,
-                    buttons: $buttons,
-                    title: $title,
+                    $formatting,
+                    $buttons,
+                    $title,
                 ),
                 $now,
             );
@@ -986,9 +1005,32 @@ final class PublicationsService
         if ($isPublished) {
             if ($action === 'publish') {
                 // 3) published post + "Опубликовать": archive to publications_edited.
-                $this->publications->archiveEdited($post, $now);
-                $this->publications->deletePost($sourceId);
-                $this->dropForumLink((int)$sourceId);
+                // The archive carries the text the form brought under the id of the
+                // message it rewrites, and the row of the publications block keeps
+                // standing there with that text too, so the block goes on showing
+                // the record as the published one it is.
+                $this->publications->archiveEdited(
+                    $post->movedTo(
+                        $text,
+                        $imageUrls,
+                        $post->telegramId,
+                        $post->publishedAt,
+                        $formatting,
+                        $buttons,
+                        $title,
+                    ),
+                    $now,
+                );
+                $this->publications->updatePost(
+                    (int)$sourceId,
+                    $text,
+                    $imageUrls,
+                    (string)$post->publishedAt,
+                    $now,
+                    $formatting,
+                    $buttons,
+                    $title,
+                );
 
                 return;
             }
@@ -1020,21 +1062,298 @@ final class PublicationsService
         // 2) scheduled post + "Сохранить": move to drafts.
         $this->publications->deletePost($sourceId);
         $draftId = $this->publications->insertDraftWithHistory(
-            new PublicationData(
-                $post->id,
+            $post->movedTo(
                 $text,
                 $imageUrls,
                 null,
                 null,
-                $post->createdAt,
-                $post->updatedAt,
-                formatting: $formatting,
-                buttons: $buttons,
-                title: $title,
+                $formatting,
+                $buttons,
+                $title,
             ),
             $now,
         );
         $this->moveForumLink((int)$sourceId, $draftId);
+    }
+
+    /**
+     * Saves a form that holds the parts of one group, each in the slot the
+     * reader opened it in. Every slot names the row of the block that part was
+     * taken out of, so the part goes back to that very row: «Сохранить» rewrites
+     * its content where it lies and leaves the block, the Telegram id and the
+     * time of the part to themselves, while «Опубликовать» reads the time of the
+     * part from its own row of the queue, carries a drafted part up into the
+     * publications block and sends a part that already reached the channel to
+     * the channel edit. A part of the deleted block is brought back by either of
+     * the two, the way it always was: drafts by «Сохранить», posts by
+     * «Опубликовать».
+     *
+     * The place of a part is the place it stands in the form, so the two arrows
+     * of a part really trade the parts of one publication, and a row the form no
+     * longer claims leaves the group for the deleted block — the block the
+     * «Удалить» button of a part gives it. A part that already rests in the
+     * deleted block was never in the form unless the reader clicked it, so the
+     * save leaves its neighbours where they lie.
+     *
+     * A part the form invented — born of a cut, or typed by the reader — has no
+     * row to go back to and is written into the block the action names. It takes
+     * the queue state of the part above it, so a new part cannot slip into the
+     * channel ahead of one that still waits there.
+     *
+     * @param string[] $texts
+     * @param array<int, string[]> $imageGroups
+     * @param MessageEntities[] $formats
+     * @param LinkButtons[] $buttons
+     * @param string[] $titles
+     * @param array<int, array{id: int|null, source: string}> $slots one slot per
+     *        part: the row it came back to and the table that holds it
+     * @param string[] $partTimes the time of the queue row of every part, empty
+     *        where the part was given none
+     * @throws InvalidArgumentException when a part carries neither text nor its own
+     *         album or is longer than the Telegram limit, when its formatting does
+     *         not fit it, when the parts and their slots do not line up, or when a
+     *         slot names a row that no longer belongs to the group
+     */
+    public function saveGroupFromForm(
+        array $texts,
+        array $imageGroups,
+        array $formats,
+        array $buttons,
+        array $titles,
+        array $slots,
+        array $partTimes,
+        string $publishedAt,
+        string $action,
+        string $groupId,
+        ?string $userTimezone = null,
+    ): void {
+        $parts = [];
+        $formatting = [];
+        $keyboard = [];
+        $headings = [];
+        foreach (array_values($texts) as $index => $text) {
+            $parts[] = trim($text);
+            $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
+            $keyboard[] = $buttons[$index] ?? LinkButtons::empty();
+            $headings[] = trim((string)($titles[$index] ?? ''));
+        }
+        $albums = array_values($imageGroups);
+
+        foreach ($parts as $index => $text) {
+            $this->assertPartValid($headings[$index], $text, $formatting[$index], $albums[$index] ?? []);
+            $keyboard[$index]->assertValid();
+        }
+
+        $places = array_values($slots);
+
+        if (count($places) !== count($parts)) {
+            throw new InvalidArgumentException(
+                'Каждая часть публикации должна вернуть своё место формы.',
+            );
+        }
+
+        $home = [];
+        foreach ($this->publications->findGroupRows($groupId) as $row) {
+            $home[$this->homeKey($row)] = $row;
+        }
+
+        $now = $this->now();
+        $firstAt = $this->normalizeDate($publishedAt, $userTimezone);
+        $offset = $this->partsOffsetMinutes();
+        $claimed = [];
+        $queueOpen = true;
+
+        foreach ($parts as $index => $text) {
+            $place = $index + 1;
+            $album = $albums[$index] ?? [];
+            $time = isset($partTimes[$index]) && trim((string)$partTimes[$index]) !== ''
+                ? $this->normalizeDate((string)$partTimes[$index], $userTimezone)
+                : $this->shiftDate($firstAt, $index * $offset);
+            $slot = $places[$index];
+
+            if ($slot['id'] === null) {
+                if ($action === 'draft') {
+                    $this->publications->createDraft(
+                        $text,
+                        $album,
+                        $now,
+                        $formatting[$index],
+                        $keyboard[$index],
+                        $headings[$index],
+                        $groupId,
+                        $place,
+                    );
+
+                    continue;
+                }
+
+                $this->publications->createPost(
+                    $text,
+                    $album,
+                    $time,
+                    $now,
+                    $formatting[$index],
+                    $keyboard[$index],
+                    $headings[$index],
+                    $groupId,
+                    $place,
+                    $queueOpen,
+                );
+
+                continue;
+            }
+
+            $key = $slot['source'] . ':' . $slot['id'];
+
+            if (!isset($home[$key])) {
+                throw new InvalidArgumentException(
+                    'Часть публикации уже перемещена. Обновите форму и отправьте ещё раз.',
+                );
+            }
+
+            $record = $home[$key];
+            $claimed[$key] = true;
+
+            if ($record->habitat === 'deleted') {
+                $restored = $this->publications->deleteDeleted((int)$record->id);
+
+                if ($action === 'draft') {
+                    $draftId = $this->publications->insertDraftWithHistory(
+                        $restored
+                            ->movedTo(
+                                $text,
+                                $album,
+                                null,
+                                null,
+                                $formatting[$index],
+                                $keyboard[$index],
+                                $headings[$index],
+                            )
+                            ->standsAt($place),
+                        $now,
+                    );
+                    $this->moveForumLink((int)$record->id, $draftId);
+
+                    continue;
+                }
+
+                $queueOpen = $queueOpen && $restored->partReleased;
+
+                // The row comes into the queue of its block from outside it, so
+                // the parts standing above it say whether the queue may take it:
+                // a part that waits behind a waiting one enters waiting too.
+                $postId = $this->publications->insertPostWithHistory(
+                    $restored
+                        ->movedTo(
+                            $text,
+                            $album,
+                            null,
+                            $time,
+                            $formatting[$index],
+                            $keyboard[$index],
+                            $headings[$index],
+                        )
+                        ->standsAt($place, $queueOpen),
+                    $now,
+                );
+                $this->moveForumLink((int)$record->id, $postId);
+            } elseif ($record->habitat === 'draft') {
+                if ($action === 'draft') {
+                    $this->publications->updateDraft(
+                        (int)$record->id,
+                        $text,
+                        $album,
+                        $now,
+                        $formatting[$index],
+                        $keyboard[$index],
+                        $headings[$index],
+                        $place,
+                    );
+
+                    continue;
+                }
+
+                $draft = $this->publications->deleteDraft((int)$record->id);
+                $queueOpen = $queueOpen && $draft->partReleased;
+                $postId = $this->publications->insertPostWithHistory(
+                    $draft
+                        ->movedTo(
+                            $text,
+                            $album,
+                            null,
+                            $time,
+                            $formatting[$index],
+                            $keyboard[$index],
+                            $headings[$index],
+                        )
+                        ->standsAt($place, $queueOpen),
+                    $now,
+                );
+                $this->moveForumLink((int)$record->id, $postId);
+            } else {
+                // The part lies in the publications block, sent or planned.
+                if ($record->telegramId !== null && $action === 'publish') {
+                    // A part that reached the channel is edited there: the archive
+                    // carries the text the form brought under the id of the message,
+                    // and the row keeps standing in the block with that text too.
+                    $this->publications->archiveEdited(
+                        $record->movedTo(
+                            $text,
+                            $album,
+                            $record->telegramId,
+                            $record->publishedAt,
+                            $formatting[$index],
+                            $keyboard[$index],
+                            $headings[$index],
+                        ),
+                        $now,
+                    );
+                }
+
+                $this->publications->updatePost(
+                    (int)$record->id,
+                    $text,
+                    $album,
+                    // «Сохранить» leaves the time of a part to itself; only
+                    // «Опубликовать» reads the queue row it was given. A part
+                    // that reached the channel has no plan left to rewrite: its
+                    // time is the moment the message went out.
+                    $action === 'publish' && $record->telegramId === null
+                        ? $time
+                        : (string)$record->publishedAt,
+                    $now,
+                    $formatting[$index],
+                    $keyboard[$index],
+                    $headings[$index],
+                    $place,
+                );
+                $queueOpen = $queueOpen && $record->partReleased;
+            }
+        }
+
+        foreach ($home as $key => $row) {
+            if (isset($claimed[$key]) || $row->habitat === 'deleted') {
+                continue;
+            }
+
+            if ($row->habitat === 'draft') {
+                $this->deleteDraft((int)$row->id);
+
+                continue;
+            }
+
+            $this->deletePost((int)$row->id);
+        }
+    }
+
+    /**
+     * The key a row of the group is looked up by in the form: the block the row
+     * lies in and its id there. A part that reached the channel is still a row of
+     * the publications block, which is where the form sends it back to.
+     */
+    private function homeKey(PublicationData $row): string
+    {
+        return ($row->habitat === 'channel' ? 'post' : (string)$row->habitat) . ':' . $row->id;
     }
 
     /**
@@ -1072,17 +1391,14 @@ final class PublicationsService
         $record = $this->publications->deleteDeleted($id);
         $now = $this->now();
         $postId = $this->publications->insertPostWithHistory(
-            new PublicationData(
-                $record->id,
+            $record->movedTo(
                 $record->text,
                 $record->imageUrls,
                 null,
                 $now,
-                $record->createdAt,
-                $record->updatedAt,
-                formatting: $record->formatting,
-                buttons: $record->buttons,
-                title: $record->title,
+                $record->formatting,
+                $record->buttons,
+                $record->title,
             ),
             $now,
         );
@@ -1104,17 +1420,14 @@ final class PublicationsService
         $record = $this->publications->deleteDeleted($id);
         $now = $this->now();
         $postId = $this->publications->insertPostWithHistory(
-            new PublicationData(
-                $record->id,
+            $record->movedTo(
                 $record->text,
                 $record->imageUrls,
                 null,
                 $this->normalizeDate($publishedAt, $userTimezone),
-                $record->createdAt,
-                $record->updatedAt,
-                formatting: $record->formatting,
-                buttons: $record->buttons,
-                title: $record->title,
+                $record->formatting,
+                $record->buttons,
+                $record->title,
             ),
             $now,
         );

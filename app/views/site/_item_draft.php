@@ -14,6 +14,8 @@ use yii\helpers\Html;
      data-button="<?= Html::encode($record->buttons->toJson()) ?>"
      data-title="<?= Html::encode($record->title) ?>"
      data-source-type="draft" data-source-id="<?= $record->id ?>"
+     data-part-group-id="<?= Html::encode($record->partGroupId ?? '') ?>"
+     data-habitat="draft"
      data-image-urls="<?= Html::encode(implode("\n", $record->imageUrls)) ?>">
     <div class="d-flex align-items-center gap-2 mb-1">
         <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="Редактировать">
@@ -32,6 +34,7 @@ use yii\helpers\Html;
         'Создано' => $record->createdAt,
         'Обновлено' => $record->updatedAt,
     ]) ?>
+    <?= PublicationsUi::partBadge($record) ?>
     <span class="badge bg-secondary mt-2">Черновик</span>
     <span class="badge bg-warning text-dark mt-2 d-none editing-badge">Редактируется</span>
 </div>

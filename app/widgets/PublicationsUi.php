@@ -140,6 +140,27 @@ final class PublicationsUi
     }
 
     /**
+     * The group a part belongs to, as its row wears it: «Часть N из M», where M
+     * is counted over the three blocks, so a group split between publications and
+     * drafts still says how many parts the publication has. A record that belongs
+     * to no group says nothing of the kind, and the last part alive of a group is
+     * a whole publication on its own — neither of them wears the badge.
+     */
+    public static function partBadge(PublicationData $record): string
+    {
+        if ($record->partGroupId === null || $record->partOrder === null) {
+            return '';
+        }
+
+        if ($record->partGroupTotal === null || $record->partGroupTotal <= 1) {
+            return '';
+        }
+
+        return '<span class="badge bg-primary-subtle text-primary mt-2">Часть '
+            . $record->partOrder . ' из ' . $record->partGroupTotal . '</span>';
+    }
+
+    /**
      * The status of a record as its row draws it. Only a message id the
      * channel gave back says «Опубликовано»: a record whose time has come
      * without one is still standing in the queue, and its time is what the

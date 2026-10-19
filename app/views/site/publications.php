@@ -931,12 +931,21 @@ CSS
                                         <input type="text" class="form-control publication-title-field mb-2"
                                                id="publicationTitleInput" name="publicationTitle"
                                                placeholder="Жирная первая строка публикации">
-                                        <?php /* The line that names the text of the part and carries the
-                                               counter of it at its right end. */ ?>
+                                        <?php /* The line that names the text of the part, says in which block
+                                               that part lives now and carries the counter of it at its right
+                                               end. The word about the block is empty for a part the reader
+                                               wrote himself and holds a pill for one the form took out of a
+                                               list. */ ?>
                                         <div class="d-flex justify-content-between align-items-baseline">
                                             <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
+                                            <span class="publication-part-habitat ms-auto me-2"></span>
                                             <small class="text-muted publication-text-count"></small>
                                         </div>
+                                        <?php /* Which row of which block this part was taken out of, so that
+                                               saving sends it back to the very same place. A part the reader
+                                               wrote himself, and one born of a cut, carry nothing here. */ ?>
+                                        <input type="hidden" class="publication-part-slot"
+                                               name="publicationPartSlot[]" value="">
                                         <?php /* The plain text of a part lives in this field: every split,
                                                     merge and counter of the page reads it, and it is what the
                                                     form submits. The editor below paints the highlighting over
@@ -1731,6 +1740,7 @@ $linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
 $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
+$partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
 // scroll waits for, how long a picture may think, which step the minutes of
@@ -1763,6 +1773,7 @@ var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
 var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
+var __PART_GROUP_URL = '{$partGroupUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
 var __CSRF_TOKEN = '{$csrfToken}';
@@ -4180,6 +4191,106 @@ jQuery(document).ready(function () {
             });
         }
 
+        // Which row of which block a part of the form was taken out of. The field
+        // of the block carries it as a json of three words — the id the row is
+        // saved under, the block it stands in and the habitat its pill names — and
+        // a part that was not taken out of anything carries an empty field, which
+        // is how a new part and a part born of a cut both come.
+        var HABITAT_BADGES = {
+            channel: { label: 'В канале', css: 'bg-success-subtle text-success' },
+            post: { label: 'Публикации', css: 'bg-info-subtle text-info' },
+            draft: { label: 'Черновики', css: 'bg-secondary-subtle text-secondary-emphasis' },
+            deleted: { label: 'Удалённые', css: 'bg-danger-subtle text-danger' }
+        };
+
+        function parseSlot(raw) {
+            var held = { id: null, source: '', habitat: '' };
+
+            if (!raw) {
+                return held;
+            }
+
+            try {
+                var stored = JSON.parse(raw);
+
+                if (stored && typeof stored === 'object') {
+                    held.id = typeof stored.id === 'number' ? stored.id : null;
+                    held.source = typeof stored.source === 'string' ? stored.source : '';
+                    held.habitat = typeof stored.habitat === 'string' ? stored.habitat : '';
+                }
+            } catch (e) {}
+
+            return held;
+        }
+
+        function readSlots() {
+            return partBlocks().map(function (block) {
+                var field = block.querySelector('.publication-part-slot');
+
+                return field && field.value ? field.value : '';
+            });
+        }
+
+        // The part a cut starts is a new row of the block its parent stands in: it
+        // wears the same pill and carries no id, because nothing of it is saved
+        // anywhere yet.
+        function childSlotOf(raw) {
+            var held = parseSlot(raw);
+
+            if (held.source === '') {
+                return '';
+            }
+
+            return JSON.stringify({ id: null, source: held.source, habitat: held.habitat });
+        }
+
+        // The pill of one block, drawn from the habitat its slot names, and the field
+        // the form submits with it. An empty slot leaves the row of the label bare —
+        // exactly the way the page looks before a record is opened.
+        function writeSlot(block, raw) {
+            var field = block.querySelector('.publication-part-slot');
+            var span = block.querySelector('.publication-part-habitat');
+            var held = parseSlot(raw);
+            var badge = HABITAT_BADGES[held.habitat];
+
+            if (field) {
+                field.value = raw || '';
+            }
+            if (!span) {
+                return;
+            }
+
+            span.textContent = '';
+
+            if (!badge) {
+                return;
+            }
+
+            var pill = document.createElement('span');
+
+            pill.className = 'badge rounded-pill fw-semibold px-3 py-1 ' + badge.css;
+            pill.textContent = badge.label;
+            span.appendChild(pill);
+        }
+
+        // The slot of the row the reader clicked: the block it stands in, the id it
+        // is saved under and the habitat its own badge has to name. A row that is
+        // not a record at all — a forum post filling a blank form — has no habitat,
+        // and the form of it carries no slot.
+        function slotOfRow(log) {
+            var habitat = log.getAttribute('data-habitat') || '';
+
+            if (habitat === '') {
+                return '';
+            }
+
+            return JSON.stringify({
+                id: parseInt(log.getAttribute('data-source-id') || '', 10) || null,
+                source: log.getAttribute('data-source-type') || '',
+                habitat: habitat
+            });
+        }
+
         // The album of a part is its own field, except for the first part: the
         // shared «Изображения публикации» textarea under the list is its album,
         // so the targets run one ahead of the part fields.
@@ -5256,6 +5367,13 @@ jQuery(document).ready(function () {
             });
         }
 
+        // Which action the reader is about to send. Only «Опубликовать» reads the
+        // queue rows of the parts, so only that button is held to their order: a
+        // group opened from the blocks carries a drafted part with a suggested slot
+        // beside a planned one of a later day, and «Сохранить» leaves both times to
+        // themselves. The click of a submit button is what names the action.
+        var partTimesEnforced = true;
+
         // The rows of the parts' own publication times appear with the switch of
         // the parts: the first of them carries the time the whole form was given,
         // every part below it one interval of the settings more than the part
@@ -5291,7 +5409,7 @@ jQuery(document).ready(function () {
                 }
 
                 var time = moment(input.value, pickerFormat, true);
-                var invalid = enabled && index > 0 && (!time.isValid()
+                var invalid = partTimesEnforced && enabled && index > 0 && (!time.isValid()
                     || (previous !== null && previous.isValid() && !time.isAfter(previous)));
                 input.setCustomValidity(invalid ? 'Время части должно быть позже времени предыдущей части.' : '');
                 input.classList.toggle('is-invalid', invalid);
@@ -5313,6 +5431,25 @@ jQuery(document).ready(function () {
                 button.removeAttribute('value');
             });
         }
+
+        // A submit button says with its own value whether the queue rows are being
+        // asked of the reader, so the order stops holding the form over the moment
+        // «Сохранить» is clicked and comes back for any other action — including a
+        // send that starts without a button at all.
+        mainPublicationAt.form.addEventListener('click', function (event) {
+            var button = event.target.closest ? event.target.closest('button[name="action"]') : null;
+
+            if (!button) {
+                return;
+            }
+
+            partTimesEnforced = button.value !== 'draft';
+            updatePartSchedules();
+        });
+
+        mainPublicationAt.form.addEventListener('submit', function () {
+            partTimesEnforced = true;
+        });
 
         // Only the last part has no neighbour below it to hand its album to; the
         // first of the boxes always has one above, which is the shared field.
@@ -5349,12 +5486,16 @@ jQuery(document).ready(function () {
         // `titles` is the heading of every part; without it a part keeps the
         // heading that was in its field, and a part that appears gets none —
         // merging two parts keeps the heading of the one that stays, since a
-        // message has one first line.
-        function setTextParts(values, groups, files, formats, titles) {
-            // The blocks that are about to be replaced carry the pickers and the
-            // headings of the parts, so both are read while the fields still exist.
+        // message has one first line. `slots` is the row every part was taken out
+        // of, and it is carried the same way: a part keeps the row it came with and
+        // a part that appears carries none, because nothing of it was saved.
+        function setTextParts(values, groups, files, formats, titles, slots) {
+            // The blocks that are about to be replaced carry the pickers, the
+            // headings and the slot of the parts, so all three are read while
+            // the fields still exist.
             var carriedFiles = files === undefined ? readFileGroups() : files;
             var carriedTitles = titles === undefined ? readTitles() : titles;
+            var carriedSlots = slots === undefined ? readSlots() : slots;
             var carriedTimes = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-at'))
                 .map(function (input) { return { value: input.value, changed: input.dataset.userChanged || '' }; });
 
@@ -5438,6 +5579,7 @@ jQuery(document).ready(function () {
                 label.textContent = values.length > 1 ? 'Часть ' + (index + 1) : 'Текст публикации';
                 block.querySelector('.publication-part-album-field').disabled = index === 0;
                 block.querySelector('.publication-part-album-files').disabled = index === 0;
+                writeSlot(block, carriedSlots[index] || '');
             });
 
             titleFields().forEach(function (field, index) {
@@ -5622,7 +5764,10 @@ jQuery(document).ready(function () {
         // `formatting` is the highlighting the record was saved with, cut up along
         // with the text the parts are made of. `title` is the heading of the
         // record, which opens the first of those parts; a forum post has none.
-        function loadText(text, formatting, title) {
+        // `slot` is the row the record was opened from: only the first of the parts
+        // stands in it, the rest are cut out of its text here and belong to no row
+        // at all yet.
+        function loadText(text, formatting, title, slot) {
             var parts = splitIntoParts(text);
             var headed = headingsFromParts(parts,
                 formatsOfParts(parts, text, formatting || []),
@@ -5632,7 +5777,8 @@ jQuery(document).ready(function () {
                 emptyGroups(parts.length),
                 emptyFileGroups(parts.length),
                 headed.formats,
-                headed.titles);
+                headed.titles,
+                [slot || '']);
         }
 
         // The buttons a record was saved with: the jsonb column of its row holds
@@ -5833,19 +5979,23 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var slots = readSlots();
 
             // The part that starts below the caret begins without pictures of its
             // own: the album stays with the text it was attached to, and so does
-            // the heading it opened with.
+            // the heading it opened with. Both halves were one saved record
+            // before the cut, so both wear its pill — and only the half that keeps
+            // the text of that row goes back to it.
             groups.splice(index + 1, 0, []);
             files.splice(index + 1, 0, []);
             titles.splice(index + 1, 0, '');
+            slots.splice(index + 1, 0, childSlotOf(slots[index]));
 
             var headed = headingsFromParts(bare.values.slice(0, index)
                 .concat([head, tail])
                 .concat(bare.values.slice(index + 1)), formats, titles);
 
-            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles);
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
 
             caretOfPart(textParts()[index + 1], 0);
         }
@@ -5987,10 +6137,14 @@ jQuery(document).ready(function () {
 
             var files = spliceImageGroups(alignGroups(readFileGroups(), bare.values.length), index);
             // The heading of the part that goes away goes with it: one message has
-            // one first line, and the part it grew into keeps its own.
+            // one first line, and the part it grew into keeps its own. The pill of
+            // the block is kept the same way — the joined text is the record that
+            // stood above, and the one below it is gone.
             var titles = readTitles();
+            var slots = readSlots();
 
             titles.splice(index + 1, 1);
+            slots.splice(index + 1, 1);
 
             var merged = joinedFormats(
                 bare.values[index],
@@ -6003,7 +6157,7 @@ jQuery(document).ready(function () {
             bare.formats[index] = merged;
             bare.values.splice(index + 1, 1);
             bare.formats.splice(index + 1, 1);
-            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles);
+            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles, slots);
 
             // The joined text does not have to fit one message, so it goes back
             // through the split when it stopped fitting.
@@ -6029,7 +6183,7 @@ jQuery(document).ready(function () {
             field.setSelectionRange(at, at);
         }
 
-        // A part traded with its neighbour: the five lists the parts are rebuilt from
+        // A part traded with its neighbour: the six lists the parts are rebuilt from
         // exchange the two places the move touches, and the rebuild does the rest —
         // it counts the numbers again, names the fields and the labels by the new
         // places, and hands the shared album of the first part over to whichever part
@@ -6048,6 +6202,7 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var slots = readSlots();
             // The caret is counted over what stands in the field, where the line of
             // the number goes before the text of the part; a caret left inside that
             // line stands at the head of the text it moves to.
@@ -6059,8 +6214,9 @@ jQuery(document).ready(function () {
             exchange(groups, index, other);
             exchange(files, index, other);
             exchange(titles, index, other);
+            exchange(slots, index, other);
 
-            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles);
+            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles, slots);
 
             // The caret marks the part that moved, now standing in its new place.
             caretOfPart(textParts()[other], at);
@@ -6277,19 +6433,22 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var slots = readSlots();
 
             if (moved.values.length === bare.values.length + 1) {
                 groups.splice(moved.index, 0, []);
                 files.splice(moved.index, 0, []);
                 titles.splice(moved.index, 0, '');
+                slots.splice(moved.index, 0, '');
             } else if (moved.values.length === bare.values.length - 1) {
                 var joined = forward ? index : index - 1;
                 groups = spliceImageGroups(groups, joined);
                 files = spliceImageGroups(files, joined);
                 titles.splice(joined + 1, 1);
+                slots.splice(joined + 1, 1);
             }
 
-            setTextParts(moved.values, asTexts(groups), files, moved.formats, titles);
+            setTextParts(moved.values, asTexts(groups), files, moved.formats, titles, slots);
 
             // The caret stays where the moved text came to rest.
             caretOfPart(textParts()[moved.index], moved.caret);
@@ -7422,6 +7581,103 @@ jQuery(document).ready(function () {
             scheduleFormEl.addEventListener('submit', populateHiddenFields);
         }
 
+        // The parts of one publication laid out in the form as the server returned
+        // them: every part brings the text, the heading, the highlighting, the
+        // album, the keyboard and the time it was saved with, together with the
+        // block it lives in now — which its own field row says with a pill. The
+        // first of them is served by the shared fields of the form, so its album
+        // goes under the list and its buttons into the shared box, exactly as the
+        // rebuild of any other part does.
+        function fillGroupParts(parts) {
+            var slots = parts.map(function (part) {
+                return JSON.stringify({ id: part.id, source: part.source, habitat: part.habitat });
+            });
+            var groups = parts.map(function (part) {
+                return parseImageUrls(part.images || '');
+            });
+            var keyboards = parts.map(function (part) {
+                return parseButtons(part.buttons);
+            });
+            var headed = headingsFromParts(
+                parts.map(function (part) { return part.text || ''; }),
+                parts.map(function (part) { return parseFormatting(part.formatting); }),
+                parts.map(function (part) { return part.title || ''; })
+            );
+
+            // Parts are individual here by the fact of standing in the lists at all,
+            // and a keyboard belongs to the part that was saved with it, not to the
+            // whole publication.
+            if (partsIndividualInput) {
+                partsIndividualInput.checked = true;
+            }
+
+            setTextParts(headed.values, asTexts(groups), emptyFileGroups(parts.length),
+                headed.formats, headed.titles, slots);
+
+            if (keyboards.some(function (list) { return list.length > 0; }) && buttonEveryPartInput) {
+                buttonEveryPartInput.checked = true;
+            }
+            writeButtons(sharedButtonBox, keyboards[0] || []);
+            buttonBoxes().forEach(function (box, index) {
+                writeButtons(box, keyboards[index + 1] || []);
+            });
+            updateButtonBoxes();
+
+            // A time a part was saved with is a time the reader gave that part, so
+            // the row of the part takes it instead of the interval the page would
+            // suggest, and says so with the flag that keeps the suggestion off it.
+            // The first part also hands its time to the field of the whole form.
+            Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-at'))
+                .forEach(function (input, index) {
+                    var at = utcToPickerValue((parts[index] || {}).publishedAt || '');
+
+                    if (at === '') {
+                        return;
+                    }
+                    input.value = at;
+                    input.dataset.userChanged = '1';
+
+                    if (index === 0) {
+                        applyPublicationSlot(at);
+                    }
+                });
+            updatePartSchedules();
+        }
+
+        // The neighbours of a clicked row, asked of the server and put into the
+        // form in the place of the one record it was filled with: a part of a
+        // group is never edited alone, the whole publication opens. The parts that
+        // were deleted beside the clicked one stay in their block — a row comes back
+        // from the deleted list one at a time.
+        function loadGroupParts(groupId) {
+            return postForJson(__PART_GROUP_URL, {
+                publicationPartGroupId: groupId,
+                publicationSource: sourceTypeInput ? sourceTypeInput.value : 'new',
+                publicationId: sourceIdInput ? sourceIdInput.value : ''
+            }).then(function (payload) {
+                if (!payload.ok || !Array.isArray(payload.parts) || payload.parts.length === 0) {
+                    // The neighbours did not come, so the form holds only the row
+                    // that was clicked. The group id goes with them: a save of this
+                    // form rewrites the one record it really carries rather than
+                    // rebuilding the whole group from a single part of it.
+                    if (partGroupIdInput) {
+                        partGroupIdInput.value = '';
+                    }
+
+                    return;
+                }
+
+                fillGroupParts(payload.parts);
+            }).catch(function (error) {
+                if (partGroupIdInput) {
+                    partGroupIdInput.value = '';
+                }
+
+                showFlash('error', 'Не удалось загрузить части публикации: '
+                    + (error && error.message ? error.message : error));
+            });
+        }
+
         var setEditing = function (log) {
             if (editingLog === log) {
                 return;
@@ -7434,7 +7690,8 @@ jQuery(document).ready(function () {
             loadText(
                 log.getAttribute('data-text') || '',
                 parseFormatting(log.getAttribute('data-formatting')),
-                log.getAttribute('data-title') || ''
+                log.getAttribute('data-title') || '',
+                slotOfRow(log)
             );
             fillImages(log.getAttribute('data-image-urls') || '');
             fillButtons(log.getAttribute('data-button'));
@@ -7452,6 +7709,22 @@ jQuery(document).ready(function () {
             if (forumTypeInput && forumIdInput) {
                 forumTypeInput.value = '';
                 forumIdInput.value = '';
+            }
+
+            // The block this row stands in holds one part of a publication that
+            // continues in the other two, so the rest of its parts are asked for
+            // and take the place of the single record the form was filled with.
+            // A row of its own wipes the group the previous row named: without
+            // this the save of a plain record would answer to the last group the
+            // reader looked at.
+            var groupId = log.getAttribute('data-part-group-id') || '';
+
+            if (partGroupIdInput) {
+                partGroupIdInput.value = groupId;
+            }
+
+            if (groupId !== '') {
+                loadGroupParts(groupId);
             }
         };
 
@@ -7514,7 +7787,7 @@ jQuery(document).ready(function () {
             // The buttons of the record come out of the form the same way the text
             // does: the shared field first, the boxes of the parts behind it.
             fillButtons('');
-            setTextParts([''], [''], [], undefined, ['']);
+            setTextParts([''], [''], [], undefined, [''], ['']);
             if (numberPartsInput) {
                 numberPartsInput.checked = false;
             }
@@ -7784,7 +8057,7 @@ jQuery(document).ready(function () {
                     var headed = headingsFromParts([heading.text].concat(parts.slice(1)),
                         [], [heading.title]);
                     setTextParts(headed.values,
-                        undefined, undefined, headed.formats, headed.titles);
+                        undefined, undefined, headed.formats, headed.titles, []);
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
                         writeImages(index, raw);
                     });
