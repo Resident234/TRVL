@@ -7992,6 +7992,11 @@ jQuery(document).ready(function () {
                 sourceTypeInput.value = 'new';
                 sourceIdInput.value = '';
             }
+            // The text a fill of the forum brings is no part of any group, and the
+            // parts of it carry no id: the group a previously clicked row named has
+            // to leave the form with that row, or «Сохранить по местам» would stay
+            // visible over these parts and write them into the stale group.
+            setPartGroupId('');
             if (forumTypeInput && forumIdInput) {
                 forumTypeInput.value = btn.getAttribute('data-forum-type') || '';
                 forumIdInput.value = btn.getAttribute('data-forum-id') || '';
@@ -8144,6 +8149,10 @@ jQuery(document).ready(function () {
                     sourceTypeInput.value = 'new';
                     sourceIdInput.value = '';
                 }
+                // Both branches of a thread fill lay forum parts into the form, and
+                // none of them is a row of a group: the group the previously clicked
+                // row named leaves with the record it was filled from.
+                setPartGroupId('');
                 if (forumTypeInput && forumIdInput) {
                     forumTypeInput.value = 'topic';
                     forumIdInput.value = topicId;
