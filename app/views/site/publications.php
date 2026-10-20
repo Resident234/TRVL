@@ -946,11 +946,13 @@ CSS
                                                placeholder="Жирная первая строка публикации">
                                         <?php /* The line that names the text of the part, says in which block
                                                that part lives now and carries the counter of it at its right
-                                               end. The word about the block is a box of its own color and a
-                                               pill for every part: a part the form took out of a list wears
-                                               that list, and one the reader wrote himself wears «Без блока».
-                                               The line stands centered, not on the baseline — a 2rem box
-                                               has no baseline of its own and would ride over the label. */ ?>
+                                               end. The word about the block is a pill of its own color with a
+                                               glyph of the same block at the left of that word, and every part
+                                               wears one: a part the form took out of a list wears that list,
+                                               and one the reader wrote himself wears «Без блока». The line
+                                               stands centered, not on the baseline — the label, the pill and
+                                               the counter are three boxes of different heights, and centering
+                                               is what keeps them level with each other. */ ?>
                                         <div class="d-flex justify-content-between align-items-center">
                                             <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
                                             <span class="publication-part-habitat d-inline-flex align-items-center ms-auto me-2"></span>
@@ -4251,43 +4253,37 @@ jQuery(document).ready(function () {
         // is how a new part and a part born of a cut both come. A part a fill of
         // the forum brought carries the forum as its habitat and no id: the save
         // still writes it as a new row, the marker only says where the reader took
-        // its text from. Every habitat wears its own icon in its own box, so the
-        // five differ by glyph and not by color alone.
+        // its text from. Every habitat wears its own glyph inside its own pill, so
+        // the five differ by glyph and not by color alone.
         var HABITAT_BADGES = {
             forum: {
                 label: 'Форум',
                 icon: 'bi-collection',
-                box: 'bg-info-subtle text-info-emphasis',
                 css: 'bg-info-subtle text-info-emphasis'
             },
             channel: {
                 label: 'В канале',
                 icon: 'bi-telegram',
-                box: 'bg-success-subtle text-success',
                 css: 'bg-success-subtle text-success'
             },
             post: {
                 label: 'Публикации',
                 icon: 'bi-journal-text',
-                box: 'bg-primary-subtle text-primary',
                 css: 'bg-primary-subtle text-primary'
             },
             draft: {
                 label: 'Черновики',
                 icon: 'bi-file-earmark-text',
-                box: 'bg-warning-subtle text-warning-emphasis',
                 css: 'bg-warning-subtle text-warning-emphasis'
             },
             deleted: {
                 label: 'Удалённые',
                 icon: 'bi-trash',
-                box: 'bg-danger-subtle text-danger',
                 css: 'bg-danger-subtle text-danger'
             },
             none: {
                 label: 'Без блока',
                 icon: 'bi-pencil',
-                box: 'bg-secondary-subtle text-secondary-emphasis',
                 css: 'bg-secondary-subtle text-secondary-emphasis'
             }
         };
@@ -4333,10 +4329,12 @@ jQuery(document).ready(function () {
             return JSON.stringify({ id: null, source: held.source, habitat: held.habitat });
         }
 
-        // The mark of one block: the box of its own color and glyph, and the word
-        // beside it. A part whose slot names no habitat at all is a part the reader
-        // wrote himself or one a cut gave birth to, and it wears «Без блока» — the
-        // row of the label is never left bare again.
+        // The mark of one block: a pill of its own color with its glyph standing at
+        // the left of the word inside it. The glyph is a child of the pill and not a
+        // box beside it, so it reads the pill's own `line-height: 1` and cannot make
+        // the mark taller than the word alone. A part whose slot names no habitat at
+        // all is a part the reader wrote himself or one a cut gave birth to, and it
+        // wears «Без блока» — the row of the label is never left bare again.
         function writeSlot(block, raw) {
             var field = block.querySelector('.publication-part-slot');
             var span = block.querySelector('.publication-part-habitat');
@@ -4352,21 +4350,16 @@ jQuery(document).ready(function () {
 
             span.textContent = '';
 
-            var box = document.createElement('span');
-
-            box.className = 'icon-box sm rounded-3 me-2 ' + badge.box;
-
-            var glyph = document.createElement('i');
-
-            glyph.className = 'bi ' + badge.icon;
-            box.appendChild(glyph);
-
             var pill = document.createElement('span');
 
             pill.className = 'badge rounded-pill fw-semibold px-3 py-1 ' + badge.css;
-            pill.textContent = badge.label;
 
-            span.appendChild(box);
+            var glyph = document.createElement('i');
+
+            glyph.className = 'bi ' + badge.icon + ' me-1';
+            pill.appendChild(glyph);
+            pill.appendChild(document.createTextNode(badge.label));
+
             span.appendChild(pill);
         }
 
