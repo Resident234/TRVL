@@ -933,17 +933,20 @@ CSS
                                                placeholder="Жирная первая строка публикации">
                                         <?php /* The line that names the text of the part, says in which block
                                                that part lives now and carries the counter of it at its right
-                                               end. The word about the block is empty for a part the reader
-                                               wrote himself and holds a pill for one the form took out of a
-                                               list. */ ?>
-                                        <div class="d-flex justify-content-between align-items-baseline">
+                                               end. The word about the block is a box of its own color and a
+                                               pill for every part: a part the form took out of a list wears
+                                               that list, and one the reader wrote himself wears «Без блока».
+                                               The line stands centered, not on the baseline — a 2rem box
+                                               has no baseline of its own and would ride over the label. */ ?>
+                                        <div class="d-flex justify-content-between align-items-center">
                                             <label for="publicationTextInput" class="form-label mb-0 publication-text-label">Текст публикации</label>
-                                            <span class="publication-part-habitat ms-auto me-2"></span>
+                                            <span class="publication-part-habitat d-inline-flex align-items-center ms-auto me-2"></span>
                                             <small class="text-muted publication-text-count"></small>
                                         </div>
                                         <?php /* Which row of which block this part was taken out of, so that
-                                               saving sends it back to the very same place. A part the reader
-                                               wrote himself, and one born of a cut, carry nothing here. */ ?>
+                                               saving sends it back to the very same place. A part a fill of the
+                                               forum brings names the forum here without an id, and a part the
+                                               reader wrote himself, and one born of a cut, carry nothing. */ ?>
                                         <input type="hidden" class="publication-part-slot"
                                                name="publicationPartSlot[]" value="">
                                         <?php /* The plain text of a part lives in this field: every split,
@@ -4205,12 +4208,48 @@ jQuery(document).ready(function () {
         // of the block carries it as a json of three words — the id the row is
         // saved under, the block it stands in and the habitat its pill names — and
         // a part that was not taken out of anything carries an empty field, which
-        // is how a new part and a part born of a cut both come.
+        // is how a new part and a part born of a cut both come. A part a fill of
+        // the forum brought carries the forum as its habitat and no id: the save
+        // still writes it as a new row, the marker only says where the reader took
+        // its text from. Every habitat wears its own icon in its own box, so the
+        // five differ by glyph and not by color alone.
         var HABITAT_BADGES = {
-            channel: { label: 'В канале', css: 'bg-success-subtle text-success' },
-            post: { label: 'Публикации', css: 'bg-info-subtle text-info' },
-            draft: { label: 'Черновики', css: 'bg-secondary-subtle text-secondary-emphasis' },
-            deleted: { label: 'Удалённые', css: 'bg-danger-subtle text-danger' }
+            forum: {
+                label: 'Форум',
+                icon: 'bi-collection',
+                box: 'bg-info-subtle text-info-emphasis',
+                css: 'bg-info-subtle text-info-emphasis'
+            },
+            channel: {
+                label: 'В канале',
+                icon: 'bi-telegram',
+                box: 'bg-success-subtle text-success',
+                css: 'bg-success-subtle text-success'
+            },
+            post: {
+                label: 'Публикации',
+                icon: 'bi-journal-text',
+                box: 'bg-primary-subtle text-primary',
+                css: 'bg-primary-subtle text-primary'
+            },
+            draft: {
+                label: 'Черновики',
+                icon: 'bi-file-earmark-text',
+                box: 'bg-warning-subtle text-warning-emphasis',
+                css: 'bg-warning-subtle text-warning-emphasis'
+            },
+            deleted: {
+                label: 'Удалённые',
+                icon: 'bi-trash',
+                box: 'bg-danger-subtle text-danger',
+                css: 'bg-danger-subtle text-danger'
+            },
+            none: {
+                label: 'Без блока',
+                icon: 'bi-pencil',
+                box: 'bg-secondary-subtle text-secondary-emphasis',
+                css: 'bg-secondary-subtle text-secondary-emphasis'
+            }
         };
 
         function parseSlot(raw) {
@@ -4254,14 +4293,15 @@ jQuery(document).ready(function () {
             return JSON.stringify({ id: null, source: held.source, habitat: held.habitat });
         }
 
-        // The pill of one block, drawn from the habitat its slot names, and the field
-        // the form submits with it. An empty slot leaves the row of the label bare —
-        // exactly the way the page looks before a record is opened.
+        // The mark of one block: the box of its own color and glyph, and the word
+        // beside it. A part whose slot names no habitat at all is a part the reader
+        // wrote himself or one a cut gave birth to, and it wears «Без блока» — the
+        // row of the label is never left bare again.
         function writeSlot(block, raw) {
             var field = block.querySelector('.publication-part-slot');
             var span = block.querySelector('.publication-part-habitat');
             var held = parseSlot(raw);
-            var badge = HABITAT_BADGES[held.habitat];
+            var badge = HABITAT_BADGES[held.habitat] || HABITAT_BADGES.none;
 
             if (field) {
                 field.value = raw || '';
@@ -4272,15 +4312,30 @@ jQuery(document).ready(function () {
 
             span.textContent = '';
 
-            if (!badge) {
-                return;
-            }
+            var box = document.createElement('span');
+
+            box.className = 'icon-box sm rounded-3 me-2 ' + badge.box;
+
+            var glyph = document.createElement('i');
+
+            glyph.className = 'bi ' + badge.icon;
+            box.appendChild(glyph);
 
             var pill = document.createElement('span');
 
             pill.className = 'badge rounded-pill fw-semibold px-3 py-1 ' + badge.css;
             pill.textContent = badge.label;
+
+            span.appendChild(box);
             span.appendChild(pill);
+        }
+
+        // The slot of a part a fill of the forum brought. It holds no id, because
+        // the text is not a row of any block yet, and names the forum as its
+        // habitat, so the marker survives a cut, an arrow and a rebuild: every one
+        // of them moves the hidden field of the part, not the picture drawn from it.
+        function forumSlot() {
+            return JSON.stringify({ id: null, source: 'forum', habitat: 'forum' });
         }
 
         // The slot of the row the reader clicked: the block it stands in, the id it
@@ -7931,7 +7986,7 @@ jQuery(document).ready(function () {
                 text = title + "\n\n" + text;
             }
             var heading = firstLineAsHeading(text);
-            loadText(heading.text, undefined, heading.title);
+            loadText(heading.text, undefined, heading.title, forumSlot());
             fillImages(btn.getAttribute('data-image-urls') || '');
             if (sourceTypeInput && sourceIdInput) {
                 sourceTypeInput.value = 'new';
@@ -8073,7 +8128,8 @@ jQuery(document).ready(function () {
                     var headed = headingsFromParts([heading.text].concat(parts.slice(1)),
                         [], [heading.title]);
                     setTextParts(headed.values,
-                        undefined, undefined, headed.formats, headed.titles, []);
+                        undefined, undefined, headed.formats, headed.titles,
+                        headed.values.map(function () { return forumSlot(); }));
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
                         writeImages(index, raw);
                     });
@@ -8081,7 +8137,7 @@ jQuery(document).ready(function () {
                     // The thread is one text here, so its pictures are one album
                     // of the first part.
                     var whole = firstLineAsHeading(threadTexts(entities).join("\n\n"));
-                    loadText(whole.text, undefined, whole.title);
+                    loadText(whole.text, undefined, whole.title, forumSlot());
                     fillImages(threadImages(entities));
                 }
                 if (sourceTypeInput && sourceIdInput) {
