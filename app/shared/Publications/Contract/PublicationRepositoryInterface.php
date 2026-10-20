@@ -260,6 +260,15 @@ interface PublicationRepositoryInterface
     public function insertDeletedWithHistory(PublicationData $record, string $now): int;
 
     /**
+     * Inserts a publications_deleted row whose only purpose is the message the
+     * channel still holds: the same columns as a soft-deleted record, an empty
+     * deleted_at, and no group — the part itself lives on in the block it moved
+     * to, and a second row claiming its place would be read back as a second
+     * part. Returns the new row id.
+     */
+    public function insertChannelDeletionTicket(PublicationData $record, string $now): int;
+
+    /**
      * @return PublicationData[] soft-deleted posts with an empty
      * deleted_at, i.e. records awaiting removal from the channel,
      * ordered from the smallest id to the biggest one

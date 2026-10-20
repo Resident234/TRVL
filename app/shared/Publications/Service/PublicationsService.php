@@ -1035,10 +1035,25 @@ final class PublicationsService
                 return;
             }
 
-            // 4) published post + "Сохранить": move to drafts.
+            // 4) published post + "Сохранить": the text the form brought goes to
+            // drafts, and the message the channel holds is owed its deletion. The
+            // draft carries no Telegram id, so nothing else could tell the channel
+            // that this record is no longer in the block.
             $this->publications->deletePost($sourceId);
-            $draftId = $this->publications->insertDraftWithHistory($post, $now);
+            $draftId = $this->publications->insertDraftWithHistory(
+                $post->movedTo(
+                    $text,
+                    $imageUrls,
+                    null,
+                    null,
+                    $formatting,
+                    $buttons,
+                    $title,
+                ),
+                $now,
+            );
             $this->moveForumLink((int)$sourceId, $draftId);
+            $this->publications->insertChannelDeletionTicket($post, $now);
 
             return;
         }
@@ -1079,14 +1094,17 @@ final class PublicationsService
     /**
      * Saves a form that holds the parts of one group, each in the slot the
      * reader opened it in. Every slot names the row of the block that part was
-     * taken out of, so the part goes back to that very row: «Сохранить» rewrites
-     * its content where it lies and leaves the block, the Telegram id and the
-     * time of the part to themselves, while «Опубликовать» reads the time of the
-     * part from its own row of the queue, carries a drafted part up into the
-     * publications block and sends a part that already reached the channel to
-     * the channel edit. A part of the deleted block is brought back by either of
-     * the two, the way it always was: drafts by «Сохранить», posts by
-     * «Опубликовать».
+     * taken out of, and the three buttons of the form answer with three rules
+     * about blocks. «Опубликовать» gathers the whole group into the publications
+     * block: it reads the time of a part from its own row of the queue, carries a
+     * drafted part up into the block and sends a part that already reached the
+     * channel to the channel edit. «Сохранить» carries the whole group into the
+     * drafts block, and a part the channel holds leaves a debt there — the row of
+     * the deleted block whose message the periodic task still has to take out.
+     * «Сохранить по местам» rewrites every part in the very row it was taken out
+     * of, leaving its block and its time to themselves, and asks the channel to
+     * edit the message of a part that has already gone out. A part of the deleted
+     * block is brought back by either of the last two as a draft.
      *
      * The place of a part is the place it stands in the form, so the two arrows
      * of a part really trade the parts of one publication, and a row the form no
@@ -1096,9 +1114,10 @@ final class PublicationsService
      * save leaves its neighbours where they lie.
      *
      * A part the form invented — born of a cut, or typed by the reader — has no
-     * row to go back to and is written into the block the action names. It takes
-     * the queue state of the part above it, so a new part cannot slip into the
-     * channel ahead of one that still waits there.
+     * row to go back to: «Опубликовать» writes it into the publications block and
+     * the other two into the drafts one. A part written into the queue takes the
+     * state of the part above it, so a new part cannot slip into the channel ahead
+     * of one that still waits there.
      *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
@@ -1172,7 +1191,10 @@ final class PublicationsService
             $slot = $places[$index];
 
             if ($slot['id'] === null) {
-                if ($action === 'draft') {
+                if ($action === 'draft' || $action === 'home') {
+                    // A part the form invented holds no place of its own: «Сохранить»
+                    // writes it where the rest of the group is going, and «Сохранить
+                    // по местам» starts it in the block a part without a place has.
                     $this->publications->createDraft(
                         $text,
                         $album,
@@ -1217,7 +1239,10 @@ final class PublicationsService
             if ($record->habitat === 'deleted') {
                 $restored = $this->publications->deleteDeleted((int)$record->id);
 
-                if ($action === 'draft') {
+                if ($action === 'draft' || $action === 'home') {
+                    // Both of the saving buttons take a deleted part back to the
+                    // drafts block, and both of them cancel the deletion the row
+                    // was still waiting for: the record is alive again.
                     $draftId = $this->publications->insertDraftWithHistory(
                         $restored
                             ->movedTo(
@@ -1258,7 +1283,9 @@ final class PublicationsService
                 );
                 $this->moveForumLink((int)$record->id, $postId);
             } elseif ($record->habitat === 'draft') {
-                if ($action === 'draft') {
+                if ($action === 'draft' || $action === 'home') {
+                    // A drafted part is already where both buttons want the group
+                    // to be, so neither of them moves it: only its content.
                     $this->publications->updateDraft(
                         (int)$record->id,
                         $text,
@@ -1290,12 +1317,40 @@ final class PublicationsService
                     $now,
                 );
                 $this->moveForumLink((int)$record->id, $postId);
+            } elseif ($action === 'draft') {
+                // «Сохранить» carries the whole group into the drafts block, so a
+                // part standing in the publications block leaves it: the text the
+                // form brought becomes the draft, and a part the channel already
+                // holds leaves a debt behind — a draft carries no id the periodic
+                // task could take the message out by.
+                $this->publications->deletePost((int)$record->id);
+
+                if ($record->telegramId !== null) {
+                    $this->publications->insertChannelDeletionTicket($record, $now);
+                }
+
+                $draftId = $this->publications->insertDraftWithHistory(
+                    $record
+                        ->movedTo(
+                            $text,
+                            $album,
+                            null,
+                            null,
+                            $formatting[$index],
+                            $keyboard[$index],
+                            $headings[$index],
+                        )
+                        ->standsAt($place),
+                    $now,
+                );
+                $this->moveForumLink((int)$record->id, $draftId);
             } else {
-                // The part lies in the publications block, sent or planned.
-                if ($record->telegramId !== null && $action === 'publish') {
-                    // A part that reached the channel is edited there: the archive
-                    // carries the text the form brought under the id of the message,
-                    // and the row keeps standing in the block with that text too.
+                // «Опубликовать» and «Сохранить по местам» both leave the part in the
+                // publications block, sent or planned, and a part that reached the
+                // channel is edited there: the archive carries the text the form
+                // brought under the id of the message, and the row keeps standing in
+                // the block with that text too.
+                if ($record->telegramId !== null) {
                     $this->publications->archiveEdited(
                         $record->movedTo(
                             $text,
@@ -1314,10 +1369,10 @@ final class PublicationsService
                     (int)$record->id,
                     $text,
                     $album,
-                    // «Сохранить» leaves the time of a part to itself; only
-                    // «Опубликовать» reads the queue row it was given. A part
-                    // that reached the channel has no plan left to rewrite: its
-                    // time is the moment the message went out.
+                    // Only «Опубликовать» reads the queue row a part was given; «Сохранить
+                    // по местам» leaves the time to the row. A part that reached the
+                    // channel has no plan left to rewrite: its time is the moment the
+                    // message went out.
                     $action === 'publish' && $record->telegramId === null
                         ? $time
                         : (string)$record->publishedAt,
@@ -1364,13 +1419,22 @@ final class PublicationsService
      * the drafts table: created_at is preserved, updated_at is set
      * to the current time (the moment of the move).
      *
+     * A post that already reached the channel leaves a debt behind: the message
+     * stays where it was sent, and only a row of the deleted block asks the
+     * periodic task to take it out. A planned post owes the channel nothing.
+     *
      * @throws InvalidArgumentException when the post does not exist
      */
     public function movePostToDraft(int $id): void
     {
         $post = $this->publications->deletePost($id);
-        $draftId = $this->publications->insertDraftWithHistory($post, $this->now());
+        $now = $this->now();
+        $draftId = $this->publications->insertDraftWithHistory($post, $now);
         $this->moveForumLink($id, $draftId);
+
+        if ($post->telegramId !== null) {
+            $this->publications->insertChannelDeletionTicket($post, $now);
+        }
     }
 
     /**

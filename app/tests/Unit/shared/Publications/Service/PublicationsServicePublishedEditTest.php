@@ -12,10 +12,12 @@ use app\shared\Telegram\Dto\MessageEntities;
 use Codeception\Test\Unit;
 
 /**
- * Editing a record that already reached the channel: the text the form brings is
- * the text the channel is told to show, and the row of the publications block
- * keeps standing there with it — the record the reader rewrote neither loses his
- * work nor leaves the block.
+ * A record that already reached the channel. «Опубликовать» is the edit of that
+ * message: the text the form brings is what the channel is told to show, and the
+ * row of the publications block keeps standing there with it. «Сохранить» takes
+ * the record back to the drafts block — with the text the form brought, and with
+ * a debt left in the deleted block, because the message the channel holds has to
+ * go out of it.
  */
 final class PublicationsServicePublishedEditTest extends Unit
 {
@@ -99,6 +101,72 @@ final class PublicationsServicePublishedEditTest extends Unit
                     );
                 },
             );
+
+        foreach (['insertDraftWithHistory', 'insertChannelDeletionTicket'] as $method) {
+            $this->_repository
+                ->method($method)
+                ->willReturnCallback(
+                    function (PublicationData $record, string $now) use ($method): int {
+                        $this->_calls[$method][] = $record;
+
+                        return 700 + count($this->asked($method));
+                    },
+                );
+        }
+    }
+
+    /**
+     * The form of a record that reached the channel, saved by «Сохранить».
+     */
+    private function saveToDrafts(): void
+    {
+        $this->service()->saveFromForm(
+            'Новый текст',
+            [],
+            new MessageEntities(),
+            new LinkButtons(),
+            '',
+            '2026-10-04 12:00:00',
+            'post',
+            5,
+            'draft',
+            'UTC',
+        );
+    }
+
+    public function testSavingAPublishedRecordIntoDraftsKeepsTheTextTheFormBrought(): void
+    {
+        $this->saveToDrafts();
+
+        $carried = $this->asked('insertDraftWithHistory');
+        $this->assertCount(1, $carried);
+        $this->assertSame(
+            'Новый текст',
+            $carried[0]->text,
+            'Taking a sent record back to drafts never drops what the reader typed.',
+        );
+        $this->assertNull($carried[0]->telegramId, 'A draft holds no message of the channel.');
+        $this->assertSame([5], $this->asked('deletePost'));
+    }
+
+    public function testSavingAPublishedRecordIntoDraftsOwesTheChannelADeletion(): void
+    {
+        $this->saveToDrafts();
+
+        $debts = $this->asked('insertChannelDeletionTicket');
+        $this->assertCount(1, $debts, 'The message the record is taken away of goes out of the channel.');
+        $this->assertSame(5658, $debts[0]->telegramId);
+        $this->assertSame('Старый текст', $debts[0]->text);
+        $this->assertSame(
+            [],
+            $this->asked('insertDeletedWithHistory'),
+            'The record itself is in the drafts block now, so the debt is not a copy of it.',
+        );
+        $this->assertSame(
+            [],
+            $this->asked('archiveEdited'),
+            'The channel is told to delete the message, not to edit it.',
+        );
     }
 
     public function testEditingAPublishedRecordArchivesTheTextTheFormBrought(): void

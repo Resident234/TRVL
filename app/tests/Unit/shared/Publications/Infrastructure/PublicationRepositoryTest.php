@@ -849,4 +849,36 @@ final class PublicationRepositoryTest extends Unit
             'The archived copy keeps the place the part held in its group.',
         );
     }
+
+    public function testADeletionTicketCarriesNoGroup(): void
+    {
+        $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+        ], 'abababababababababababababababab', '2026-09-10 10:00:00');
+
+        $this->_repository->storeTelegramId(1, 5658, '2026-09-10 21:30:00', '2026-09-10 11:00:00');
+
+        $sent = $this->_repository->findPost(1);
+        $this->assertNotNull($sent);
+        $this->_repository->insertChannelDeletionTicket($sent, '2026-09-10 13:00:00');
+
+        $tickets = Yii::$app->getDb()
+            ->createCommand(
+                'SELECT telegram_id, deleted_at, part_group_id, part_order FROM {{%publications_deleted}} ORDER BY id ASC'
+            )
+            ->queryAll();
+
+        $this->assertCount(1, $tickets);
+        $this->assertSame('5658', (string)$tickets[0]['telegram_id']);
+        $this->assertNull(
+            $tickets[0]['deleted_at'],
+            'An unstamped ticket is the message the periodic task still has to take out of the channel.',
+        );
+        $this->assertNull(
+            $tickets[0]['part_group_id'],
+            'A ticket is not a part of a group — the row the part moved to is that part now.',
+        );
+        $this->assertNull($tickets[0]['part_order']);
+    }
 }

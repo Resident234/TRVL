@@ -460,6 +460,30 @@ final class PublicationRepository implements PublicationRepositoryInterface
         ], $this->partCarriage($record)));
     }
 
+    /**
+     * The row a record leaves behind when it is taken away of the channel: the
+     * message itself, with the id the channel knows it by and an empty
+     * deleted_at, which is what makes the periodic task delete it. No group
+     * columns go in — the part lives on in the block it moved to, and a second
+     * row of the same group and place would come back into the form as a second
+     * part.
+     */
+    public function insertChannelDeletionTicket(PublicationData $record, string $now): int
+    {
+        return $this->insertReturningId('{{%publications_deleted}}', [
+            'telegram_id' => $record->telegramId,
+            'text' => $record->text,
+            'image_urls' => $record->imageUrls,
+            'formatting' => $record->formatting->toArray(),
+            'button' => $record->buttons->toArray(),
+            'title' => $record->title,
+            'published_at' => $record->publishedAt,
+            'created_at' => $record->createdAt,
+            'updated_at' => $now,
+            'deleted_at' => null,
+        ]);
+    }
+
     public function storeDeletedAt(int $id, string $deletedAt): void
     {
         $this->db

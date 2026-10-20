@@ -1330,7 +1330,8 @@ class SiteController extends Controller
         $titles = $this->publicationTitlesFromRequest(count($texts));
         $publishedAt = (string)($this->request->post('publicationAt', ''));
         $userTz = (string)($this->request->post('publicationTz', ''));
-        $action = $this->request->post('action') === 'draft' ? 'draft' : 'publish';
+        $pressed = (string)$this->request->post('action', '');
+        $action = $pressed === 'draft' || $pressed === 'home' ? $pressed : 'publish';
         $source = (string)($this->request->post('publicationSource', 'new'));
         $sourceId = $this->request->post('publicationSourceId');
         $sourceId = $sourceId === null || $sourceId === '' ? null : (int)$sourceId;
@@ -1342,6 +1343,14 @@ class SiteController extends Controller
 
         $ok = false;
         try {
+            if ($action === 'home' && preg_match('/^[a-f0-9]{32}$/', $partGroupId) !== 1) {
+                // «Сохранить по местам» is a rule about the rows a loaded group
+                // stands in: a form that holds no group has no places to keep.
+                throw new InvalidArgumentException(
+                    '«Сохранить по местам» работает только с группой частей — откройте эту публикацию целиком.',
+                );
+            }
+
             $imageGroups = $this->withUploadedImages($this->imageGroupsFromRequest());
             $imageUrls = $imageGroups[0];
 

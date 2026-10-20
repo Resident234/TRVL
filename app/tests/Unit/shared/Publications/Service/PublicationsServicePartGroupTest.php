@@ -216,6 +216,48 @@ final class PublicationsServicePartGroupTest extends Unit
         );
     }
 
+    public function testMovingASentPartToDraftsOwesTheChannelItsMessage(): void
+    {
+        $second = $this->part(2, self::SECOND, 2, true, 5658);
+
+        $this->_repository->method('deletePost')->willReturn($second);
+        $this->_repository->method('insertDraftWithHistory')->willReturn(7);
+
+        $owed = null;
+        $this->_repository
+            ->expects($this->once())
+            ->method('insertChannelDeletionTicket')
+            ->willReturnCallback(
+                static function (PublicationData $record, string $now) use (&$owed): int {
+                    $owed = $record;
+
+                    return 9;
+                },
+            );
+
+        $this->_repository
+            ->expects($this->never())
+            ->method('insertDeletedWithHistory');
+
+        $this->service()->movePostToDraft(2);
+
+        $this->assertNotNull($owed);
+        $this->assertSame(5658, $owed->telegramId, 'The message the part is taken away of goes out of the channel.');
+        $this->assertSame(self::SECOND, $owed->text);
+    }
+
+    public function testMovingAPlannedPartToDraftsOwesTheChannelNothing(): void
+    {
+        $this->_repository->method('deletePost')->willReturn($this->part(3, self::SECOND, 3, true));
+        $this->_repository->method('insertDraftWithHistory')->willReturn(8);
+
+        $this->_repository
+            ->expects($this->never())
+            ->method('insertChannelDeletionTicket');
+
+        $this->service()->movePostToDraft(3);
+    }
+
     public function testPublishingADraftPartKeepsItsGroup(): void
     {
         $first = $this->part(1, self::FIRST, 1, true);

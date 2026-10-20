@@ -1505,6 +1505,15 @@ CSS
                                 <button type="submit" name="action" value="draft" class="btn btn-outline-secondary">
                                     <i class="bi bi-save me-1"></i>Сохранить
                                 </button>
+                                <?php /* A part saved by this button stays in the block it was taken
+                                       out of, so the button only makes sense while the form carries a
+                                       group: it shows itself with the group id and goes with it. */ ?>
+                                <button type="submit" name="action" value="home"
+                                        class="btn btn-outline-primary d-none"
+                                        id="publicationSaveInPlaceBtn"
+                                        title="Обновить каждую часть там, где она лежит">
+                                    <i class="bi bi-pin-angle me-1"></i>Сохранить по местам
+                                </button>
                                 <?php /* Back to the blank state the page opens in, by hand instead of
                                        after a save. The record form taken over is dropped with it: a
                                        field left standing would write over that record. */ ?>
@@ -3235,6 +3244,7 @@ jQuery(document).ready(function () {
         var numberPartsInput = document.getElementById('publicationNumberParts');
         var partsIndividualInput = document.getElementById('publicationPartsIndividually');
         var partGroupIdInput = document.getElementById('publicationPartGroupId');
+        var saveInPlaceButton = document.getElementById('publicationSaveInPlaceBtn');
         var individualPartsInput = document.getElementById('publicationIndividualParts');
         var mainPublicationAt = document.getElementById('publicationAt');
         var mergeRowTemplate = partsBox.querySelector('.publication-merge-row').cloneNode(true);
@@ -5370,8 +5380,9 @@ jQuery(document).ready(function () {
         // Which action the reader is about to send. Only «Опубликовать» reads the
         // queue rows of the parts, so only that button is held to their order: a
         // group opened from the blocks carries a drafted part with a suggested slot
-        // beside a planned one of a later day, and «Сохранить» leaves both times to
-        // themselves. The click of a submit button is what names the action.
+        // beside a planned one of a later day, and both «Сохранить» and «Сохранить
+        // по местам» leave those times to themselves. The click of a submit button
+        // is what names the action.
         var partTimesEnforced = true;
 
         // The rows of the parts' own publication times appear with the switch of
@@ -5434,8 +5445,8 @@ jQuery(document).ready(function () {
 
         // A submit button says with its own value whether the queue rows are being
         // asked of the reader, so the order stops holding the form over the moment
-        // «Сохранить» is clicked and comes back for any other action — including a
-        // send that starts without a button at all.
+        // «Сохранить» or «Сохранить по местам» is clicked and comes back for
+        // «Опубликовать» — including a send that starts without a button at all.
         mainPublicationAt.form.addEventListener('click', function (event) {
             var button = event.target.closest ? event.target.closest('button[name="action"]') : null;
 
@@ -5443,7 +5454,7 @@ jQuery(document).ready(function () {
                 return;
             }
 
-            partTimesEnforced = button.value !== 'draft';
+            partTimesEnforced = button.value === 'publish';
             updatePartSchedules();
         });
 
@@ -7644,6 +7655,19 @@ jQuery(document).ready(function () {
             updatePartSchedules();
         }
 
+        // The group the form carries and the button that saves each part where it
+        // lies are one state: a form without a group has one record, and updating
+        // it in place would be the ordinary «Сохранить».
+        function setPartGroupId(groupId) {
+            if (partGroupIdInput) {
+                partGroupIdInput.value = groupId;
+            }
+
+            if (saveInPlaceButton) {
+                saveInPlaceButton.classList.toggle('d-none', groupId === '');
+            }
+        }
+
         // The neighbours of a clicked row, asked of the server and put into the
         // form in the place of the one record it was filled with: a part of a
         // group is never edited alone, the whole publication opens. The parts that
@@ -7660,18 +7684,14 @@ jQuery(document).ready(function () {
                     // that was clicked. The group id goes with them: a save of this
                     // form rewrites the one record it really carries rather than
                     // rebuilding the whole group from a single part of it.
-                    if (partGroupIdInput) {
-                        partGroupIdInput.value = '';
-                    }
+                    setPartGroupId('');
 
                     return;
                 }
 
                 fillGroupParts(payload.parts);
             }).catch(function (error) {
-                if (partGroupIdInput) {
-                    partGroupIdInput.value = '';
-                }
+                setPartGroupId('');
 
                 showFlash('error', 'Не удалось загрузить части публикации: '
                     + (error && error.message ? error.message : error));
@@ -7719,9 +7739,7 @@ jQuery(document).ready(function () {
             // reader looked at.
             var groupId = log.getAttribute('data-part-group-id') || '';
 
-            if (partGroupIdInput) {
-                partGroupIdInput.value = groupId;
-            }
+            setPartGroupId(groupId);
 
             if (groupId !== '') {
                 loadGroupParts(groupId);
@@ -7745,8 +7763,8 @@ jQuery(document).ready(function () {
                 individualPartsInput.value = group ? '1' : '';
                 if (group) {
                     if (!partGroupIdInput.value) {
-                        partGroupIdInput.value = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-                            .map(function (value) { return value.toString(16).padStart(2, '0'); }).join('');
+                        setPartGroupId(Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                            .map(function (value) { return value.toString(16).padStart(2, '0'); }).join(''));
                     }
                     updatePartSchedules();
                 }
@@ -7801,9 +7819,7 @@ jQuery(document).ready(function () {
                 input.value = '';
                 delete input.dataset.userChanged;
             });
-            if (partGroupIdInput) {
-                partGroupIdInput.value = '';
-            }
+            setPartGroupId('');
             if (individualPartsInput) {
                 individualPartsInput.value = '';
             }
