@@ -894,6 +894,17 @@ CSS
                                      the parts themselves, so the page keeps no class of its own to keep in
                                      step when the parts are rebuilt. */ ?>
                             <div class="publication-parts-group">
+                                <?php /* The first of the three places a new part is born: above the first
+                                         block, in every seam between two of them, and under the last one.
+                                         A list of N parts therefore always offers N + 1 of them, and the
+                                         seam row of the template below carries its own. */ ?>
+                                <div class="text-center mb-2">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm publication-add-part-btn"
+                                            data-add-part="first" title="Добавить пустую часть в начало списка">
+                                        <i class="bi bi-plus-lg me-1"></i>Добавить часть
+                                    </button>
+                                </div>
                                 <div id="publicationTextParts">
                                     <div class="mb-3 publication-text-block">
                                         <?php /* The heading of a part: an optional first line the channel
@@ -1176,13 +1187,33 @@ CSS
                                         </div>
 
                                     </div>
-                                    <!-- The row between a part and the one under it; the last part has none. -->
-                                    <div class="text-center d-none publication-merge-row">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    <!-- The row between a part and the one under it; the last part has none.
+                                         Two handles of one seam: the empty part it grows and the two parts
+                                         it joins back into one. -->
+                                    <div class="d-flex justify-content-center gap-2 d-none publication-merge-row">
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-sm publication-add-part-btn"
+                                                data-add-part="seam" title="Добавить пустую часть между этими двумя">
+                                            <i class="bi bi-plus-lg me-1"></i>Добавить часть
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-outline-secondary btn-sm publication-merge-btn"
                                                 title="Слить эту часть со следующей в одно поле">
                                             <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
                                         </button>
                                     </div>
+                                </div>
+
+                                <?php /* The last of the three places: under the bottom block, so a list of
+                                       N parts always offers N + 1 of them. The row is outside the box the
+                                       parts are rebuilt in, so the split, the merge and the moving of a
+                                       part cannot take it away with the rest of the inner HTML. */ ?>
+                                <div class="text-center mt-2">
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm publication-add-part-btn"
+                                            data-add-part="last" title="Добавить пустую часть в конец списка">
+                                        <i class="bi bi-plus-lg me-1"></i>Добавить часть
+                                    </button>
                                 </div>
 
                                 <div class="publication-parts-controls">
@@ -3238,6 +3269,10 @@ jQuery(document).ready(function () {
         if (!partsBox || !source || !sharedButtonBox) {
             return;
         }
+        // The rows that grow a new part stand in the group around the parts: the two
+        // of them that name the ends of the list are outside the box the parts are
+        // rebuilt in, so their clicks are caught one level above it.
+        var partsGroup = partsBox.closest('.publication-parts-group');
         // The first field is the template the extra parts are cloned from. It is
         // never replaced itself, so `source` stays a valid reference.
         var partTemplate = partsBox.querySelector('.publication-text-block').cloneNode(true);
@@ -6235,6 +6270,43 @@ jQuery(document).ready(function () {
             caretOfPart(textParts()[index], seam);
         }
 
+        // An empty part grown at one of the places a list of N parts offers — the
+        // head, a seam of two parts, the tail. Nothing of it is saved anywhere, so
+        // it comes without a heading, an album, picked files or a pill of its own,
+        // and the parts around it keep theirs: the six lists the rebuild reads are
+        // the ones the form already holds, and only a place is opened between them.
+        // Where a part lands decides whose album it splits from, so the two ends are
+        // not special: `0` takes the shared field of the first part, `N` stands
+        // behind the last one.
+        function addPartAt(index) {
+            var bare = bareParts();
+
+            if (index < 0 || index > bare.values.length) {
+                return;
+            }
+
+            var values = bare.values.slice();
+            var formats = bare.formats.slice();
+            var groups = alignGroups(readImageGroups(), bare.values.length);
+            var files = alignGroups(readFileGroups(), bare.values.length);
+            var titles = readTitles();
+            var slots = readSlots();
+
+            values.splice(index, 0, '');
+            formats.splice(index, 0, []);
+            groups.splice(index, 0, []);
+            files.splice(index, 0, []);
+            titles.splice(index, 0, '');
+            slots.splice(index, 0, '');
+
+            var headed = headingsFromParts(values, formats, titles);
+
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+
+            // The new part is the one the reader came to fill.
+            caretOfPart(textParts()[index], 0);
+        }
+
         // A position in the text of a part, moved into the field as the user sees
         // it: the line of the number is part of what stands there, and the caret
         // of an editor answers for the hidden field it mirrors.
@@ -7466,11 +7538,32 @@ jQuery(document).ready(function () {
         }
         // One listener for the rows of every part, including the cloned ones.
         partsBox.addEventListener('click', function (event) {
-            var row = event.target.closest('.publication-merge-row');
+            var button = event.target.closest('.publication-merge-btn');
 
-            if (row) {
-                mergeParts(mergeRows().indexOf(row));
+            if (!button) {
+                return;
             }
+
+            mergeParts(mergeRows().indexOf(button.closest('.publication-merge-row')));
+        });
+        // A row of the group grows an empty part where it stands: above the first
+        // block, below the last one, and in the seam of every two of them. The two
+        // rows of the ends are drawn once in the markup, so the listener goes on the
+        // group that holds them together with the box the seams are rebuilt in.
+        partsGroup.addEventListener('click', function (event) {
+            var button = event.target.closest('.publication-add-part-btn');
+
+            if (!button) {
+                return;
+            }
+
+            if (button.getAttribute('data-add-part') === 'seam') {
+                addPartAt(mergeRows().indexOf(button.closest('.publication-merge-row')) + 1);
+
+                return;
+            }
+
+            addPartAt(button.getAttribute('data-add-part') === 'first' ? 0 : partBlocks().length);
         });
         // The album buttons of every part, the cloned ones included.
         partsBox.addEventListener('click', function (event) {
