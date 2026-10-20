@@ -391,6 +391,18 @@ $this->registerCss(
     margin: -.25rem 0 .75rem;
 }
 
+/* The two arrows of a part trade it with a neighbour, so a text that was never cut has
+   nothing to trade and the box holding them is not drawn while the parts box keeps a
+   single block. The question is the one the frames of the parts and the green line of
+   the group already ask — `:has()` over two blocks with a merge row between them — so a
+   split, a merge, a rebuild and the cloning of a part move the arrows with the number of
+   blocks left behind, and the script of the page keeps no class of its own to refresh.
+   Only the drawing is answered here: which of the two arrows stands out of reach is what
+   the rebuild says by disabling it, and that rule is untouched. */
+#publicationTextParts:not(:has(> .publication-text-block + .publication-merge-row + .publication-text-block)) .publication-part-moves {
+    display: none;
+}
+
 /* The controls of the split — the row that splits, the numbering, the distribution of
    images — stand in a green box of their own, and only one green line is drawn at a
    time. While the text is one part the line goes round the controls alone: the title and
@@ -919,12 +931,13 @@ CSS
                                                 the numbers, names the fields and hands over the shared album
                                                 by the new places. An arrow stands out of reach exactly when
                                                 the part it trades with is missing, so the first of them
-                                                cannot climb and the last cannot fall; both start there, as a
-                                                form of one field has no part to trade with until the rebuild
-                                                of a split enables them. */ ?>
+                                                cannot climb and the last cannot fall. While the text is one
+                                                block the two are not drawn at all — the box of arrows gives
+                                                up to the same `:has()` the frames of the parts are drawn by —
+                                                and the first split brings them in. */ ?>
                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                             <label class="form-label mb-0 publication-title-label" for="publicationTitleInput">Заголовок</label>
-                                            <div class="d-flex align-items-center gap-1">
+                                            <div class="d-flex align-items-center gap-1 publication-part-moves">
                                                 <button type="button" disabled
                                                         class="btn btn-outline-secondary btn-icon publication-part-up"
                                                         data-move-part="-1"
