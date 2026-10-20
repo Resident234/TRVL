@@ -897,10 +897,12 @@ CSS
                                 <?php /* The first of the three places a new part is born: above the first
                                          block, in every seam between two of them, and under the last one.
                                          A list of N parts therefore always offers N + 1 of them, and the
-                                         seam row of the template below carries its own. */ ?>
-                                <div class="text-center mb-2">
+                                         seam row of the template below carries its own. The row stands at
+                                         the right end of the group, and its button wears the green the
+                                         parts are wrapped in — the colour of a control of the split. */ ?>
+                                <div class="text-end mb-2">
                                     <button type="button"
-                                            class="btn btn-outline-secondary btn-sm publication-add-part-btn"
+                                            class="btn btn-outline-success btn-sm publication-add-part-btn"
                                             data-add-part="first" title="Добавить пустую часть в начало списка">
                                         <i class="bi bi-plus-lg me-1"></i>Добавить часть
                                     </button>
@@ -1190,9 +1192,9 @@ CSS
                                     <!-- The row between a part and the one under it; the last part has none.
                                          Two handles of one seam: the empty part it grows and the two parts
                                          it joins back into one. -->
-                                    <div class="d-flex justify-content-center gap-2 d-none publication-merge-row">
+                                    <div class="d-flex justify-content-end gap-2 d-none publication-merge-row">
                                         <button type="button"
-                                                class="btn btn-outline-secondary btn-sm publication-add-part-btn"
+                                                class="btn btn-outline-success btn-sm publication-add-part-btn"
                                                 data-add-part="seam" title="Добавить пустую часть между этими двумя">
                                             <i class="bi bi-plus-lg me-1"></i>Добавить часть
                                         </button>
@@ -1207,10 +1209,13 @@ CSS
                                 <?php /* The last of the three places: under the bottom block, so a list of
                                        N parts always offers N + 1 of them. The row is outside the box the
                                        parts are rebuilt in, so the split, the merge and the moving of a
-                                       part cannot take it away with the rest of the inner HTML. */ ?>
-                                <div class="text-center mt-2">
+                                       part cannot take it away with the rest of the inner HTML. The room
+                                       under it is its own: the box it stands before — the controls of the
+                                       split — draws a green line, and a row with no margin of its own
+                                       presses its button onto that line. */ ?>
+                                <div class="text-end mt-2 mb-2">
                                     <button type="button"
-                                            class="btn btn-outline-secondary btn-sm publication-add-part-btn"
+                                            class="btn btn-outline-success btn-sm publication-add-part-btn"
                                             data-add-part="last" title="Добавить пустую часть в конец списка">
                                         <i class="bi bi-plus-lg me-1"></i>Добавить часть
                                     </button>
@@ -1219,19 +1224,19 @@ CSS
                                 <div class="publication-parts-controls">
                                     <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
                                     <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="paragraphs"
+                                        <button type="button" class="btn btn-outline-success btn-sm" data-split-whole="paragraphs"
                                                 title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
                                             <i class="bi bi-paragraph me-1"></i>По абзацам
                                         </button>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="lines"
+                                        <button type="button" class="btn btn-outline-success btn-sm" data-split-whole="lines"
                                                 title="Разбить весь текст по переносам строк: каждая строка становится частью">
                                             <i class="bi bi-list-nested me-1"></i>По строкам
                                         </button>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" data-split-whole="sentences"
+                                        <button type="button" class="btn btn-outline-success btn-sm" data-split-whole="sentences"
                                                 title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
                                             <i class="bi bi-chat-left-text me-1"></i>По предложениям
                                         </button>
-                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="publicationSplitPart"
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="publicationSplitPart"
                                                 title="Разделить часть по курсору, а без курсора — примерно посередине">
                                             <i class="bi bi-scissors me-1"></i>Разделить
                                         </button>
