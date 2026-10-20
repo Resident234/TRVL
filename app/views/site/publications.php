@@ -1214,7 +1214,7 @@ CSS
                                             <i class="bi bi-plus-lg me-1"></i>Добавить часть
                                         </button>
                                         <button type="button"
-                                                class="btn btn-outline-secondary btn-sm publication-merge-btn"
+                                                class="btn btn-outline-success btn-sm publication-merge-btn"
                                                 title="Слить эту часть со следующей в одно поле">
                                             <i class="bi bi-arrows-collapse-vertical me-1"></i>Объединить
                                         </button>
