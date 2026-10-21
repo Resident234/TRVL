@@ -406,6 +406,22 @@ $this->registerCss(
     display: none;
 }
 
+/* The three handles are a separate operation on a single part, and the person asked on
+   2026-10-21 that they wait for «Публиковать части отдельно» the way the queue row of a
+   part already does: «Кнопки у каждой части "Сохранить", "Удалитть" "Очистить" должны быть
+   при активированном чебоксе, сейчас оон влияет только на кнопку публикации, теперь он
+   будет управлять в принципе всеми отдельными операциями на отдельной части». The arrows
+   are not such an operation — exchanging two parts belongs to the split, and a reader who
+   never threw the switch still has to be able to lay the text out — so this second gate
+   names the handles alone. Both rules only hide, so the row stands while neither of them
+   fires. The class is written by `updatePartSchedules()`, which is the drawing the switch
+   calls and every rebuild of the parts walks, and the server never renders it: a page whose
+   script has not run holds the handles away, which is the state a switch thrown off leaves
+   them in anyway. */
+#publicationTextParts:not(.publication-parts-individual) .publication-part-actions {
+    display: none;
+}
+
 /* The controls of the split — the row that splits, the numbering, the distribution of
    images — stand in a green box of their own, and only one green line is drawn at a
    time. While the text is one part the line goes round the controls alone: the title and
@@ -5575,6 +5591,9 @@ jQuery(document).ready(function () {
         function updatePartSchedules() {
             var rows = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-schedule'));
             var enabled = partsIndividualInput.checked && textParts().length > 1;
+            // The switch alone, not the count beside it: how far the text is really cut is
+            // what the rule of the merge rows answers, and the two answers add up to nothing.
+            partsBox.classList.toggle('publication-parts-individual', partsIndividualInput.checked);
             var base = moment(mainPublicationAt.value, pickerFormat, true);
             var previous = null;
 
