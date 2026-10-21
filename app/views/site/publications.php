@@ -401,9 +401,15 @@ $this->registerCss(
    cloning of a part move the arrows and the three handles with the number of blocks left
    behind, and the script of the page keeps no class of its own to refresh.
    Only the drawing is answered here: which of the two arrows stands out of reach is what
-   the rebuild says by disabling it, and that rule is untouched. */
+   the rebuild says by disabling it, and that rule is untouched.
+   The `!important` is not a mannerism: the theme ships its display utilities important —
+   `main.min.css` carries `.d-flex{display:flex!important}` — and both rows are drawn by that
+   very class. Importance outranks specificity, so a plain `display: none` loses to it even
+   from a selector that opens on an id: the rule matches the row, the browser agrees it
+   matches, and the row keeps standing. The hiding has to answer the utility on its own
+   terms, which is the one thing a served sheet cannot show and a live page shows at once. */
 #publicationTextParts:not(:has(> .publication-text-block + .publication-merge-row + .publication-text-block)) :is(.publication-part-moves, .publication-part-actions) {
-    display: none;
+    display: none !important;
 }
 
 /* The three handles are a separate operation on a single part, and the person asked on
@@ -422,9 +428,11 @@ $this->registerCss(
    The class is written by `updatePartSchedules()`, which is the drawing the switch calls
    and every rebuild of the parts walks, and the server never renders it: a page whose
    script has not run holds the handles away, which is the state a switch thrown off leaves
-   them in anyway. */
+   them in anyway. The declaration is important for the reason the rule above gives: the row
+   of handles is drawn by `d-flex`, and a utility of the theme that stands important is not
+   moved by a plain one. */
 #publicationTextParts:not(.publication-parts-individual) .publication-part-actions {
-    display: none;
+    display: none !important;
 }
 
 /* The controls of the split — the row that splits, the numbering, the distribution of
