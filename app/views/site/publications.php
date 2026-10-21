@@ -407,15 +407,20 @@ $this->registerCss(
 }
 
 /* The three handles are a separate operation on a single part, and the person asked on
-   2026-10-21 that they wait for «Публиковать части отдельно» the way the queue row of a
-   part already does: «Кнопки у каждой части "Сохранить", "Удалитть" "Очистить" должны быть
+   2026-10-21 that they wait for the switch of the parts the way the queue row of a part
+   already does: «Кнопки у каждой части "Сохранить", "Удалитть" "Очистить" должны быть
    при активированном чебоксе, сейчас оон влияет только на кнопку публикации, теперь он
-   будет управлять в принципе всеми отдельными операциями на отдельной части». The arrows
-   are not such an operation — exchanging two parts belongs to the split, and a reader who
-   never threw the switch still has to be able to lay the text out — so this second gate
-   names the handles alone. Both rules only hide, so the row stands while neither of them
-   fires. The class is written by `updatePartSchedules()`, which is the drawing the switch
-   calls and every rebuild of the parts walks, and the server never renders it: a page whose
+   будет управлять в принципе всеми отдельными операциями на отдельной части». That same
+   day the switch took a word of that request as its name — «Работать с частями по
+   отдельности», drawn by the glyph of a seam — because by then it had more to say than the
+   sending of a part. The names the page and the session know it by stayed behind
+   (`publicationPartsIndividually`, `partsPublication`): they carry a saved preference and
+   an address. The arrows of the swap are not such an operation, and the person said so on
+   the same day — менять части местами нужно всегда, когда эти части есть, стоит тумблер или
+   нет, — so this second gate names the handles alone, and a handle shows only while both
+   gates are passed. Both rules only hide, so the row stands while neither of them fires.
+   The class is written by `updatePartSchedules()`, which is the drawing the switch calls
+   and every rebuild of the parts walks, and the server never renders it: a page whose
    script has not run holds the handles away, which is the state a switch thrown off leaves
    them in anyway. */
 #publicationTextParts:not(.publication-parts-individual) .publication-part-actions {
@@ -1321,11 +1326,11 @@ CSS
 
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Добавляет каждой части дату и отдельную кнопку постановки в очередь. Следующая часть станет доступна после фактической публикации предыдущей.">
+                                         data-bs-content="Добавляет каждой части дату и отдельную кнопку постановки в очередь, показывает у части её ручки «Сохранить», «Удалить» и «Очистить». Следующая часть станет доступна после фактической публикации предыдущей.">
                                         <input class="form-check-input" type="checkbox" role="switch" id="publicationPartsIndividually"
                                             <?= $partsPublication ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationPartsIndividually">
-                                            <i class="bi bi-send-check me-1"></i>Публиковать части отдельно
+                                            <i class="bi bi-box-seam me-1"></i>Работать с частями по отдельности
                                         </label>
                                     </div>
 
