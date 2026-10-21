@@ -1225,26 +1225,29 @@ CSS
                                                 already stands in the block it would be moved to says
                                                 so by staying off. «Очистить» is the grey of the
                                                 general «Очистить» under the form, not the red of a
-                                                deletion. The row is cloned with every part and gives
+                                                deletion. Their size and shape were asked for the same
+                                                day and come from the «Опубликовать» under the form:
+                                                the plain `btn`, not the small pill of a list row.
+                                                The row is cloned with every part and gives
                                                 up to the same `:has()` as the arrows: while the text
                                                 is one block there is no part to move out of the form.
                                                 It stands above the queue row, which the reader asked
                                                 to be the last thing a part holds. */ ?>
                                         <div class="d-flex justify-content-end gap-2 mt-2 publication-part-actions">
                                             <button type="button"
-                                                    class="btn btn-sm btn-outline-warning rounded-pill px-3"
+                                                    class="btn btn-outline-warning"
                                                     data-part-action="save"
                                                     title="Сохранить эту часть в черновики">
                                                 <i class="bi bi-file-earmark-arrow-down me-1"></i>Сохранить
                                             </button>
                                             <button type="button"
-                                                    class="btn btn-sm btn-outline-danger rounded-pill px-3"
+                                                    class="btn btn-outline-danger"
                                                     data-part-action="delete"
                                                     title="Удалить эту часть">
                                                 <i class="bi bi-trash me-1"></i>Удалить
                                             </button>
                                             <button type="button"
-                                                    class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                                    class="btn btn-outline-secondary"
                                                     data-part-action="clear"
                                                     title="Освободить поля этой части">
                                                 <i class="bi bi-x-circle me-1"></i>Очистить
