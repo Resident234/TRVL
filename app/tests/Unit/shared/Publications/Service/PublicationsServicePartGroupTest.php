@@ -258,6 +258,47 @@ final class PublicationsServicePartGroupTest extends Unit
         $this->service()->movePostToDraft(3);
     }
 
+    /**
+     * A part that changes its block changes its row with it: the id the record took
+     * in the new table is what the form has to write back into the part, or its
+     * next button would ask for a row that is already gone.
+     */
+    public function testMovingAPartToDraftsAnswersWhichDraftItBecame(): void
+    {
+        $this->_repository->method('deletePost')->willReturn($this->part(2, self::SECOND, 2, true));
+        $this->_repository->method('insertDraftWithHistory')->willReturn(21);
+
+        $this->assertSame(
+            21,
+            $this->service()->movePostToDraft(2),
+            'The form learns the id of the draft its part has become.',
+        );
+    }
+
+    public function testRestoringADeletedPartAnswersWhichDraftItBecame(): void
+    {
+        $this->_repository->method('deleteDeleted')->willReturn($this->part(4, self::SECOND, 4, true));
+        $this->_repository->method('insertDraftWithHistory')->willReturn(24);
+
+        $this->assertSame(24, $this->service()->moveDeletedToDraft(4));
+    }
+
+    public function testDeletingAPartAnswersWhichDeletedRowItBecame(): void
+    {
+        $this->_repository->method('deletePost')->willReturn($this->part(2, self::SECOND, 2, true));
+        $this->_repository->method('insertDeletedWithHistory')->willReturn(22);
+
+        $this->assertSame(22, $this->service()->deletePost(2));
+    }
+
+    public function testDeletingADraftPartAnswersWhichDeletedRowItBecame(): void
+    {
+        $this->_repository->method('deleteDraft')->willReturn($this->part(3, self::SECOND, 3, true));
+        $this->_repository->method('insertDeletedWithHistory')->willReturn(23);
+
+        $this->assertSame(23, $this->service()->deleteDraft(3));
+    }
+
     public function testPublishingADraftPartKeepsItsGroup(): void
     {
         $first = $this->part(1, self::FIRST, 1, true);

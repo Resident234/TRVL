@@ -393,13 +393,16 @@ $this->registerCss(
 
 /* The two arrows of a part trade it with a neighbour, so a text that was never cut has
    nothing to trade and the box holding them is not drawn while the parts box keeps a
-   single block. The question is the one the frames of the parts and the green line of
-   the group already ask — `:has()` over two blocks with a merge row between them — so a
-   split, a merge, a rebuild and the cloning of a part move the arrows with the number of
-   blocks left behind, and the script of the page keeps no class of its own to refresh.
+   single block. The three handles a part is saved, deleted and cleared by answer the
+   same question in the same rule: «часть» of one uncut text is no part of anything, and
+   a reader who has not cut the text has no part to move out of the form. The question is
+   the one the frames of the parts and the green line of the group already ask — `:has()`
+   over two blocks with a merge row between them — so a split, a merge, a rebuild and the
+   cloning of a part move the arrows and the three handles with the number of blocks left
+   behind, and the script of the page keeps no class of its own to refresh.
    Only the drawing is answered here: which of the two arrows stands out of reach is what
    the rebuild says by disabling it, and that rule is untouched. */
-#publicationTextParts:not(:has(> .publication-text-block + .publication-merge-row + .publication-text-block)) .publication-part-moves {
+#publicationTextParts:not(:has(> .publication-text-block + .publication-merge-row + .publication-text-block)) :is(.publication-part-moves, .publication-part-actions) {
     display: none;
 }
 
@@ -1183,6 +1186,41 @@ CSS
                                                 <i class="bi bi-plus-lg"></i>
                                             </button>
                                         </div>
+                                        <?php /* The three handles of one part. «Сохранить»
+                                                carries the part into the drafts block, «Удалить»
+                                                into the deleted one, «Очистить» leaves the part in
+                                                the form and frees its fields for the reader to fill
+                                                again. The two that move a part wear the colors and
+                                                the glyphs the same action wears on a row of a list,
+                                                because the logic is the very same one: a part that
+                                                already stands in the block it would be moved to says
+                                                so by staying off. «Очистить» is the grey of the
+                                                general «Очистить» under the form, not the red of a
+                                                deletion. The row is cloned with every part and gives
+                                                up to the same `:has()` as the arrows: while the text
+                                                is one block there is no part to move out of the form.
+                                                It stands above the queue row, which the reader asked
+                                                to be the last thing a part holds. */ ?>
+                                        <div class="d-flex justify-content-end gap-2 mt-2 publication-part-actions">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-warning rounded-pill px-3"
+                                                    data-part-action="save"
+                                                    title="Сохранить эту часть в черновики">
+                                                <i class="bi bi-file-earmark-arrow-down me-1"></i>Сохранить
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-danger rounded-pill px-3"
+                                                    data-part-action="delete"
+                                                    title="Удалить эту часть">
+                                                <i class="bi bi-trash me-1"></i>Удалить
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                                    data-part-action="clear"
+                                                    title="Освободить поля этой части">
+                                                <i class="bi bi-x-circle me-1"></i>Очистить
+                                            </button>
+                                        </div>
                                         <?php /* Every part of a split carries its own time and its own
                                                 «Опубликовать». Only the first of them is a live button: it is
                                                 the submit of the form, which saves all the parts and releases
@@ -1804,6 +1842,11 @@ $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
+// The three addresses a part of the form is moved by: the two the lists already post
+// to, and the one that writes the first row of a part nothing was saved under yet.
+$toDraftUrl = \yii\helpers\Url::to(['site/publication-to-draft']);
+$deleteUrl = \yii\helpers\Url::to(['site/publication-delete']);
+$partDraftUrl = \yii\helpers\Url::to(['site/publication-part-draft']);
 $blockTotals = json_encode($totals);
 // The page tunes its own behaviour through the settings storage: what the
 // scroll waits for, how long a picture may think, which step the minutes of
@@ -1837,6 +1880,9 @@ var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __PART_GROUP_URL = '{$partGroupUrl}';
+var __TO_DRAFT_URL = '{$toDraftUrl}';
+var __DELETE_URL = '{$deleteUrl}';
+var __PART_DRAFT_URL = '{$partDraftUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __CSRF_PARAM = '{$csrfParam}';
 var __CSRF_TOKEN = '{$csrfToken}';
@@ -4342,6 +4388,35 @@ jQuery(document).ready(function () {
             return JSON.stringify({ id: null, source: held.source, habitat: held.habitat });
         }
 
+        // The three handles of a part answer for the block its slot names. A part that
+        // already rests in the drafts block has nothing left to save, and one that rests
+        // in the deleted block has nothing left to delete, so the handle that would do it
+        // stands off — the same pair of rules the rows of the two blocks draw. A part with
+        // no row behind it is the third case, and its two handles say so in their own
+        // words: «Сохранить» writes its first draft, «Удалить» takes the block out of the
+        // form, because there is no record to move.
+        function updatePartActions(block, held) {
+            var save = block.querySelector('[data-part-action="save"]');
+            var remove = block.querySelector('[data-part-action="delete"]');
+
+            if (!save || !remove) {
+                return;
+            }
+
+            save.disabled = held.source === 'draft';
+            save.title = held.source === 'draft'
+                ? 'Часть уже лежит в черновиках'
+                : (held.id === null
+                    ? 'Сохранить эту часть первым черновиком'
+                    : 'Перенести эту часть в черновики');
+            remove.disabled = held.source === 'deleted';
+            remove.title = held.source === 'deleted'
+                ? 'Часть уже лежит в удалённых'
+                : (held.id === null
+                    ? 'Убрать эту часть из формы'
+                    : 'Перенести эту часть в удалённые');
+        }
+
         // The mark of one block: a pill of its own color with its glyph standing at
         // the left of the word inside it. The glyph is a child of the pill and not a
         // box beside it, so it reads the pill's own `line-height: 1` and cannot make
@@ -4353,6 +4428,8 @@ jQuery(document).ready(function () {
             var span = block.querySelector('.publication-part-habitat');
             var held = parseSlot(raw);
             var badge = HABITAT_BADGES[held.habitat] || HABITAT_BADGES.none;
+
+            updatePartActions(block, held);
 
             if (field) {
                 field.value = raw || '';
@@ -6318,6 +6395,107 @@ jQuery(document).ready(function () {
             caretOfPart(textParts()[index], 0);
         }
 
+        // A part the reader invented is freed the way it was grown: the six lists the
+        // rebuild reads give up what stands at this one place, and the part itself stays
+        // in the form to be filled again. Its slot is not touched — the row the part was
+        // taken out of is still the row a save of this part writes into, and the pill
+        // keeps naming the block it lies in. The time of a cleared part goes back to what
+        // the queue of the form counts out for its place, the way a new part takes it.
+        function clearPartAt(index) {
+            var bare = bareParts();
+            var values = bare.values.slice();
+            var formats = bare.formats.slice();
+            var groups = alignGroups(readImageGroups(), values.length);
+            var files = alignGroups(readFileGroups(), values.length);
+            var titles = readTitles();
+            var slots = readSlots();
+            var partAt = partBlocks()[index].querySelector('.publication-part-at');
+
+            values[index] = '';
+            formats[index] = [];
+            groups[index] = [];
+            files[index] = [];
+            titles[index] = '';
+
+            if (index === 0) {
+                // The keyboard of the first part is the shared field of the form, and the
+                // boxes of the parts below it are filled from that field while the
+                // «Кнопка-ссылка в каждой части» switch stands on — so the field goes empty
+                // before the rebuild, and the copies of it go empty with it.
+                fillButtons('');
+            }
+
+            if (partAt) {
+                partAt.value = '';
+                delete partAt.dataset.userChanged;
+            }
+
+            var headed = headingsFromParts(values, formats, titles);
+
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+        }
+
+        // The block of a part nothing is saved under goes out of the form the way a merged
+        // part does: the six lists lose the entry of this place, and the rebuild counts the
+        // numbers, renames the fields and hands over the shared album by the new places.
+        function removePartAt(index) {
+            var bare = bareParts();
+            var values = bare.values.slice();
+            var formats = bare.formats.slice();
+            var groups = alignGroups(readImageGroups(), values.length);
+            var files = alignGroups(readFileGroups(), values.length);
+            var titles = readTitles();
+            var slots = readSlots();
+
+            values.splice(index, 1);
+            formats.splice(index, 1);
+            groups.splice(index, 1);
+            files.splice(index, 1);
+            titles.splice(index, 1);
+            slots.splice(index, 1);
+
+            var headed = headingsFromParts(values, formats, titles);
+
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+        }
+
+        // The row a part has just taken is written back into the part: its pill names the
+        // block the row lies in now, its handles read the same slot, and the next save of
+        // the form sends the part to that very row.
+        function takePartRow(payload, block, habitat) {
+            if (!payload || !payload.ok || typeof payload.partId !== 'number') {
+                return;
+            }
+
+            writeSlot(block, JSON.stringify({ id: payload.partId, source: habitat, habitat: habitat }));
+        }
+
+        // A part that holds a row is moved by the very request a row of a list posts, so
+        // the block it lands in, the id it takes there and the debt a message already sent
+        // leaves behind are decided by the server exactly as they are for a record.
+        function movePartRow(block, url, held, habitat) {
+            postForBlocks(url, {
+                publicationId: held.id,
+                publicationSource: held.source,
+            }).then(function (payload) {
+                takePartRow(payload, block, habitat);
+            });
+        }
+
+        // A part with no row of its own is saved the way a whole form is saved: its text,
+        // heading, album and keyboard go over exactly as the reader left them, so the
+        // request carries the fields of the form and the place of this part among them.
+        // That one part reaches a row; the rest of the form waits as it waited before.
+        function savePartRow(block, index) {
+            var fields = new FormData(block.closest('form'));
+
+            fields.append('publicationPartIndex', index);
+
+            postForBlocks(__PART_DRAFT_URL, fields).then(function (payload) {
+                takePartRow(payload, block, 'draft');
+            });
+        }
+
         // A position in the text of a part, moved into the field as the user sees
         // it: the line of the number is part of what stands there, and the caret
         // of an editor answers for the hidden field it mirrors.
@@ -7599,6 +7777,50 @@ jQuery(document).ready(function () {
             }
 
             movePart(button, parseInt(button.getAttribute('data-move-part'), 10));
+        });
+        // The three handles of every part, the cloned parts included. A part with a row
+        // behind it is moved by the server, and a part with no row is answered by the form
+        // alone: its fields go empty or its block goes out, since there is no record to
+        // carry anywhere. The handle that would move a part into the block it already
+        // stands in is off, and says why in its own title.
+        partsBox.addEventListener('click', function (event) {
+            var button = event.target.closest('[data-part-action]');
+
+            if (!button) {
+                return;
+            }
+
+            var block = button.closest('.publication-text-block');
+            var index = partBlocks().indexOf(block);
+            var field = block.querySelector('.publication-part-slot');
+            var held = parseSlot(field ? field.value : '');
+            var action = button.getAttribute('data-part-action');
+
+            if (action === 'clear') {
+                clearPartAt(index);
+
+                return;
+            }
+
+            if (action === 'delete') {
+                if (held.id === null) {
+                    removePartAt(index);
+
+                    return;
+                }
+
+                movePartRow(block, __DELETE_URL, held, 'deleted');
+
+                return;
+            }
+
+            if (held.id === null) {
+                savePartRow(block, index);
+
+                return;
+            }
+
+            movePartRow(block, __TO_DRAFT_URL, held, 'draft');
         });
         if (selectionPopup) {
             // The popup is placed against the viewport, which a transformed

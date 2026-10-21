@@ -170,6 +170,59 @@ final class PublicationsService
     }
 
     /**
+     * Saves one part of the form as a draft by the «Сохранить» at its corner, while
+     * the rest of the parts stay where the reader left them. A part the form
+     * invented holds no row anywhere, so this writes its first one: it joins the
+     * group the form carries behind the parts that group already holds, and a form
+     * without a group gets a plain draft. The new id comes back, because the part
+     * has to know the row the next save of it writes into.
+     *
+     * @param string[] $imageUrls
+     * @throws InvalidArgumentException when the part carries neither text nor
+     * images, or when its formatting does not fit the text
+     */
+    public function savePartAsDraft(
+        string $text,
+        array $imageUrls,
+        MessageEntities $formatting,
+        LinkButtons $buttons,
+        string $title,
+        string $groupId,
+    ): int {
+        $text = trim($text);
+        $title = trim($title);
+        $this->assertPartValid($title, $text, $formatting, $imageUrls);
+        $buttons->assertValid();
+
+        return $this->publications->createDraft(
+            $text,
+            $imageUrls,
+            $this->now(),
+            $formatting,
+            $buttons,
+            $title,
+            $groupId,
+            $groupId === '' ? 0 : $this->nextGroupPlace($groupId),
+        );
+    }
+
+    /**
+     * The place a part added to an existing publication takes: behind the last of
+     * the parts the group holds. Every block a part can live in counts, because a
+     * part that rests in drafts or in the deleted list keeps its place of the group.
+     */
+    private function nextGroupPlace(string $groupId): int
+    {
+        $last = 0;
+
+        foreach ($this->publications->findGroupRows($groupId) as $row) {
+            $last = max($last, (int)$row->partOrder);
+        }
+
+        return $last + 1;
+    }
+
+    /**
      * Saves the form data as a scheduled (or immediately due) post.
      * When the form was filled from a forum topic or post, a map row
      * with an empty telegram_id is inserted and the
@@ -535,12 +588,15 @@ final class PublicationsService
      * from the channel (when it has one) and stamps deleted_at.
      *
      * @throws InvalidArgumentException when the post does not exist
+     * @return int id of the row the part became in the deleted table
      */
-    public function deletePost(int $id): void
+    public function deletePost(int $id): int
     {
         $post = $this->publications->deletePost($id);
         $deletedId = $this->publications->insertDeletedWithHistory($post, $this->now());
         $this->moveForumLink($id, $deletedId);
+
+        return $deletedId;
     }
 
     /**
@@ -550,12 +606,15 @@ final class PublicationsService
      * current time, deleted_at stays empty.
      *
      * @throws InvalidArgumentException when the draft does not exist
+     * @return int id of the row the part became in the deleted table
      */
-    public function deleteDraft(int $id): void
+    public function deleteDraft(int $id): int
     {
         $draft = $this->publications->deleteDraft($id);
         $deletedId = $this->publications->insertDeletedWithHistory($draft, $this->now());
         $this->moveForumLink($id, $deletedId);
+
+        return $deletedId;
     }
 
     /**
@@ -1424,8 +1483,9 @@ final class PublicationsService
      * periodic task to take it out. A planned post owes the channel nothing.
      *
      * @throws InvalidArgumentException when the post does not exist
+     * @return int id of the draft the part became
      */
-    public function movePostToDraft(int $id): void
+    public function movePostToDraft(int $id): int
     {
         $post = $this->publications->deletePost($id);
         $now = $this->now();
@@ -1435,6 +1495,8 @@ final class PublicationsService
         if ($post->telegramId !== null) {
             $this->publications->insertChannelDeletionTicket($post, $now);
         }
+
+        return $draftId;
     }
 
     /**
@@ -1509,12 +1571,15 @@ final class PublicationsService
      * move), the old telegram_id is dropped.
      *
      * @throws InvalidArgumentException when the record does not exist
+     * @return int id of the draft the part became
      */
-    public function moveDeletedToDraft(int $id): void
+    public function moveDeletedToDraft(int $id): int
     {
         $record = $this->publications->deleteDeleted($id);
         $draftId = $this->publications->insertDraftWithHistory($record, $this->now());
         $this->moveForumLink($id, $draftId);
+
+        return $draftId;
     }
 
     /**

@@ -144,6 +144,7 @@ class SiteController extends Controller
                     'parts-publication-save' => ['post'],
                     'publication-part-schedule' => ['post'],
                     'publication-part-group' => ['post'],
+                    'publication-part-draft' => ['post'],
                     'forum-text-order-save' => ['post'],
                     'forum-viewed' => ['post'],
                     'forum-post-page' => ['post'],
@@ -833,8 +834,14 @@ class SiteController extends Controller
      * caller, the regular redirect otherwise so the page keeps working
      * without JavaScript. The totals ride along because they decide how far
      * the scroll of each block may keep loading.
+     *
+     * $extra carries what only the caller that asked for it reads — the id of
+     * a row a form part has just been written under. Nothing of it reaches the
+     * redirect: a page reload reads the blocks, not the answer of one button.
+     *
+     * @param array<string, mixed> $extra
      */
-    private function finishPublicationsRequest(bool $ok): Response
+    private function finishPublicationsRequest(bool $ok, array $extra = []): Response
     {
         if (!$this->request->getIsAjax()) {
             return $this->redirect($this->publicationsUrl());
@@ -842,12 +849,12 @@ class SiteController extends Controller
 
         $data = $this->publicationsData();
 
-        return $this->asJson([
+        return $this->asJson(array_merge([
             'ok' => $ok,
             'blocks' => $this->renderPublicationBlocks($data),
             'totals' => $data['totals'],
             'flash' => $this->renderFlash(),
-        ]);
+        ], $extra));
     }
 
     /**
@@ -1974,6 +1981,60 @@ class SiteController extends Controller
     }
 
     /**
+     * Saves one part of the form as a draft by the «Сохранить» at its corner. A part
+     * the reader invented holds no row to move between the blocks, so this writes
+     * its first one and answers with the id it got: the block of the form has to
+     * know the row the next save of that part writes into. The rest of the form
+     * stands where the reader left it.
+     *
+     * @return Response
+     */
+    public function actionPublicationPartDraft(): Response
+    {
+        $texts = $this->publicationTextsFromRequest();
+        $formats = $this->publicationFormatsFromRequest(count($texts));
+        $buttons = $this->publicationButtonsFromRequest(count($texts));
+        $titles = $this->publicationTitlesFromRequest(count($texts));
+        $albums = $this->imageGroupsFromRequest();
+        $partGroupId = trim((string)$this->request->post('publicationPartGroupId', ''));
+
+        $ok = false;
+        $extra = [];
+        try {
+            $index = (int)$this->request->post('publicationPartIndex', -1);
+
+            if ($index < 0 || $index >= count($texts)) {
+                throw new InvalidArgumentException('Часть публикации не найдена в форме.');
+            }
+
+            if ($partGroupId !== '' && preg_match('/^[a-f0-9]{32}$/', $partGroupId) !== 1) {
+                throw new InvalidArgumentException('Группа частей не названа.');
+            }
+
+            // The files go through the storage for this one part: the pictures the
+            // reader picked for another part belong to no row this request writes.
+            $uploads = $this->withUploadedImages([$index => $albums[$index] ?? []]);
+
+            $draftId = $this->publications->savePartAsDraft(
+                $texts[$index],
+                $uploads[$index] ?? [],
+                $formats[$index],
+                $buttons[$index],
+                $titles[$index],
+                $partGroupId,
+            );
+
+            $extra = ['partId' => $draftId];
+            Yii::$app->session->setFlash('success', 'Часть сохранена в черновиках.');
+            $ok = true;
+        } catch (InvalidArgumentException $e) {
+            Yii::$app->session->setFlash('error', $e->getMessage());
+        }
+
+        return $this->finishPublicationsRequest($ok, $extra);
+    }
+
+    /**
      * Moves a post to drafts by the "Переместить в черновик" button:
      * the record leaves the posts table and appears in the drafts
      * table with created_at preserved and updated_at set to now.
@@ -1988,20 +2049,25 @@ class SiteController extends Controller
         $source = (string)($this->request->post('publicationSource', ''));
 
         $ok = false;
+        $extra = [];
         try {
             if ($source === 'deleted') {
-                $this->publications->moveDeletedToDraft((int)$id);
+                $movedId = $this->publications->moveDeletedToDraft((int)$id);
                 Yii::$app->session->setFlash('success', 'Удалённая запись перемещена в черновики.');
             } else {
-                $this->publications->movePostToDraft((int)$id);
+                $movedId = $this->publications->movePostToDraft((int)$id);
                 Yii::$app->session->setFlash('success', 'Публикация перемещена в черновики.');
             }
             $ok = true;
+            // The record takes a new row id in the block it moves to, and the form
+            // of a part has to know it: its next button would ask for the row that
+            // is already gone.
+            $extra = ['partId' => $movedId];
         } catch (InvalidArgumentException $e) {
             Yii::$app->session->setFlash('error', $e->getMessage());
         }
 
-        return $this->finishPublicationsRequest($ok);
+        return $this->finishPublicationsRequest($ok, $extra);
     }
 
     /**
@@ -2050,21 +2116,25 @@ class SiteController extends Controller
         $source = (string)($this->request->post('publicationSource', ''));
 
         $ok = false;
+        $extra = [];
         try {
             if ($source === 'draft') {
-                $this->publications->deleteDraft((int)$id);
+                $deletedId = $this->publications->deleteDraft((int)$id);
             } elseif ($source === 'post') {
-                $this->publications->deletePost((int)$id);
+                $deletedId = $this->publications->deletePost((int)$id);
             } else {
                 throw new InvalidArgumentException('Не указана удаляемая запись.');
             }
             Yii::$app->session->setFlash('success', 'Запись удалена.');
             $ok = true;
+            // Same as the move to drafts: the row of the deleted block is a new one,
+            // and a part of the form has to carry its id to restore itself later.
+            $extra = ['partId' => $deletedId];
         } catch (InvalidArgumentException $e) {
             Yii::$app->session->setFlash('error', $e->getMessage());
         }
 
-        return $this->finishPublicationsRequest($ok);
+        return $this->finishPublicationsRequest($ok, $extra);
     }
 
     /**
