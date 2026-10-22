@@ -7638,6 +7638,14 @@ jQuery(document).ready(function () {
                 updatePartSchedules();
             }
         });
+        // A time chosen in the calendar of a part is a time the person gave that part, but
+        // the library writes it into the field without an `input` event of its own. Without
+        // this line the flag above stays off the choice, and the next redraw of the rows —
+        // a switch thrown, a part added or merged — pours the suggested time back over it.
+        jQuery(partsBox).on('apply.daterangepicker', '.publication-part-at', function () {
+            this.dataset.userChanged = '1';
+            updatePartSchedules();
+        });
         if (distributeImagesInput) {
             distributeImagesInput.addEventListener('change', distributeImages);
         }
@@ -8636,6 +8644,12 @@ jQuery(document).ready(function () {
         // own times and buttons: a save the server refused has to leave the form
         // with the rows it was rendered with.
         watchPartsPublicationSwitch(updatePartSchedules);
+
+        // The row of the first part is the one the markup drew and the rebuild of the parts
+        // never replaces, so the picker the rows below it are given in their clone has to be
+        // put on it here. Left out, that field — the first one the person meets — stays a
+        // box to type a date in, while every part under it opens a calendar.
+        setupDateTimePicker(jQuery(partsBox.querySelector('.publication-part-at')));
 
         // The height of the forum block is the page under the sticky header, so
         // the header is measured once the lists are wired and again whenever the
