@@ -142,6 +142,7 @@ class SiteController extends Controller
                     'links-to-buttons-save' => ['post'],
                     'album-rows-save' => ['post'],
                     'parts-publication-save' => ['post'],
+                    'distribute-images-save' => ['post'],
                     'publication-part-schedule' => ['post'],
                     'publication-part-group' => ['post'],
                     'publication-part-draft' => ['post'],
@@ -305,6 +306,7 @@ class SiteController extends Controller
         $this->syncLinksToButtons();
         $this->syncAlbumRows();
         $this->syncPartsPublication();
+        $this->syncDistributeImages();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
@@ -327,7 +329,8 @@ class SiteController extends Controller
             || $this->titleFromFirstLineFromQuery($query) !== $this->titleFromFirstLine()
             || $this->linksToButtonsFromQuery($query) !== $this->linksToButtons()
             || $this->albumRowsFromQuery($query) !== $this->albumRows()
-            || $this->partsPublicationFromQuery($query) !== $this->partsPublication();
+            || $this->partsPublicationFromQuery($query) !== $this->partsPublication()
+            || $this->distributeImagesFromQuery($query) !== $this->distributeImages();
     }
 
     /**
@@ -449,6 +452,10 @@ class SiteController extends Controller
 
         if ($this->partsPublication()) {
             $url['partsPublication'] = '1';
+        }
+
+        if ($this->distributeImages()) {
+            $url['distributeImages'] = '1';
         }
 
         return $url;
@@ -802,6 +809,7 @@ class SiteController extends Controller
             'linksToButtons' => $this->linksToButtons(),
             'albumRows' => $this->albumRows(),
             'partsPublication' => $this->partsPublication(),
+            'distributeImages' => $this->distributeImages(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -1060,6 +1068,56 @@ class SiteController extends Controller
     }
 
     /**
+     * Whether the albums of the form are handed out over its parts on their own —
+     * the state of the switch of the images, kept in the session so a reload opens
+     * the form in the mode the reader left it. While it stands, the page cuts the
+     * pictures again whenever a fill of the forum brings an album or whenever the
+     * number of the parts changes; the cut itself is none of the server's business.
+     */
+    private function distributeImages(): bool
+    {
+        return $this->normalizeDistributeImages(Yii::$app->session->get('distributeImages'));
+    }
+
+    /**
+     * The state of the switch of the distribution the address of the page asks for:
+     * `?distributeImages=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function distributeImagesFromQuery(array $query): bool
+    {
+        return $this->normalizeDistributeImages($query['distributeImages'] ?? null);
+    }
+
+    /**
+     * Resolves the switch of the distribution the way the switch of the parts does:
+     * it is a session that has never held a state which adopts the parameter of the
+     * request, so reloading or following a link cannot change what the reader left.
+     */
+    private function syncDistributeImages(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('distributeImages')) {
+            return;
+        }
+
+        $session->set('distributeImages', $this->distributeImagesFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizeDistributeImages(mixed $state): bool
+    {
+        return $state === true || $state === '1';
+    }
+
+    /**
      * Stores the state of the switch of the parts and answers with the address that
      * mirrors it, exactly like the album switch does. It redraws nothing: the parts
      * live in the fields of the form, and their own buttons are put there by the
@@ -1072,6 +1130,27 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'partsPublication',
             $this->normalizePartsPublication($this->request->post('partsPublication')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the state of the switch of the distribution and answers with the
+     * address that mirrors it, exactly like the switch of the parts does. It
+     * redraws nothing: the albums it hands out are the fields of the form, and the
+     * cut is made by the script that reads the switch.
+     *
+     * @return Response
+     */
+    public function actionDistributeImagesSave(): Response
+    {
+        Yii::$app->session->set(
+            'distributeImages',
+            $this->normalizeDistributeImages($this->request->post('distributeImages')),
         );
 
         return $this->asJson([

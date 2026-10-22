@@ -156,6 +156,7 @@ $config = [
                 'links-to-buttons-save' => 'site/links-to-buttons-save',
                 'album-rows-save' => 'site/album-rows-save',
                 'parts-publication-save' => 'site/parts-publication-save',
+                'distribute-images-save' => 'site/distribute-images-save',
                 'publication-part-schedule' => 'site/publication-part-schedule',
                 'forum-text-order-save' => 'site/forum-text-order-save',
                 'forum-viewed' => 'site/forum-viewed',

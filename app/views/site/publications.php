@@ -19,6 +19,7 @@ declare(strict_types=1);
 /** @var bool $linksToButtons whether the addresses of a text become link buttons on their own */
 /** @var bool $albumRows whether the album of the form shows its pictures as rows */
 /** @var bool $partsPublication whether every part gets its own time and its own button */
+/** @var bool $distributeImages whether the albums of the form are handed out over its parts on their own */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -1345,14 +1346,17 @@ CSS
                                         </label>
                                     </div>
 
-                                    <!-- The part albums are the submitted fields already, so this one
-                                         never travels to the server: it hands the images of the shared
-                                         field out to the fields of the parts inside the form. -->
+                                    <?php /* This one does travel to the server, and what it carries is only its
+                                                own state: the page keeps it in the session, so the mode the
+                                                reader left stands there when the form opens again. The albums
+                                                it hands out are the submitted fields of the form — the switch
+                                                arranges those, it is none of them. */ ?>
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Раздаёт изображения первой части по всем частям так, чтобы каждая ушла в канал со своей группой">
+                                         data-bs-content="Пока включён, изображения раздаются по частям сами: при прогрузке поста с форума и каждый раз, когда частей в форме становится больше или меньше. Раздача берёт изображения всех частей по порядку и режет их на равные группы, поэтому своя раскладка при этом теряется. Выключенный тумблер ничего не возвращает: как разошлось, так и останется.">
                                         <input class="form-check-input publication-image-control" type="checkbox" role="switch"
-                                               id="publicationDistributeImages">
+                                               id="publicationDistributeImages"
+                                               <?= $distributeImages ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationDistributeImages">
                                             <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
                                         </label>
@@ -1872,6 +1876,7 @@ $titleSwitchSaveUrl = \yii\helpers\Url::to(['site/title-from-first-line-save']);
 $linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
 $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
+$distributeImagesSaveUrl = \yii\helpers\Url::to(['site/distribute-images-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
 // The three addresses a part of the form is moved by: the two the lists already post
@@ -1910,6 +1915,7 @@ var __TITLE_SWITCH_URL = '{$titleSwitchSaveUrl}';
 var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
 var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
+var __DISTRIBUTE_IMAGES_URL = '{$distributeImagesSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __PART_GROUP_URL = '{$partGroupUrl}';
 var __TO_DRAFT_URL = '{$toDraftUrl}';
@@ -3231,6 +3237,36 @@ jQuery(document).ready(function () {
                     // out on its own.
                     input.checked = !state;
                     sync();
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
+    // The switch that hands the albums of the form out over its parts keeps its state the
+    // way the switch above it does: the server stores it and answers with the address that
+    // mirrors it. The cut the page makes on its own, and only when the switch came up:
+    // thrown off, the mode leaves the arrangement the reader has where it stands. `turnOn`
+    // is that cut, which lives in the scope of the form.
+    function watchDistributeImagesSwitch(turnOn) {
+        var input = document.getElementById('publicationDistributeImages');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            var state = input.checked;
+            postForJson(__DISTRIBUTE_IMAGES_URL, { distributeImages: state ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                    if (state) {
+                        turnOn();
+                    }
+                })
+                .catch(function (error) {
+                    // The refused save cuts nothing: a switch that never was thrown off
+                    // leaves the albums of the form alone, and one that never was thrown
+                    // on has nothing to hand out.
+                    input.checked = !state;
                     showFlash('error', 'Не удалось запомнить переключатель: '
                         + (error && error.message ? error.message : error));
                 });
@@ -5836,6 +5872,7 @@ jQuery(document).ready(function () {
             updateImages();
             writeFormattingFields();
             armLinksToButtons();
+            redistributeOnPartCount();
         }
 
         // Splitting runs when a text arrives from outside — a forum post, a
@@ -7279,7 +7316,12 @@ jQuery(document).ready(function () {
         // The whole album goes into a field at once, so a form submitted while
         // the links are still being probed cannot lose a live image; the field
         // narrows to the ones that answered as soon as all of them have.
-        var writeImages = function (index, raw) {
+        // `fromFill` marks an album that came in from outside — a post of the forum, a
+        // thread — and not from the hand of the reader: only such a write asks the mode
+        // of the distribution to hand the pictures out. The question is settled by the
+        // probe and not by the call: until the dead addresses are cut out of the field,
+        // the album this fill wrote is not the one the parts are fed from.
+        var writeImages = function (index, raw, fromFill) {
             if (!imageTargets()[index]) {
                 return;
             }
@@ -7315,6 +7357,9 @@ jQuery(document).ready(function () {
                 renderNotice(albumNotices()[index], dead);
                 updateImages();
                 syncAlbumRows();
+                if (fromFill) {
+                    distributeImages();
+                }
             });
         };
 
@@ -7322,35 +7367,51 @@ jQuery(document).ready(function () {
         // known the links stand in the album of the first part, which is the
         // shared field of the form.
         var fillImages = function (raw) {
-            writeImages(0, raw);
+            writeImages(0, raw, true);
         };
 
-        // The album of the first part handed out over the parts of the form the
-        // way the channel will receive them: the pictures keep their order, the
-        // slices come out contiguous and differ in size by at most one image.
+        // The albums of every part handed out over the parts of the form the way the
+        // channel will receive them: the pictures of all the albums are pooled in the
+        // order of the parts, the slices come out contiguous and differ in size by at
+        // most one image. Thrown on, the switch is a mode and not a word spent — the
+        // pool is cut again whenever a fill brings an album in or the parts change.
+        var distributedOver = 0;
         var distributeImages = function () {
-            var groups = readImageGroups();
-            var album = readAlbumOrder(0);
+            if (!distributeImagesInput || !distributeImagesInput.checked) {
+                return;
+            }
+            var many = imageTargets().length;
+            var pool = [];
 
-            if (album.length === 0 || groups.length < 2) {
+            for (var index = 0; index < many; index++) {
+                pool = pool.concat(readAlbumOrder(index));
+            }
+
+            if (many < 2 || pool.length === 0) {
                 return;
             }
 
-            // The order of the album is what is handed out, so a file the reader
-            // stood before a link keeps that place in the part it comes to, and the
-            // mask of every part is written from the list its rows show.
-            groupImages(album, groups.length).forEach(function (pictures, index) {
-                forgetAlbumBlanks(index);
-                setAlbumOrder(index, pictures);
+            // The order of the pool is what is handed out, so a file the reader stood
+            // before a link keeps that place in the part it comes to, and the mask of
+            // every part is written from the list its rows show.
+            groupImages(pool, many).forEach(function (pictures, place) {
+                forgetAlbumBlanks(place);
+                setAlbumOrder(place, pictures);
             });
-
-            // The option has done its work inside the form: what the fields hold
-            // now is what travels to the server.
-            if (distributeImagesInput) {
-                distributeImagesInput.checked = false;
-            }
+            distributedOver = many;
             updateImages();
             syncAlbumRows();
+        };
+
+        // The rebuild of the parts asks the mode again: the number of the albums the
+        // pictures go into is what changed, and by the time this runs the boxes of the
+        // new parts already stand in the DOM. A rebuild that leaves the number alone is
+        // no reason to cut — the reader may have laid the pictures out by hand since.
+        var redistributeOnPartCount = function () {
+            if (imageTargets().length === distributedOver) {
+                return;
+            }
+            distributeImages();
         };
 
         // The preview shows the highlighting the channel will show: the text is cut
@@ -7646,9 +7707,6 @@ jQuery(document).ready(function () {
             this.dataset.userChanged = '1';
             updatePartSchedules();
         });
-        if (distributeImagesInput) {
-            distributeImagesInput.addEventListener('change', distributeImages);
-        }
         // The rows of an album live in the same frame as the fields they arrange, so
         // the frame of the shared block and the box of the parts answer for them
         // alike: an address typed into a row, an icon clicked in one, and the switch
@@ -8233,9 +8291,6 @@ jQuery(document).ready(function () {
             if (numberPartsInput) {
                 numberPartsInput.checked = false;
             }
-            if (distributeImagesInput) {
-                distributeImagesInput.checked = false;
-            }
             // The group the form has saved is not the group of the next one: its
             // id has gone into the records with the parts themselves, and a time
             // the reader typed for a part of that group is no time of this form.
@@ -8265,7 +8320,7 @@ jQuery(document).ready(function () {
         // The reset a save runs is offered by hand too. Asking for it is asking for the
         // blank form the page opens in, so the record taken over goes with the fields:
         // keeping its id would let the next submit write over a record nobody meant to
-        // change. The two switches of the session keep their state, as they do after a
+        // change. The five switches that live in the session keep their state, as they do after a
         // save — the reader left the page with them on purpose.
         var clearFormButton = document.getElementById('publicationClearBtn');
         if (clearFormButton) {
@@ -8505,7 +8560,7 @@ jQuery(document).ready(function () {
                         undefined, undefined, headed.formats, headed.titles,
                         headed.values.map(function () { return forumSlot(); }));
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
-                        writeImages(index, raw);
+                        writeImages(index, raw, true);
                     });
                 } else {
                     // The thread is one text here, so its pictures are one album
@@ -8644,6 +8699,12 @@ jQuery(document).ready(function () {
         // own times and buttons: a save the server refused has to leave the form
         // with the rows it was rendered with.
         watchPartsPublicationSwitch(updatePartSchedules);
+
+        // And so is the switch of the distribution, whose state is a mode rather than a
+        // click: thrown on, it hands the albums out at once and goes on cutting over the
+        // parts whenever an album arrives or their number changes; thrown off, it leaves
+        // the arrangement the reader has.
+        watchDistributeImagesSwitch(distributeImages);
 
         // The row of the first part is the one the markup drew and the rebuild of the parts
         // never replaces, so the picker the rows below it are given in their clone has to be
