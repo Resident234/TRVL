@@ -1022,11 +1022,12 @@ CSS
                                             <input type="hidden" class="publication-format-field"
                                                    name="publicationFormatting[]" value="[]">
                                         </div>
-                                        <?php /* The album of a part, framed like the shared album of the first
-                                                part. The first block never shows its own: its album is the
-                                                shared «Изображения публикации» field under the list, so this
-                                                one stays hidden and disabled — a disabled field is not
-                                                submitted and cannot shift the parts of the list. */ ?>
+                                        <?php /* The album of a part, framed like the shared album of the
+                                                first part. The first block shows no album of its own either:
+                                                the shared «Изображения публикации» block is carried into it
+                                                while the text is cut, so this one stays hidden and disabled —
+                                                a disabled field is not submitted and cannot shift the parts
+                                                of the list. */ ?>
                                         <div class="kanban-item publication-field-frame publication-part-album p-3 rounded-2 bg-white d-none mt-2">
                                                 <?php /* The same switch the shared album of the form carries, at the top
                                                         of the frame and in the block every part is cloned with: the album
@@ -1366,10 +1367,19 @@ CSS
 
 
                             <!-- Attached images -->
-                            <div class="mb-3">
-                                <?php /* The album of the first part of the publication is this block, and it
-                                        stands in the same bordered card the buttons of the form and the albums
-                                        of its other parts stand in, so one album reads as one group. */ ?>
+                            <?php /* The mark the album of the form was born by, and the block it is
+                                    carried in: while the text is cut into parts the page moves the block
+                                    itself into the first part, and this empty mark is the place it comes
+                                    back to when the text is one piece again. The block is the album of
+                                    the first part either way — the fields travel under the names of the
+                                    publication, and nothing but their place in the form changes. */ ?>
+                            <span id="publicationAlbumHome" hidden></span>
+                            <div class="mb-3" id="publicationAlbumBlock" data-in-part="0">
+                                <?php /* The album of the first part of the publication is this block, and
+                                        it stands in the same bordered card the buttons of the form and the
+                                        albums of its other parts stand in, so one album reads as one group.
+                                        A cut carries the card into the first part, which is the part the
+                                        album belongs to; the hidden album of that row stays hidden. */ ?>
                                 <div class="kanban-item publication-field-frame p-3 rounded-2 bg-white">
                                     <?php /* The switch that lays this album out as rows stands at the top of
                                             the frame, the way the switch of the button frame stands there: it
@@ -1381,7 +1391,8 @@ CSS
                                     <div class="form-check form-switch mb-2" data-bs-toggle="popover"
                                          data-bs-trigger="hover" data-bs-placement="top-start"
                                          data-bs-custom-class="popover-info"
-                                         data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме.">
+                                         data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме."
+                                         data-bs-content-part="Показывает каждое изображение этой части отдельным полем: ссылки из «Изображения этой части» и файлы из «Файлы этой части» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы этой части» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме.">
                                         <input class="form-check-input publication-album-rows-switch publication-image-control"
                                                type="checkbox" role="switch" id="publicationAlbumRows"
                                                <?= $albumRows ? 'checked' : '' ?>>
@@ -1393,8 +1404,11 @@ CSS
                                     <label for="publicationImages" class="form-label"
                                            data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
                                            data-bs-custom-class="popover-info"
-                                           data-bs-content="Изображения отправляются в канал вместе с текстом публикации (первое — с подписью); у разбитой публикации это изображения её первой части. Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома.">
-                                        <i class="bi bi-images me-1"></i>Изображения публикации
+                                           data-bs-content="Изображения отправляются в канал вместе с текстом публикации (первое — с подписью); у разбитой публикации это изображения её первой части. Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома."
+                                           data-bs-content-part="Изображения отправляются в канал вместе с текстом этой части (первое — с подписью). Файл, выбранный здесь, сохраняется на сервере и становится ссылкой этого же альбома.">
+                                        <i class="bi bi-images me-1"></i><span class="publication-album-name"
+                                                data-shared="Изображения публикации"
+                                                data-part="Изображения этой части">Изображения публикации</span>
                                     </label>
 
                                     <textarea class="form-control" id="publicationImages" name="publicationImages"
@@ -1468,7 +1482,9 @@ CSS
                                             brackets make PHP keep every file of a `multiple` input
                                             instead of only the last one. */ ?>
                                     <label class="form-label mb-1 mt-2" for="publicationImageFiles">
-                                        <i class="bi bi-file-earmark-image me-1"></i>Файлы публикации
+                                        <i class="bi bi-file-earmark-image me-1"></i><span class="publication-album-name"
+                                                data-shared="Файлы публикации"
+                                                data-part="Файлы этой части">Файлы публикации</span>
                                     </label>
                                     <input type="file" class="form-control" id="publicationImageFiles"
                                            name="publicationImageFiles[]" accept="image/*" multiple>
@@ -3335,29 +3351,37 @@ jQuery(document).ready(function () {
         // page-level container keeps the hint out of the clipping of the box that
         // holds the field; the hint of the link dialog is the one that wants to
         // stay inside its dialog, which opens over the page and hides with it.
-        if (window.bootstrap && window.bootstrap.Popover) {
-            var Popover = window.bootstrap.Popover;
-            document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
-                // The script of the kit hands a popover to every trigger like this
-                // one, with its own settings, and it runs before this page does;
-                // an instance that already exists keeps the settings it was built
-                // with and drops the ones asked for now, so it is let go first.
-                var built = Popover.getInstance(el);
-                if (built) {
-                    built.dispose();
-                }
-                var dialog = el.closest('.modal');
-                Popover.getOrCreateInstance(el, {
-                    container: dialog || document.body,
-                    // The placement of the markup goes to Popper by hand: the map
-                    // Bootstrap looks a placement up in knows only the four sides
-                    // and `auto`, so a side with an alignment (`top-start`) is
-                    // missing from it, and the popover of such a trigger is left
-                    // standing at the top left of the page.
-                    popperConfig: { placement: el.dataset.bsPlacement }
-                });
+        function makePopover(el) {
+            var Popover = window.bootstrap && window.bootstrap.Popover;
+            if (!Popover) {
+                return;
+            }
+
+            // The script of the kit hands a popover to every trigger like this
+            // one, with its own settings, and it runs before this page does; an
+            // instance that already exists keeps the settings it was built with
+            // and drops the ones asked for now, so it is let go first. The hint
+            // itself is read when the instance is made, so a trigger whose hint
+            // was rewritten has to be handed over again.
+            var built = Popover.getInstance(el);
+            if (built) {
+                built.dispose();
+            }
+            var dialog = el.closest('.modal');
+            Popover.getOrCreateInstance(el, {
+                container: dialog || document.body,
+                // The placement of the markup goes to Popper by hand: the map
+                // Bootstrap looks a placement up in knows only the four sides
+                // and `auto`, so a side with an alignment (`top-start`) is
+                // missing from it, and the popover of such a trigger is left
+                // standing at the top left of the page.
+                popperConfig: { placement: el.dataset.bsPlacement }
             });
         }
+
+        document.querySelectorAll('[data-bs-toggle="popover"]').forEach(function (el) {
+            makePopover(el);
+        });
 
         // The badge of the filter card counts how many of the five filters
         // are on, the same number the page was rendered with.
@@ -5177,6 +5201,57 @@ jQuery(document).ready(function () {
                 });
         }
 
+        // The wording of the shared album has two readings: the one of the form, where the
+        // block is a field of the publication, and the one of a part, where the block stands
+        // in the row it belongs to. Both are written in the markup and the block says in
+        // `data-in-part` which of them it wears, so a reading is never rewritten twice.
+        function setAlbumWording(inPart) {
+            Array.prototype.slice.call(albumBlock.querySelectorAll('.publication-album-name'))
+                .forEach(function (name) {
+                    name.textContent = inPart ? name.dataset.part : name.dataset.shared;
+                });
+            Array.prototype.slice.call(albumBlock.querySelectorAll('[data-bs-content-part]'))
+                .forEach(function (el) {
+                    // The reading of the form stands in `data-bs-content` alone until the
+                    // first swap takes it away, so it is copied aside before that.
+                    if (!el.dataset.bsContentShared) {
+                        el.dataset.bsContentShared = el.dataset.bsContent;
+                    }
+                    el.dataset.bsContent = inPart ? el.dataset.bsContentPart : el.dataset.bsContentShared;
+                    makePopover(el);
+                });
+        }
+
+        // The album of the first part is the shared block of the form, and a cut carries that
+        // block into the row it belongs to instead of copying its fields: the names the server
+        // weaves the parts out of, the pool the distribution cuts and the mask of an order all
+        // stay where they were. The block goes in front of the album the row was cloned with,
+        // which stays hidden and disabled for the first part, and comes back to the mark it
+        // left as soon as the text is one piece again.
+        function placeSharedAlbum() {
+            if (!albumBlock || !albumHome) {
+                return;
+            }
+
+            var inPart = textParts().length > 1;
+            var home = albumHome.parentNode;
+            var mark = inPart ? '1' : '0';
+
+            if (inPart) {
+                var block = partBlocks()[0];
+                if (block && albumBlock.parentNode !== block) {
+                    block.insertBefore(albumBlock, block.querySelector('.publication-part-album'));
+                }
+            } else if (albumBlock.parentNode !== home) {
+                home.insertBefore(albumBlock, albumHome.nextSibling);
+            }
+
+            if (albumBlock.dataset.inPart !== mark) {
+                albumBlock.dataset.inPart = mark;
+                setAlbumWording(inPart);
+            }
+        }
+
         // --- the link buttons of a part -------------------------------------------
 
         // The shared «Кнопки-ссылки» field of the form carries the buttons of the
@@ -5872,6 +5947,7 @@ jQuery(document).ready(function () {
             updateImages();
             writeFormattingFields();
             armLinksToButtons();
+            placeSharedAlbum();
             redistributeOnPartCount();
         }
 
@@ -6864,6 +6940,8 @@ jQuery(document).ready(function () {
         var albumRowsInput = document.getElementById('publicationAlbumRows');
         var sharedAlbumRowsBox = document.getElementById('publicationAlbumRowsBox');
         var imagesOrderInput = document.getElementById('publicationImageOrder');
+        var albumBlock = document.getElementById('publicationAlbumBlock');
+        var albumHome = document.getElementById('publicationAlbumHome');
         var albumRowTemplate = sharedAlbumRowsBox
             ? sharedAlbumRowsBox.querySelector('.publication-album-row').cloneNode(true)
             : null;
@@ -8034,6 +8112,9 @@ jQuery(document).ready(function () {
         updateCounters();
         updateImages();
         syncAlbumRows();
+        // A record that opens already cut has its parts before the page has painted any, so
+        // the album is carried into the first of them here rather than by a rebuild.
+        placeSharedAlbum();
 
         var scrollToMiddle = function (log) {
             var scroller = log.closest('.scroll350');
