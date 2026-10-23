@@ -1347,6 +1347,17 @@ CSS
                                 <div class="publication-parts-controls">
                                     <!-- Outside the parts box, so the template a new part is cloned from stays clean. -->
                                     <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationSplitModes">
+                                        <?php /* The row answers two questions, and since 2026-10-23 it says so by
+                                               standing: the cut of one part — at the caret, or the middle of it —
+                                               keeps the left edge, while the three ways of cutting the whole text
+                                               stay gathered at the right. The edge is bought with an auto margin on
+                                               the button, not with a class of the row: the class string of the row
+                                               is an anchor of the notices harness, and the gathering it declares is
+                                               still wanted. */ ?>
+                                        <button type="button" class="btn btn-outline-success btn-sm me-auto" id="publicationSplitPart"
+                                                title="Разделить часть по курсору, а без курсора — примерно посередине">
+                                            <i class="bi bi-scissors me-1"></i>Разделить
+                                        </button>
                                         <button type="button" class="btn btn-outline-success btn-sm" data-split-whole="paragraphs"
                                                 title="Разбить весь текст по абзацам: пустая строка начинает новую часть">
                                             <i class="bi bi-paragraph me-1"></i>По абзацам
@@ -1358,10 +1369,6 @@ CSS
                                         <button type="button" class="btn btn-outline-success btn-sm" data-split-whole="sentences"
                                                 title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
                                             <i class="bi bi-chat-left-text me-1"></i>По предложениям
-                                        </button>
-                                        <button type="button" class="btn btn-outline-success btn-sm" id="publicationSplitPart"
-                                                title="Разделить часть по курсору, а без курсора — примерно посередине">
-                                            <i class="bi bi-scissors me-1"></i>Разделить
                                         </button>
                                     </div>
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
