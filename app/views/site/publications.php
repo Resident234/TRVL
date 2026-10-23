@@ -392,6 +392,30 @@ $this->registerCss(
     margin: -.25rem 0 .75rem;
 }
 
+/* The album of the first part is the shared block of the form, and a cut carries that block into
+   the card of the part it belongs to. At home the block needs no room above itself: the block
+   before it leaves `1rem` under itself, and two margins standing one after another are read off
+   each other. Inside a card the neighbour above is the text of the part, and a text leaves
+   nothing, so on 2026-10-23 the moved block stood glued to the last line of the editor while the
+   album of every other part keeps its `mt-2` and stands 8px off. The number given here is that
+   same number, and the bottom one is taken away for the mirror reason: `mb-3` says where the next
+   block of the form stands, and inside a card there is no next block, only the padding of it.
+   Measured in a browser the same day, over the served sheet: the top seam came to 8px against the
+   0px of the uncut page, and the bottom of a row's album stands 1px off the edge of its card, so
+   the two numbers the seams of the first part had to answer are these.
+   The `!important` is not a mannerism either, and it is only the bottom that needs it: the theme
+   ships `main.min.css` with `.mb-3{margin-bottom:1rem!important}`, so the plain `margin-bottom: 0`
+   this sheet writes is matched, read and overruled — the block keeps its 16px and the card gains a
+   gap none of the other parts have. Nothing of the block's own classes says a word about the margin
+   above it, which is why the top number stays plain. The hiding rules of `.publication-part-moves`
+   and of the frames answered the same utility on the same terms.
+   Keyed on the mark the move already keeps, so the reading at home is untouched and the script of
+   the page learns nothing new. */
+#publicationAlbumBlock[data-in-part="1"] {
+    margin-top: 0.5rem;
+    margin-bottom: 0 !important;
+}
+
 /* The two arrows of a part trade it with a neighbour, so a text that was never cut has
    nothing to trade and the box holding them is not drawn while the parts box keeps a
    single block. The three handles a part is saved, deleted and cleared by answer the
