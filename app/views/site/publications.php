@@ -1313,9 +1313,19 @@ CSS
 
                                     </div>
                                     <!-- The row between a part and the one under it; the last part has none.
-                                         Two handles of one seam: the empty part it grows and the two parts
-                                         it joins back into one. -->
-                                    <div class="d-flex justify-content-end gap-2 d-none publication-merge-row">
+                                         Three handles of one seam: the scissors cut the part the row stands
+                                         under, the empty part it grows, and the two parts it joins back into
+                                         one. The cut answers for the part above because the row already speaks
+                                         of that one: «Объединить» says «Слить эту часть со следующей». The
+                                         scissors take the left edge of the row the way the handle under the
+                                         list took the left edge of its own row, and the row lets its handles
+                                         wrap: three of them do not stand in one line of a phone. -->
+                                    <div class="d-flex flex-wrap justify-content-end gap-2 d-none publication-merge-row">
+                                        <button type="button"
+                                                class="btn btn-outline-success btn-sm me-auto publication-seam-split-btn"
+                                                title="Разделить часть над этим швом по курсору, а без курсора — примерно посередине">
+                                            <i class="bi bi-scissors me-1"></i>Разделить
+                                        </button>
                                         <button type="button"
                                                 class="btn btn-outline-success btn-sm publication-add-part-btn"
                                                 data-add-part="seam" title="Добавить пустую часть между этими двумя">
@@ -5822,10 +5832,20 @@ jQuery(document).ready(function () {
 
         function updateMergeRows() {
             var rows = mergeRows();
+            var parts = bareParts();
             var visible = rows.length === textParts().length - 1;
 
-            rows.forEach(function (row) {
+            rows.forEach(function (row, index) {
+                var scissors = row.querySelector('.publication-seam-split-btn');
                 row.classList.toggle('d-none', !visible);
+                // A seam with nothing to cut holds its scissors out of reach. The text of
+                // the part above the row is asked the way a cut asks it when no caret was
+                // left in it, and not by the caret itself: a caret is no reason a part
+                // stops being halvable, and the row cannot know where the caret is by the
+                // time it is drawn.
+                if (scissors) {
+                    scissors.disabled = middleCut(parts.values[index]) === -1;
+                }
             });
         }
 
@@ -6410,11 +6430,28 @@ jQuery(document).ready(function () {
             return longest;
         }
 
+        // The part the handle under the list of parts asks for: the one the caret was
+        // written in, and without a caret the longest of them — the only part worth
+        // halving on its own.
         function splitPartAtCaret() {
             var bare = bareParts();
             var index = splitTarget(bare.fields, bare.values);
 
             if (index === -1) {
+                return;
+            }
+
+            splitPartAt(index);
+        }
+
+        // Cut one part in two. The row of a seam hands this the part it stands under,
+        // the handle below the list hands it the part of the caret; both get the cut
+        // at the caret of that part's own field, so a caret left in another part
+        // cannot cut it.
+        function splitPartAt(index) {
+            var bare = bareParts();
+
+            if (index < 0 || index >= bare.values.length) {
                 return;
             }
 
@@ -7836,6 +7873,9 @@ jQuery(document).ready(function () {
             hideSelectionActions();
             writeFormattingFields();
             updateCounters();
+            // The text of a part is what its seam answers to, so the scissors of that
+            // seam are re-asked by the same keystroke that moves the counters.
+            updateMergeRows();
             update();
             armLinksToButtons();
             if (textParts().length === 1) {
@@ -8035,15 +8075,25 @@ jQuery(document).ready(function () {
                 splitWholeText(button.getAttribute('data-split-whole'));
             });
         }
-        // One listener for the rows of every part, including the cloned ones.
+        // One listener for the rows of every part, including the cloned ones. A row
+        // holds two handles of the pair it stands between: the scissors cut the part
+        // above the row, the collapse joins that pair back into one field.
         partsBox.addEventListener('click', function (event) {
-            var button = event.target.closest('.publication-merge-btn');
+            var row = event.target.closest('.publication-merge-row');
 
-            if (!button) {
+            if (!row) {
                 return;
             }
 
-            mergeParts(mergeRows().indexOf(button.closest('.publication-merge-row')));
+            if (event.target.closest('.publication-seam-split-btn')) {
+                splitPartAt(mergeRows().indexOf(row));
+
+                return;
+            }
+
+            if (event.target.closest('.publication-merge-btn')) {
+                mergeParts(mergeRows().indexOf(row));
+            }
         });
         // A row of the group grows an empty part where it stands: above the first
         // block, below the last one, and in the seam of every two of them. The two
