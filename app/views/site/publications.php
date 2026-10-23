@@ -4951,6 +4951,14 @@ jQuery(document).ready(function () {
             }
 
             var pictures = readAlbumOrder(index);
+            // An album that holds nothing keeps one row open: the rows stand in the place of
+            // its text area, and an empty box would leave the reader with nothing to type
+            // into. The counter of the blanks pays for that row the way the icon of the album
+            // does, so pressing it opens a second row rather than bringing the caret back to
+            // the one that already stands there.
+            if (pictures.length === 0 && !albumBlankRows[index]) {
+                albumBlankRows[index] = 1;
+            }
             var many = pictures.length + (albumBlankRows[index] || 0);
             var focused = held || albumFocusedRow(box);
 
