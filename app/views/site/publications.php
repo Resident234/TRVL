@@ -3717,24 +3717,36 @@ jQuery(document).ready(function () {
                 writeMirror(field, text);
             });
             editor.on('selection-change', function (range, previous, source) {
-                if (!range || source !== 'user') {
+                if (source !== 'user') {
                     return;
                 }
 
                 lastEditedField = field;
+
+                if (!range) {
+                    // Only the field the popup stands over takes it away: a neighbour reports the
+                    // same empty range when a drag moves the selection onto this field, and that
+                    // answer arrives after this field has already painted the popup.
+                    if (field === selectionField) {
+                        hideSelectionActions();
+                    }
+
+                    return;
+                }
+
                 field.__caret = [range.index, range.index + range.length];
+                // A selection is made with the mouse or with shift and the arrows, and the box
+                // reports neither of them to the listener of `input`. The answer waits for this
+                // event because it is the moment the selection is, and the popup is placed by
+                // the offsets it carries: asked from a `mouseup` of the box it stands for the
+                // selection of the previous click, and the scroll that ends a long drag takes
+                // the popup away over the answer.
+                showSelectionActions(field);
             });
             // The caret of the page lives in the editor now, so the field it was
             // typed in is the one a cut or a move works on.
             root.addEventListener('focusin', function () {
                 lastEditedField = field;
-            });
-            // A selection is made with the mouse or with shift and the arrows, and
-            // the editor reports neither to the listener of the box.
-            ['mouseup', 'keyup'].forEach(function (name) {
-                root.addEventListener(name, function () {
-                    showSelectionActions(field);
-                });
             });
             // The arrows and Enter belong to the panel of a colon while it is open
             // over this part. The capture phase, as for the paste: Quill's own
@@ -7023,13 +7035,23 @@ jQuery(document).ready(function () {
 
         function showSelectionActions(field) {
             var selection = selectionRange(field);
+            var parts = textParts();
+            var index = parts.indexOf(field);
 
-            if (!selectionPopup || textParts().length < 2
+            if (!selectionPopup || parts.length < 2 || index < 0
                 || selection.text.slice(selection.from, selection.to).trim() === '') {
                 hideSelectionActions();
 
                 return;
             }
+
+            // A handle naming a neighbour the form has not got is left out of the popup: the
+            // first part has nothing above it, the last nothing below, and the move behind them
+            // would invent a part nobody asked for. Taken away rather than stopped — the word
+            // was that the button is not there — and both of them are asked every time, so a
+            // handle hidden for one part comes back for the next one.
+            movePrevPartButton.classList.toggle('d-none', index === 0);
+            moveNextPartButton.classList.toggle('d-none', index === parts.length - 1);
 
             // Measured while shown: a hidden popup has no size to place by. Both
             // happen in one task, so the old position never paints.
