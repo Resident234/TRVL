@@ -1036,7 +1036,7 @@ CSS
                                                 <div class="form-check form-switch mb-2" data-bs-toggle="popover"
                                                      data-bs-trigger="hover" data-bs-placement="top-start"
                                                      data-bs-custom-class="popover-info"
-                                                     data-bs-content="Показывает каждое изображение этой части отдельным полем: её ссылки и её файлы встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал. На другие части переключатель не влияет.">
+                                                     data-bs-content="Показывает каждое изображение этой части отдельным полем: её ссылки и её файлы встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал. Стрелки влево и вправо у строки отдают это изображение предыдущей или следующей части, и оно встаёт после тех, что в ней уже есть; у последней части стрелки вправо нет. На другие части переключатель не влияет.">
                                                     <input class="form-check-input publication-album-rows-switch publication-image-control"
                                                            type="checkbox" role="switch" id="publicationPartAlbumRows">
                                                     <label class="form-check-label" for="publicationPartAlbumRows">
@@ -1078,6 +1078,18 @@ CSS
                                                                     aria-label="Опустить изображение ниже"
                                                                     title="Опустить это изображение на строку ниже">
                                                                 <i class="bi bi-arrow-down-short"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-icon publication-album-prev"
+                                                                    aria-label="Переместить изображение в предыдущую часть"
+                                                                    title="Это изображение переедет в предыдущую часть и встанет после тех, что в ней уже есть">
+                                                                <i class="bi bi-arrow-left-short"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-icon publication-album-next"
+                                                                    aria-label="Переместить изображение в следующую часть"
+                                                                    title="Это изображение переедет в следующую часть и встанет после тех, что в ней уже есть">
+                                                                <i class="bi bi-arrow-right-short"></i>
                                                             </button>
                                                             <button type="button"
                                                                     class="btn btn-danger btn-icon publication-album-remove"
@@ -1391,8 +1403,8 @@ CSS
                                     <div class="form-check form-switch mb-2" data-bs-toggle="popover"
                                          data-bs-trigger="hover" data-bs-placement="top-start"
                                          data-bs-custom-class="popover-info"
-                                         data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме."
-                                         data-bs-content-part="Показывает каждое изображение этой части отдельным полем: ссылки из «Изображения этой части» и файлы из «Файлы этой части» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы этой части» ниже. Исходное поле с ссылками скрыруется, но остаётся в форме.">
+                                         data-bs-content="Показывает каждое изображение отдельным полем: ссылки из «Изображения публикации» и файлы из «Файлы публикации» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы публикации» ниже. Стрелки влево и вправо у строки отдают это изображение предыдущей или следующей части, и оно встаёт после тех, что в ней уже есть. У первой части стрелки влево нет, у последней части стрелки вправо нет, а пока текст публикации не разбит, стрелок перехода нет вовсе. Исходное поле с ссылками скрыруется, но остаётся в форме."
+                                         data-bs-content-part="Показывает каждое изображение этой части отдельным полем: ссылки из «Изображения этой части» и файлы из «Файлы этой части» встают в один список, которым можно управлять стрелками. Порядок этот и уходит в канал — первым изображением части будет то, что стоит наверху, а не первая ссылка поля. Поле с файлом только показывает его имя: заменить файл можно через «Файлы этой части» ниже. Стрелки влево и вправо у строки отдают это изображение предыдущей или следующей части, и оно встаёт после тех, что в ней уже есть. У первой части стрелки влево нет, у последней части стрелки вправо нет, а пока текст публикации не разбит, стрелок перехода нет вовсе. Исходное поле с ссылками скрыруется, но остаётся в форме.">
                                         <input class="form-check-input publication-album-rows-switch publication-image-control"
                                                type="checkbox" role="switch" id="publicationAlbumRows"
                                                <?= $albumRows ? 'checked' : '' ?>>
@@ -1445,6 +1457,18 @@ CSS
                                                         aria-label="Опустить изображение ниже"
                                                         title="Опустить это изображение на строку ниже">
                                                     <i class="bi bi-arrow-down-short"></i>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-icon publication-album-prev"
+                                                        aria-label="Переместить изображение в предыдущую часть"
+                                                        title="Это изображение переедет в предыдущую часть и встанет после тех, что в ней уже есть">
+                                                    <i class="bi bi-arrow-left-short"></i>
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-secondary btn-icon publication-album-next"
+                                                        aria-label="Переместить изображение в следующую часть"
+                                                        title="Это изображение переедет в следующую часть и встанет после тех, что в ней уже есть">
+                                                    <i class="bi bi-arrow-right-short"></i>
                                                 </button>
                                                 <button type="button"
                                                         class="btn btn-danger btn-icon publication-album-remove"
@@ -4739,6 +4763,32 @@ jQuery(document).ready(function () {
             syncAlbumRows();
         }
 
+        // One picture of an album handed to its neighbour: it comes in behind what that
+        // album already holds, a link both of them showed is named once, and every other
+        // picture of the album it left stands exactly where the reader laid it out. A row
+        // is the unit here, so the album of the fields is what moves: the text is left
+        // alone, no part is cut again, and the mask of neither album is lost.
+        function moveAlbumPictureToPart(index, position, step) {
+            var to = index + step;
+            var pictures = readAlbumOrder(index);
+
+            if (index < 0 || to < 0 || to >= imageTargets().length) {
+                return false;
+            }
+            if (position < 0 || position >= pictures.length) {
+                return false;
+            }
+
+            var moved = pictures.splice(position, 1);
+
+            setAlbumOrder(to, unionPictures([readAlbumOrder(to), moved]));
+            setAlbumOrder(index, pictures);
+            updateImages();
+            syncAlbumRows();
+
+            return true;
+        }
+
         // The links an album was shown holding are named once, as they were before
         // the rows; two files of one name are two picks the reader made.
         function unionPictures(groups) {
@@ -4765,7 +4815,8 @@ jQuery(document).ready(function () {
         // three icons. A rebuild of the box gives them new nodes, so the one that
         // had the focus is looked for by the same class in the row it went to.
         var ALBUM_ROW_CONTROLS = ['.publication-album-link', '.publication-album-up',
-            '.publication-album-down', '.publication-album-remove'];
+            '.publication-album-down', '.publication-album-prev', '.publication-album-next',
+            '.publication-album-remove'];
 
         function isAlbumRowsOn(index) {
             var toggle = albumRowSwitches()[index];
@@ -4890,7 +4941,7 @@ jQuery(document).ready(function () {
                     isLink ? '' : picture.value.name;
             });
 
-            markAlbumRowFlags(box, pictures);
+            markAlbumRowFlags(index, box, pictures);
 
             if (focused) {
                 focusAlbumRow(box, focused);
@@ -4901,13 +4952,26 @@ jQuery(document).ready(function () {
         // place of the album to be moved to, and the pictures stop at the ends of
         // the album. The icons are stopped rather than taken away, as the icons of a
         // button row are, so that the column never jumps.
-        function markAlbumRowFlags(box, pictures) {
+        //
+        // The two that cross to a neighbour follow the list of albums instead: the
+        // first of them has no part above it and the last has none below, and a list
+        // one album long is a publication that is not cut at all. Those two are taken
+        // away rather than stopped, because no keystroke of the reader can make a part
+        // stand where no part of the publication is.
+        function markAlbumRowFlags(index, box, pictures) {
+            var hasPrev = index > 0;
+            var hasNext = index < albumRowBoxes().length - 1;
+
             albumRowsOf(box).forEach(function (row, place) {
                 var blank = place >= pictures.length;
 
                 row.querySelector('.publication-album-up').disabled = blank || place === 0;
                 row.querySelector('.publication-album-down').disabled =
                     blank || place === pictures.length - 1;
+                row.querySelector('.publication-album-prev').classList.toggle('d-none', !hasPrev);
+                row.querySelector('.publication-album-prev').disabled = blank;
+                row.querySelector('.publication-album-next').classList.toggle('d-none', !hasNext);
+                row.querySelector('.publication-album-next').disabled = blank;
             });
         }
 
@@ -4987,7 +5051,7 @@ jQuery(document).ready(function () {
             var box = albumRowBoxes()[row.index];
 
             if (box) {
-                markAlbumRowFlags(box, readAlbumOrder(row.index));
+                markAlbumRowFlags(row.index, box, readAlbumOrder(row.index));
             }
         }
 
@@ -5023,17 +5087,45 @@ jQuery(document).ready(function () {
 
         function takeAlbumRowClick(event) {
             var row = albumRowOf(event.target);
+            var prev = event.target.closest('.publication-album-prev');
+            var next = event.target.closest('.publication-album-next');
             var up = event.target.closest('.publication-album-up');
             var down = event.target.closest('.publication-album-down');
             var remove = event.target.closest('.publication-album-remove');
 
-            if (!row || !(up || down || remove)) {
+            if (!row || !(prev || next || up || down || remove)) {
                 return;
             }
 
             var pictures = readAlbumOrder(row.index);
             var blank = row.position >= pictures.length;
             var held = null;
+
+            // The two arrows that cross answer the neighbour of the part, not its own
+            // album, so they are done before the fields of this album are written — and
+            // a row that holds no picture has nothing to hand over. The album the picture
+            // arrives in is laid out by the move, as is this one; only the place the
+            // reader stands in is given back here.
+            if (prev || next) {
+                var arrow = prev ? '.publication-album-prev' : '.publication-album-next';
+
+                if (blank || !moveAlbumPictureToPart(row.index, row.position, prev ? -1 : 1)) {
+                    return;
+                }
+
+                var stay = Math.min(row.position,
+                    readAlbumOrder(row.index).length + (albumBlankRows[row.index] || 0) - 1);
+
+                // The row that came to stand in the place of the one that left is the
+                // one the reader keeps working with, as it is after a row taken out.
+                renderAlbumRows(row.index, stay < 0 ? null : {
+                    position: stay,
+                    selector: arrow,
+                    caret: null,
+                });
+
+                return;
+            }
 
             if (up || down) {
                 pictures = moveAlbumPicture(pictures, row.position, up ? -1 : 1);
