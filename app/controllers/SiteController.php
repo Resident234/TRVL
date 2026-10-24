@@ -143,6 +143,8 @@ class SiteController extends Controller
                     'album-rows-save' => ['post'],
                     'parts-publication-save' => ['post'],
                     'distribute-images-save' => ['post'],
+                    'number-parts-save' => ['post'],
+                    'heading-number-place-save' => ['post'],
                     'publication-part-schedule' => ['post'],
                     'publication-part-group' => ['post'],
                     'publication-part-draft' => ['post'],
@@ -307,6 +309,8 @@ class SiteController extends Controller
         $this->syncAlbumRows();
         $this->syncPartsPublication();
         $this->syncDistributeImages();
+        $this->syncNumberParts();
+        $this->syncHeadingNumberPlace();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
@@ -330,7 +334,9 @@ class SiteController extends Controller
             || $this->linksToButtonsFromQuery($query) !== $this->linksToButtons()
             || $this->albumRowsFromQuery($query) !== $this->albumRows()
             || $this->partsPublicationFromQuery($query) !== $this->partsPublication()
-            || $this->distributeImagesFromQuery($query) !== $this->distributeImages();
+            || $this->distributeImagesFromQuery($query) !== $this->distributeImages()
+            || $this->numberPartsFromQuery($query) !== $this->numberParts()
+            || $this->headingNumberPlaceFromQuery($query) !== $this->headingNumberPlace();
     }
 
     /**
@@ -456,6 +462,17 @@ class SiteController extends Controller
 
         if ($this->distributeImages()) {
             $url['distributeImages'] = '1';
+        }
+
+        if ($this->numberParts()) {
+            $url['numberParts'] = '1';
+        }
+
+        // The head is the place a page was written with before the pair of radios
+        // existed, so mirroring it would hang a parameter over every address of the
+        // form for nothing.
+        if ($this->headingNumberPlace() === 'after') {
+            $url['headingNumberPlace'] = 'after';
         }
 
         return $url;
@@ -810,6 +827,8 @@ class SiteController extends Controller
             'albumRows' => $this->albumRows(),
             'partsPublication' => $this->partsPublication(),
             'distributeImages' => $this->distributeImages(),
+            'numberParts' => $this->numberParts(),
+            'headingNumberPlace' => $this->headingNumberPlace(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -1118,6 +1137,109 @@ class SiteController extends Controller
     }
 
     /**
+     * Whether the number of a part is written at all — the state of the switch of
+     * the numbering, kept in the session so a reload opens the form with the
+     * numbering the reader left. The switch used to live only in the browser, and
+     * a hand that cleared the form threw it back off; since 2026-10-23 it is a
+     * state like its neighbours, and the pair of radios under it is read only
+     * while it stands.
+     */
+    private function numberParts(): bool
+    {
+        return $this->normalizeNumberParts(Yii::$app->session->get('numberParts'));
+    }
+
+    /**
+     * The state of the switch of the numbering the address of the page asks for:
+     * `?numberParts=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function numberPartsFromQuery(array $query): bool
+    {
+        return $this->normalizeNumberParts($query['numberParts'] ?? null);
+    }
+
+    /**
+     * Resolves the switch of the numbering the way the switch of the distribution
+     * does: it is a session that has never held a state which adopts the parameter
+     * of the request, so reloading cannot change what the reader left.
+     */
+    private function syncNumberParts(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('numberParts')) {
+            return;
+        }
+
+        $session->set('numberParts', $this->numberPartsFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizeNumberParts(mixed $state): bool
+    {
+        return $state === true || $state === '1';
+    }
+
+    /**
+     * Which end of the heading of a part wears its number — 'before' writes
+     * «Часть 2. Альфа», 'after' writes «Альфа. Часть 2». The state of the pair of
+     * radios under the switch of the numbering, kept in the session like the
+     * switch itself. The head is the shape the page wrote before the pair existed,
+     * so a session that has never been asked answers with it.
+     */
+    private function headingNumberPlace(): string
+    {
+        return $this->normalizeHeadingNumberPlace(Yii::$app->session->get('headingNumberPlace'));
+    }
+
+    /**
+     * The place the address of the page asks for: `?headingNumberPlace=after`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function headingNumberPlaceFromQuery(array $query): string
+    {
+        return $this->normalizeHeadingNumberPlace($query['headingNumberPlace'] ?? null);
+    }
+
+    /**
+     * Resolves the pair of radios the way the switch of the numbering does: it is a
+     * session that has never held a place which adopts the parameter of the request,
+     * so reloading cannot change what the reader left.
+     */
+    private function syncHeadingNumberPlace(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('headingNumberPlace')) {
+            return;
+        }
+
+        $session->set('headingNumberPlace', $this->headingNumberPlaceFromQuery($this->request->get()));
+    }
+
+    /**
+     * The two radios carry the two words of the place, and nothing else is one of
+     * them: a parameter left out, a parameter of another name and a value spelled
+     * any other way all answer the head. The session is read through the same
+     * predicate as the request and the post, so no state can reach the form that
+     * the form has no radio for.
+     *
+     * @param mixed $state
+     */
+    private function normalizeHeadingNumberPlace(mixed $state): string
+    {
+        return $state === 'after' ? 'after' : 'before';
+    }
+
+    /**
      * Stores the state of the switch of the parts and answers with the address that
      * mirrors it, exactly like the album switch does. It redraws nothing: the parts
      * live in the fields of the form, and their own buttons are put there by the
@@ -1151,6 +1273,50 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'distributeImages',
             $this->normalizeDistributeImages($this->request->post('distributeImages')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the state of the switch of the numbering and answers with the address
+     * that mirrors it, exactly like the switch of the distribution does. It redraws
+     * nothing: the numbers of the parts are written into the fields of the form by
+     * the script that reads the switch.
+     *
+     * @return Response
+     */
+    public function actionNumberPartsSave(): Response
+    {
+        Yii::$app->session->set(
+            'numberParts',
+            $this->normalizeNumberParts($this->request->post('numberParts')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the place a part heading wears its number with and answers with the
+     * address that mirrors it, exactly like the switch of the numbering does. Only
+     * the two words of the pair of radios reach the session, and the radios
+     * themselves answer nothing while the numbering stands off — the state is kept
+     * all the same, so the choice the reader made is there when the numbering comes
+     * back on.
+     *
+     * @return Response
+     */
+    public function actionHeadingNumberPlaceSave(): Response
+    {
+        Yii::$app->session->set(
+            'headingNumberPlace',
+            $this->normalizeHeadingNumberPlace($this->request->post('headingNumberPlace')),
         );
 
         return $this->asJson([

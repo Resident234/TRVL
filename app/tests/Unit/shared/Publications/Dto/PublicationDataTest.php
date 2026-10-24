@@ -11,9 +11,11 @@ use Codeception\Test\Unit;
 /**
  * The message a part of a split publication is sent as. The page writes the line
  * «Часть N» into the text of the part and — while both switches of the form stand
- * on the same way — the same number in front of the heading, so the composition has
- * to see that the heading already carries it and take the line out of the body
- * without naming the part twice.
+ * on the same way — the same number either in front of the heading or at its end,
+ * so the composition has to see that the heading already carries it and take the
+ * line out of the body without naming the part twice. Where the number stands in
+ * the heading, the text of the part brings no number line at all, and the heading
+ * is sent as the page wrote it.
  */
 final class PublicationDataTest extends Unit
 {
@@ -74,5 +76,25 @@ final class PublicationDataTest extends Unit
         $message = $this->part('Обычное тело.', 'Заголовок.')->messageText();
 
         $this->assertSame("Заголовок.\n\nОбычное тело.", $message);
+    }
+
+    public function testHeadingNumberedAtItsEndIsSentWithTheNumberOnce(): void
+    {
+        $message = $this->part('Браво текст.', 'Альфа текст. Часть 1')->messageText();
+
+        // The shape the pair of radios under the numbering writes when the reader
+        // stands the number at the end: the number line stays out of the text, so
+        // the composition finds none to move and the heading goes out as written.
+        $this->assertSame("Альфа текст. Часть 1\n\nБраво текст.", $message);
+    }
+
+    public function testWholeHeadingOfAPartNumberedAtItsEndIsBold(): void
+    {
+        $entities = $this->part('Браво текст.', 'Альфа текст. Часть 1')->messageEntities();
+
+        $this->assertSame(
+            [['type' => 'bold', 'offset' => 0, 'length' => 20]],
+            $entities->toArray(),
+        );
     }
 }

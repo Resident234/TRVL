@@ -20,6 +20,8 @@ declare(strict_types=1);
 /** @var bool $albumRows whether the album of the form shows its pictures as rows */
 /** @var bool $partsPublication whether every part gets its own time and its own button */
 /** @var bool $distributeImages whether the albums of the form are handed out over its parts on their own */
+/** @var bool $numberParts whether the number of a part is written at all */
+/** @var string $headingNumberPlace 'before' | 'after' — which end of a part heading wears its number */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -1383,11 +1385,37 @@ CSS
                                     </div>
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Дописывает «Часть 1», «Часть 2» … в начало каждого фрагмента разбитой публикации">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts">
+                                         data-bs-content="Дописывает «Часть 1», «Часть 2» … к каждой части разбитой публикации: в начало её заголовка, а пока «Первая строка — в заголовок» выключен — в начало самого текста">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts"
+                                            <?= $numberParts ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationNumberParts">
                                             <i class="bi bi-list-ol me-1"></i>Нумерация частей
                                         </label>
+                                    </div>
+                                    <?php /* The pair of radios under that switch answers WHICH end of the heading
+                                                wears the number. Both of them travel to the server, together with
+                                                the switch itself: the page keeps the three states in the session,
+                                                so the numbering and the place the reader left stand there when
+                                                the form opens again. While the numbering is off the two radios
+                                                have nothing to decide, and they are greyed out rather than taken
+                                                away — the choice the reader made stays visible and stays kept. */ ?>
+                                    <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Где в заголовке части стоит её номер: в начале, как «Часть 1. Текст», или в конце, как «Текст. Часть 1». Пока включена «Нумерация частей»; с выключенной выбирать нечего.">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
+                                                   id="publicationHeadingNumberBefore" value="before"
+                                                   <?= $numberParts ? '' : 'disabled' ?>
+                                                   <?= $headingNumberPlace === 'after' ? '' : 'checked' ?>>
+                                            <label class="form-check-label" for="publicationHeadingNumberBefore">В начале заголовка</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
+                                                   id="publicationHeadingNumberAfter" value="after"
+                                                   <?= $numberParts ? '' : 'disabled' ?>
+                                                   <?= $headingNumberPlace === 'after' ? 'checked' : '' ?>>
+                                            <label class="form-check-label" for="publicationHeadingNumberAfter">В конце заголовка</label>
+                                        </div>
                                     </div>
 
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
@@ -1958,6 +1986,8 @@ $linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
 $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
 $distributeImagesSaveUrl = \yii\helpers\Url::to(['site/distribute-images-save']);
+$numberPartsSaveUrl = \yii\helpers\Url::to(['site/number-parts-save']);
+$headingNumberPlaceSaveUrl = \yii\helpers\Url::to(['site/heading-number-place-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
 // The three addresses a part of the form is moved by: the two the lists already post
@@ -1997,6 +2027,8 @@ var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
 var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
 var __DISTRIBUTE_IMAGES_URL = '{$distributeImagesSaveUrl}';
+var __NUMBER_PARTS_URL = '{$numberPartsSaveUrl}';
+var __HEADING_PLACE_URL = '{$headingNumberPlaceSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __PART_GROUP_URL = '{$partGroupUrl}';
 var __TO_DRAFT_URL = '{$toDraftUrl}';
@@ -2205,28 +2237,64 @@ function partNumberPrefix(text) {
     return match ? match[0] : '';
 }
 
-// The number a heading of a part opens with, as the field of the heading holds it:
-// the twin of the line above, which the same number makes inside the text of the
-// part. A heading carries the number first and its own words behind it, so the pair
-// of them reads as the message the channel gets.
+// The number a heading of a part wears, as the field of the heading holds it: the twin
+// of the line above, which the same number makes inside the text of the part. The pair
+// of radios under the switch of the numbering answers WHICH end of the heading carries
+// it, so the field is read at both of its ends. Behind the words the dot the heading
+// ends with stands as the separator, and that dot is what tells a number the page wrote
+// there from words a person typed themselves: «Текст Часть 2» holds no separator and is
+// left to the person who wrote it.
 var HEADING_NUMBER = /^Часть \d+[.:]?\s*/;
+var HEADING_NUMBER_END = /\.\s*Часть \d+\s*$/;
+
+// The two radios of the place are looked for once, when the form stands in the DOM, and
+// are kept here: the pass over the headings asks the place for every one of them, and a
+// helper of this scope cannot reach into the scope of the form.
+var headingNumberBeforeInput = null;
+var headingNumberAfterInput = null;
 
 function headingNumberPrefix(index) {
     return 'Часть ' + (index + 1) + '. ';
 }
 
-function stripHeadingNumber(title) {
-    return String(title || '').replace(HEADING_NUMBER, '');
+// The same number without the dot behind it and without its blanks: a heading that
+// ends with one already holds the separator the number stands on, and a form that
+// shows its own heading twice in a row has no business growing a second dot.
+function headingNumberSuffix(index) {
+    return 'Часть ' + (index + 1);
 }
 
-// The heading of a part with the number of its place in front of it, or with no
-// number at all: the number is written from the place of the part over whatever the
-// field held, so a rebuild never piles a second copy of it on, and the click that
-// takes the numbers off takes them off the very fields they were written into.
+function headingNumberAtEnd() {
+    return !!(headingNumberAfterInput && headingNumberAfterInput.checked);
+}
+
+function stripHeadingNumber(title) {
+    return String(title || '')
+        .replace(HEADING_NUMBER, '')
+        .replace(HEADING_NUMBER_END, '');
+}
+
+// The heading of a part with the number of its place at the end the form was chosen to
+// wear it with, or with no number at all: the number is written from the place of the
+// part over whatever the field held, so a rebuild never piles a second copy of it on,
+// and the click that takes the numbers off takes them off the very fields they were
+// written into. A heading of nothing else is its number in either of the two shapes.
 function numberHeading(title, index, on) {
     var bare = stripHeadingNumber(title);
 
-    return on ? (headingNumberPrefix(index) + bare).replace(/\s+$/, '') : bare;
+    if (!on) {
+        return bare;
+    }
+
+    if (headingNumberAtEnd()) {
+        var words = bare.replace(/\s+$/, '');
+
+        return words === ''
+            ? headingNumberSuffix(index) + '.'
+            : words.replace(/\.$/, '') + '. ' + headingNumberSuffix(index);
+    }
+
+    return (headingNumberPrefix(index) + bare).replace(/\s+$/, '');
 }
 
 function numberHeadings(titles, on) {
@@ -3263,6 +3331,68 @@ jQuery(document).ready(function () {
         });
     }
 
+    // The switch of the numbering changes a great deal of the form and nothing of the
+    // lists: the numbers it writes live in the fields the reader is typing into, so the
+    // server only stores its state and answers with the address that mirrors it. The
+    // click itself renumbers the parts through the listener the form binds, so a save
+    // that came back asks no renumbering — only the hand that puts the switch back has
+    // to give the fields over again, or the form would stand numbered while the session
+    // says it is not.
+    function watchNumberPartsSwitch(renumberParts) {
+        var input = document.getElementById('publicationNumberParts');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            var state = input.checked;
+            postForJson(__NUMBER_PARTS_URL, { numberParts: state ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                })
+                .catch(function (error) {
+                    // The session kept the state it was asked with, so the switch has
+                    // to keep the one it was rendered with — and the parts the click
+                    // renumbered have to follow it back.
+                    input.checked = !state;
+                    renumberParts();
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
+    // The pair of radios under that switch carries a word rather than a flag, and both
+    // of its radios are bound by one hand: a click on either of them posts the place the
+    // group stands on now. `held` is the place the session holds, so a refused save puts
+    // back the radio the reader reached rather than the one the page was first drawn
+    // with, and renumbers the headings back over it.
+    function watchHeadingPlaceSwitch(renumberParts) {
+        if (!headingNumberBeforeInput || !headingNumberAfterInput) {
+            return;
+        }
+        var held = headingNumberAfterInput.checked;
+        var inputs = [headingNumberBeforeInput, headingNumberAfterInput];
+        inputs.forEach(function (input) {
+            input.addEventListener('change', function () {
+                var state = headingNumberAfterInput.checked;
+                renumberParts();
+                postForJson(__HEADING_PLACE_URL, { headingNumberPlace: state ? 'after' : 'before' })
+                    .then(function (payload) {
+                        held = state;
+                        mirrorUrl(payload);
+                    })
+                    .catch(function (error) {
+                        if (state !== held) {
+                            (held ? headingNumberAfterInput : headingNumberBeforeInput).checked = true;
+                            renumberParts();
+                        }
+                        showFlash('error', 'Не удалось запомнить переключатель: '
+                            + (error && error.message ? error.message : error));
+                    });
+            });
+        });
+    }
+
     // The switch that reads the addresses of a text into buttons changes none of
     // the lists either: it says what the form does with the text it holds, so the
     // server stores its state and answers with the address that mirrors it. The
@@ -3503,6 +3633,11 @@ jQuery(document).ready(function () {
         // draws it blank, and a clone of it is what adding appends to a box.
         var buttonRowTemplate = buttonRowsOf(sharedButtonBox)[0].cloneNode(true);
         var numberPartsInput = document.getElementById('publicationNumberParts');
+        // The pair of radios under that switch is remembered where the number of a
+        // heading is written: the pass over the headings asks it which end to write at,
+        // for every one of the parts.
+        headingNumberBeforeInput = document.getElementById('publicationHeadingNumberBefore');
+        headingNumberAfterInput = document.getElementById('publicationHeadingNumberAfter');
         var partsIndividualInput = document.getElementById('publicationPartsIndividually');
         var partGroupIdInput = document.getElementById('publicationPartGroupId');
         var saveInPlaceButton = document.getElementById('publicationSaveInPlaceBtn');
@@ -5721,6 +5856,20 @@ jQuery(document).ready(function () {
             return !!(numberPartsInput && numberPartsInput.checked);
         }
 
+        // The pair of radios under the switch of the numbering decides nothing while that
+        // switch stands off: the number of a part goes into the head of its text, where
+        // the end of a heading has no say. Both radios are greyed out rather than taken
+        // away, so the choice the reader made stays visible and stays kept for the moment
+        // the numbering comes back on.
+        function syncHeadingPlaceSwitch() {
+            if (headingNumberBeforeInput) {
+                headingNumberBeforeInput.disabled = !isNumbered();
+            }
+            if (headingNumberAfterInput) {
+                headingNumberAfterInput.disabled = !isNumbered();
+            }
+        }
+
         // The heading travels inside the same message as the text, so it eats into
         // the length a text is split at too: a heading costs its own length plus
         // the blank line under it, and the longest one of the parts sets the
@@ -7937,14 +8086,24 @@ jQuery(document).ready(function () {
                 acceptPickedFiles(imageFilesInput);
             });
         }
+        // The hand every control of the numbering is answered by: the switch of the
+        // numbering, the switch of the header, the pair of radios under it, and the two
+        // watchers that put a state the server refused back. The gate goes first, because
+        // the end a number is written at is decided by the radios the click has just
+        // greyed, and a form whose numbering was thrown off greys them before its fields
+        // are written bare again.
+        function renumberParts() {
+            syncHeadingPlaceSwitch();
+            applyPartNumbers();
+            applyHeadingNumbers();
+            updateCounters();
+            update();
+        }
         partsBox.addEventListener('focusout', hideSelectionActions);
         if (numberPartsInput) {
             numberPartsInput.addEventListener('change', function () {
                 splitIfNeeded();
-                applyPartNumbers();
-                applyHeadingNumbers();
-                updateCounters();
-                update();
+                renumberParts();
             });
         }
         // The same click on the switch of the header writes the number of the parts
@@ -7957,10 +8116,7 @@ jQuery(document).ready(function () {
         // cannot be left with no number in either of the two places.
         if (titleFromFirstLineInput) {
             titleFromFirstLineInput.addEventListener('change', function () {
-                applyPartNumbers();
-                applyHeadingNumbers();
-                updateCounters();
-                update();
+                renumberParts();
             });
         }
         mainPublicationAt.addEventListener('change', updatePartSchedules);
@@ -8572,9 +8728,6 @@ jQuery(document).ready(function () {
             // does: the shared field first, the boxes of the parts behind it.
             fillButtons('');
             setTextParts([''], [''], [], undefined, [''], ['']);
-            if (numberPartsInput) {
-                numberPartsInput.checked = false;
-            }
             // The group the form has saved is not the group of the next one: its
             // id has gone into the records with the parts themselves, and a time
             // the reader typed for a part of that group is no time of this form.
@@ -8604,8 +8757,9 @@ jQuery(document).ready(function () {
         // The reset a save runs is offered by hand too. Asking for it is asking for the
         // blank form the page opens in, so the record taken over goes with the fields:
         // keeping its id would let the next submit write over a record nobody meant to
-        // change. The five switches that live in the session keep their state, as they do after a
-        // save — the reader left the page with them on purpose.
+        // change. The states that live in the session — six switches and the pair of radios
+        // under the numbering — keep their state, as they do after a save: the reader left
+        // the page with them on purpose.
         var clearFormButton = document.getElementById('publicationClearBtn');
         if (clearFormButton) {
             clearFormButton.addEventListener('click', function () {
@@ -8989,6 +9143,14 @@ jQuery(document).ready(function () {
         // parts whenever an album arrives or their number changes; thrown off, it leaves
         // the arrangement the reader has.
         watchDistributeImagesSwitch(distributeImages);
+
+        // The two switches of the part numbering are remembered the same way: the
+        // numbering itself and the end of the heading its number stands at. Each of
+        // them has to renumber the parts as soon as it is thrown, because the number
+        // the reader already sees changes its place with the answer — and the radios
+        // change their grey with the switch.
+        watchNumberPartsSwitch(renumberParts);
+        watchHeadingPlaceSwitch(renumberParts);
 
         // The row of the first part is the one the markup drew and the rebuild of the parts
         // never replaces, so the picker the rows below it are given in their clone has to be
