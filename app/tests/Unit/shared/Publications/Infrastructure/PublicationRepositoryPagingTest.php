@@ -101,6 +101,7 @@ final class PublicationRepositoryPagingTest extends Unit
                 new MessageEntities(),
                 new LinkButtons(),
                 '',
+                new MessageEntities(),
             );
         }
 
@@ -183,6 +184,7 @@ final class PublicationRepositoryPagingTest extends Unit
                 new MessageEntities(),
                 new LinkButtons(),
                 '',
+                new MessageEntities(),
             );
         }
     }
@@ -199,6 +201,7 @@ final class PublicationRepositoryPagingTest extends Unit
                 new MessageEntities(),
                 new LinkButtons(),
                 '',
+                new MessageEntities(),
             );
         }
 
@@ -212,6 +215,7 @@ final class PublicationRepositoryPagingTest extends Unit
                 new MessageEntities(),
                 new LinkButtons(),
                 '',
+                new MessageEntities(),
             );
         }
     }
@@ -233,6 +237,7 @@ final class PublicationRepositoryPagingTest extends Unit
                 new MessageEntities(),
                 new LinkButtons(),
                 '',
+                new MessageEntities(),
             );
             $moved = $this->_repository->deletePost($number);
             $this->_repository->insertDeletedWithHistory(

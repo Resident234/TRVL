@@ -43,6 +43,7 @@ final class PublicationsServiceEmptyTextTest extends Unit
             [],
             [],
             [],
+            [],
             '',
             'draft',
             null,
@@ -57,7 +58,7 @@ final class PublicationsServiceEmptyTextTest extends Unit
 
         $this->_repository->expects($this->never())->method('createDraft');
 
-        $this->_service->saveParts([''], [[]], [], [], [], '', 'draft', null, self::TZ);
+        $this->_service->saveParts([''], [[]], [], [], [], [], '', 'draft', null, self::TZ);
     }
 
     public function testEmptyTextWithAHeadingButNoAlbumIsRefused(): void
@@ -66,7 +67,7 @@ final class PublicationsServiceEmptyTextTest extends Unit
 
         $this->_repository->expects($this->never())->method('createDraft');
 
-        $this->_service->saveParts([''], [[]], [], [], ['Заголовок'], '', 'draft', null, self::TZ);
+        $this->_service->saveParts([''], [[]], [], [], ['Заголовок'], [], '', 'draft', null, self::TZ);
     }
 
     public function testAPartWithoutTextKeepsItsOwnAlbum(): void
@@ -92,6 +93,7 @@ final class PublicationsServiceEmptyTextTest extends Unit
             [],
             [],
             [],
+            [],
             '',
             'draft',
             null,
@@ -108,6 +110,7 @@ final class PublicationsServiceEmptyTextTest extends Unit
         $this->_service->saveParts(
             ['Первая часть', ''],
             [['https://example.com/a.jpg'], []],
+            [],
             [],
             [],
             [],

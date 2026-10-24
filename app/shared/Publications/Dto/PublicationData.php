@@ -18,6 +18,9 @@ use app\shared\Telegram\Dto\MessageEntities;
  * under the message, and title the heading of the part — the three of
  * them describe the same text, which is what the form holds, while the
  * channel gets the message this record composes out of them.
+ * titleFormatting holds the marks the reader set over the heading
+ * itself; an empty list there leaves the heading under the bold rule of
+ * the composition, a non-empty one replaces it.
  */
 final readonly class PublicationData
 {
@@ -42,6 +45,9 @@ final readonly class PublicationData
      *        alive in any of the three tables, which is what its row badges
      * @param string|null $habitat where the record lives, as the group read names
      *        it: 'channel', 'post', 'draft' or 'deleted'
+     * @param MessageEntities $titleFormatting the marks the reader set over the
+     *        heading itself, counted from its beginning — the bold line the
+     *        composition puts over a heading stands only while this list is empty
      */
     public function __construct(
         public int $id,
@@ -61,6 +67,7 @@ final readonly class PublicationData
         public bool $partReleasable = false,
         public ?int $partGroupTotal = null,
         public ?string $habitat = null,
+        public MessageEntities $titleFormatting = new MessageEntities(),
     ) {
     }
 
@@ -81,6 +88,7 @@ final readonly class PublicationData
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
     ): PublicationData {
         return new PublicationData(
             $this->id,
@@ -97,6 +105,7 @@ final readonly class PublicationData
             $this->partGroupId,
             $this->partOrder,
             $this->partReleased,
+            titleFormatting: $titleFormatting,
         );
     }
 
@@ -134,6 +143,7 @@ final readonly class PublicationData
             $this->partReleasable,
             $this->partGroupTotal,
             $this->habitat,
+            titleFormatting: $this->titleFormatting,
         );
     }
 
@@ -156,13 +166,20 @@ final readonly class PublicationData
     /**
      * The highlighting of that text: the whole of the heading line in bold over
      * the spans of the body, which have moved behind it and over the blank line,
-     * less the number the heading took out of the head of the text.
+     * less the number the heading took out of the head of the text. A heading
+     * that wears marks of its own is sent with exactly those instead of the bold
+     * line, and the body moves behind it the same way.
      */
     public function messageEntities(): MessageEntities
     {
         [$header, $body, $moved] = $this->splitHeader();
 
-        return $this->formatting->underHeading($header, $body === '' ? '' : self::HEADING_GAP, $moved);
+        return $this->formatting->underHeading(
+            $header,
+            $body === '' ? '' : self::HEADING_GAP,
+            $moved,
+            $this->titleFormatting,
+        );
     }
 
     /**

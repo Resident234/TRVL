@@ -87,7 +87,7 @@ final class PublicationsServicePartGroupTest extends Unit
                 },
             );
 
-        $this->service()->saveParts($this->texts(), [], [], [], [], '', 'draft', null, 'UTC');
+        $this->service()->saveParts($this->texts(), [], [], [], [], [], '', 'draft', null, 'UTC');
 
         $this->assertCount(1, $written, 'The parts of one draft publication are written in one call.');
         $this->assertSame(
@@ -113,7 +113,18 @@ final class PublicationsServicePartGroupTest extends Unit
                 },
             );
 
-        $this->service()->saveParts($this->texts(), [], [], [], [], '2026-10-04 08:50:00', 'publish', null, 'UTC');
+        $this->service()->saveParts(
+            $this->texts(),
+            [],
+            [],
+            [],
+            [],
+            [],
+            '2026-10-04 08:50:00',
+            'publish',
+            null,
+            'UTC',
+        );
 
         $this->assertSame(
             1,
@@ -140,6 +151,7 @@ final class PublicationsServicePartGroupTest extends Unit
 
         $this->service()->saveParts(
             $this->texts(),
+            [],
             [],
             [],
             [],
@@ -173,6 +185,7 @@ final class PublicationsServicePartGroupTest extends Unit
 
         $this->service()->saveParts(
             $this->texts(),
+            [],
             [],
             [],
             [],
@@ -377,6 +390,7 @@ final class PublicationsServicePartGroupTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             '2026-10-04 09:30:00',
             'deleted',
             2,
@@ -415,6 +429,7 @@ final class PublicationsServicePartGroupTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             '2026-10-04 08:50:00',
             'post',
             1,

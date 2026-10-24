@@ -1580,6 +1580,7 @@ class SiteController extends Controller
         $formats = $this->publicationFormatsFromRequest(count($texts));
         $buttons = $this->publicationButtonsFromRequest(count($texts));
         $titles = $this->publicationTitlesFromRequest(count($texts));
+        $titleFormats = $this->publicationTitleFormatsFromRequest(count($texts));
         $publishedAt = (string)($this->request->post('publicationAt', ''));
         $userTz = (string)($this->request->post('publicationTz', ''));
         $pressed = (string)$this->request->post('action', '');
@@ -1613,6 +1614,7 @@ class SiteController extends Controller
                     $formats,
                     $buttons,
                     $titles,
+                    $titleFormats,
                     $publishedAt,
                     $action,
                     $forumRef,
@@ -1634,6 +1636,7 @@ class SiteController extends Controller
                         $formats,
                         $buttons,
                         $titles,
+                        $titleFormats,
                         $this->publicationSlotsFromRequest(count($texts)),
                         array_values($partTimes),
                         $publishedAt,
@@ -1661,6 +1664,7 @@ class SiteController extends Controller
                     $formats[0],
                     $buttons[0],
                     $titles[0],
+                    $titleFormats[0],
                     $publishedAt,
                     $source,
                     $sourceId,
@@ -1768,6 +1772,32 @@ class SiteController extends Controller
     }
 
     /**
+     * The marking of those headings as one entity list per part: the editor of a
+     * heading keeps its plain text in the field the reader types into and the
+     * spans of that text in the hidden positional field beside it, so a
+     * submission brings the headings and their marks in the same order. A part
+     * whose field is missing — a record written before a heading could be marked
+     * — comes back with no marks of its own and goes out under the plain bold
+     * line the composition puts over it.
+     *
+     * @return MessageEntities[]
+     */
+    private function publicationTitleFormatsFromRequest(int $parts): array
+    {
+        $fields = $this->partFieldsFromRequest(
+            'publicationTitleFormatting',
+            'publicationPartTitleFormatting',
+        );
+
+        $formats = [];
+        for ($index = 0; $index < $parts; $index++) {
+            $formats[] = MessageEntities::fromStored($fields[$index] ?? null);
+        }
+
+        return $formats;
+    }
+
+    /**
      * The row every part of the form goes back to. Each text block of the form
      * carries, in a hidden field of its own, the block and the id of the record
      * it was loaded with, so a save rewrites that very row rather than making a
@@ -1797,16 +1827,20 @@ class SiteController extends Controller
     /**
      * One kind of the per-part fields of the form: the shared field of the first
      * part followed by the cloned fields of the parts that came after it, so
-     * the two lists line up with the parts the way the albums do.
+     * the two lists line up with the parts the way the albums do. A field whose
+     * name wears brackets — the marks of a heading do, the marks of the body do
+     * — comes in as a list holding it alone, and is opened up here so the part
+     * it belongs to keeps its place either way.
      *
      * @return array<int, mixed>
      */
     private function partFieldsFromRequest(string $shared, string $perPart): array
     {
+        $first = $this->request->post($shared, '');
         $raw = $this->request->post($perPart, []);
 
         return array_merge(
-            [$this->request->post($shared, '')],
+            is_array($first) ? array_values($first) : [$first],
             is_array($raw) ? array_values($raw) : [$raw],
         );
     }
@@ -2204,7 +2238,8 @@ class SiteController extends Controller
     /**
      * One row of a group as the form reads it. `source` is the block the row is
      * moved back to, `habitat` is what its badge says, and the album, the
-     * highlighting and the keyboard come in the same shapes the list rows of
+     * highlighting, the marking of the heading and the keyboard come in the same
+     * shapes the list rows of
      * that block already carry in their own attributes.
      */
     private function partFormPayload(PublicationData $row): array
@@ -2220,6 +2255,7 @@ class SiteController extends Controller
             'title' => $row->title,
             'images' => implode("\n", $row->imageUrls),
             'formatting' => $row->formatting->toJson(),
+            'titleFormatting' => $row->titleFormatting->toJson(),
             'buttons' => $row->buttons->toJson(),
             'publishedAt' => (string)($row->publishedAt ?? ''),
         ];
@@ -2240,6 +2276,7 @@ class SiteController extends Controller
         $formats = $this->publicationFormatsFromRequest(count($texts));
         $buttons = $this->publicationButtonsFromRequest(count($texts));
         $titles = $this->publicationTitlesFromRequest(count($texts));
+        $titleFormats = $this->publicationTitleFormatsFromRequest(count($texts));
         $albums = $this->imageGroupsFromRequest();
         $partGroupId = trim((string)$this->request->post('publicationPartGroupId', ''));
 
@@ -2266,6 +2303,7 @@ class SiteController extends Controller
                 $formats[$index],
                 $buttons[$index],
                 $titles[$index],
+                $titleFormats[$index],
                 $partGroupId,
             );
 

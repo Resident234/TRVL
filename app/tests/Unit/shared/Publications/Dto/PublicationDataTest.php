@@ -15,12 +15,17 @@ use Codeception\Test\Unit;
  * so the composition has to see that the heading already carries it and take the
  * line out of the body without naming the part twice. Where the number stands in
  * the heading, the text of the part brings no number line at all, and the heading
- * is sent as the page wrote it.
+ * is sent as the page wrote it. A heading that wears marks of its own is sent with
+ * exactly those marks, and the rule of the bold line steps back for them.
  */
 final class PublicationDataTest extends Unit
 {
-    private function part(string $text, string $title, MessageEntities $formatting = new MessageEntities()): PublicationData
-    {
+    private function part(
+        string $text,
+        string $title,
+        MessageEntities $formatting = new MessageEntities(),
+        MessageEntities $titleFormatting = new MessageEntities(),
+    ): PublicationData {
         return new PublicationData(
             id: 1,
             text: $text,
@@ -31,6 +36,7 @@ final class PublicationDataTest extends Unit
             updatedAt: '2026-10-14 00:00:00',
             formatting: $formatting,
             title: $title,
+            titleFormatting: $titleFormatting,
         );
     }
 
@@ -94,6 +100,37 @@ final class PublicationDataTest extends Unit
 
         $this->assertSame(
             [['type' => 'bold', 'offset' => 0, 'length' => 20]],
+            $entities->toArray(),
+        );
+    }
+
+    public function testMarkedHeadingOfAPartIsSentWithoutTheBoldOverItsWholeLine(): void
+    {
+        $marked = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 5]]);
+
+        $entities = $this->part('Браво текст.', 'Альфа текст. Часть 1', new MessageEntities(), $marked)
+            ->messageEntities();
+
+        $this->assertSame(
+            [['type' => 'bold', 'offset' => 0, 'length' => 5]],
+            $entities->toArray(),
+        );
+    }
+
+    public function testMarksOfTheHeadingAndMarksOfItsBodyStandInTheMessageTogether(): void
+    {
+        $marked = MessageEntities::fromArray([
+            ['type' => 'text_link', 'offset' => 6, 'length' => 6, 'url' => 'https://example.com/a'],
+        ]);
+        $body = MessageEntities::fromArray([['type' => 'italic', 'offset' => 0, 'length' => 5]]);
+
+        $entities = $this->part('Браво текст.', 'Альфа текст.', $body, $marked)->messageEntities();
+
+        $this->assertSame(
+            [
+                ['type' => 'text_link', 'offset' => 6, 'length' => 6, 'url' => 'https://example.com/a'],
+                ['type' => 'italic', 'offset' => 14, 'length' => 5],
+            ],
             $entities->toArray(),
         );
     }

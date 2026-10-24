@@ -1013,9 +1013,24 @@ CSS
                                                 </button>
                                             </div>
                                         </div>
-                                        <input type="text" class="form-control publication-title-field mb-2"
-                                               id="publicationTitleInput" name="publicationTitle"
-                                               placeholder="Жирная первая строка публикации">
+                                        <?php /* The heading of a part, marked the way its text is marked:
+                                               the same editor paints over a hidden field, and the hidden
+                                               field is what the form submits. The marks of a heading are
+                                               counted from its first character and travel in a json of
+                                               their own, next to the marks of the text. A heading is one
+                                               line — the split of a text reads it as one — so a break that
+                                               reaches it is folded into a space, and Enter does nothing.
+                                               A heading that carries no marks of its own still wears the
+                                               whole line bold, as every record written before this did. */ ?>
+                                        <div class="publication-editor publication-title-editor">
+                                            <textarea class="form-control publication-title-field d-none"
+                                                      id="publicationTitleInput" name="publicationTitle"
+                                                      tabindex="-1" aria-hidden="true"
+                                                      placeholder="Жирная первая строка публикации"></textarea>
+                                            <div class="publication-editor-field"></div>
+                                            <input type="hidden" class="publication-format-field"
+                                                   name="publicationTitleFormatting[]" value="[]">
+                                        </div>
                                         <?php /* The line that names the text of the part, says in which block
                                                that part lives now and carries the counter of it at its right
                                                end. The word about the block is a pill of its own color with a
@@ -2331,24 +2346,31 @@ function splitHeading(title, text) {
     };
 }
 
-// The same highlighting lying under a heading of its own: the whole heading is
-// bold and every span moves behind it and over the line that separates the two,
-// less the number the heading was built from.
-function entitiesUnderHeading(list, heading, gap, moved) {
+// The same highlighting lying under a heading of its own: every span of the body
+// moves behind the heading and over the line that separates the two, less the
+// number the heading was built from. The heading itself wears the marks the reader
+// set over it, and where he set none it wears the whole line bold — which is how
+// every record written before this revision goes out, and why the two shapes share
+// the arithmetic of the body: a mark of a heading is counted from its beginning,
+// so it needs no shift of its own.
+function entitiesUnderHeading(list, heading, gap, moved, own) {
     if (heading === '') {
         return list.slice();
     }
 
+    var marks = (own || []).length === 0
+        ? [makeEntity('bold', 0, heading.length)]
+        : shiftEntities(own, 0);
+
     return sortEntities(
-        [makeEntity('bold', 0, heading.length)]
-            .concat(shiftEntities(list, heading.length + gap.length - moved))
+        marks.concat(shiftEntities(list, heading.length + gap.length - moved))
     );
 }
 
 // The message a part goes to the channel as, and its highlighting: what the
 // preview shows and the counters count is the text the server composes, so a
 // heading is never a decoration the posted message does not carry.
-function composedMessage(title, text, entities) {
+function composedMessage(title, text, entities, titleEntities) {
     var cut = splitHeading(title, text);
 
     if (cut.heading === '') {
@@ -2357,7 +2379,8 @@ function composedMessage(title, text, entities) {
 
     return {
         text: cut.body === '' ? cut.heading : cut.heading + cut.gap + cut.body,
-        entities: entitiesUnderHeading(entities || [], cut.heading, cut.gap, cut.moved)
+        entities: entitiesUnderHeading(
+            entities || [], cut.heading, cut.gap, cut.moved, titleEntities || [])
     };
 }
 
@@ -3677,6 +3700,11 @@ jQuery(document).ready(function () {
 
         var TEXTAREA_VALUE = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
         var TOOLBAR_FORMATS = [['bold', 'italic', 'underline', 'strike', 'code'], ['link']];
+        // The panel of a heading is the set the reader asked for: bold, italic,
+        // underline, link, and the emoji button this page adds to every toolbar.
+        // A strike and a `code` span stay with the body — a one-line heading takes
+        // them as well as any other, but the form offers no tool nobody requested.
+        var TITLE_TOOLBAR_FORMATS = [['bold', 'italic', 'underline'], ['link']];
 
         function formattingOf(field) {
             return field.__formatting || [];
@@ -3707,6 +3735,12 @@ jQuery(document).ready(function () {
             // A value that ends in a line break loses that break: an editor holds
             // no empty line behind its last one, and the channel trims it anyway.
             var shown = editor.getText().replace(/\n$/, '');
+            // A heading is one line: a break that reached it — from a record whose
+            // heading was saved before this rule, or from a fill of the forum —
+            // folds into a space before the text is written back through the field.
+            if (field.__singleLine) {
+                shown = shown.replace(/\n+/g, ' ');
+            }
             if (shown !== value) {
                 TEXTAREA_VALUE.set.call(field, shown);
             }
@@ -3743,18 +3777,20 @@ jQuery(document).ready(function () {
             paintEditor(field);
         }
 
-        function mountPartEditor(field) {
+        function mountPartEditor(field, singleLine) {
             var root = editorRootOf(field);
             if (field.__editor || !root || typeof Quill !== 'function') {
                 return;
             }
+
+            field.__singleLine = !!singleLine;
 
             var editor = new Quill(root, {
                 theme: 'snow',
                 placeholder: field.placeholder || '',
                 modules: {
                     toolbar: {
-                        container: TOOLBAR_FORMATS,
+                        container: singleLine ? TITLE_TOOLBAR_FORMATS : TOOLBAR_FORMATS,
                         handlers: { link: function () { openLinkDialog(field); } },
                     },
                 },
@@ -3856,7 +3892,12 @@ jQuery(document).ready(function () {
                     return;
                 }
 
-                lastEditedField = field;
+                // A heading is not a part a cut works on and not a block a sentence
+                // moves between, so its caret never names the field those two hands
+                // were told to work on.
+                if (!singleLine) {
+                    lastEditedField = field;
+                }
 
                 if (!range) {
                     // Only the field the popup stands over takes it away: a neighbour reports the
@@ -3881,12 +3922,23 @@ jQuery(document).ready(function () {
             // The caret of the page lives in the editor now, so the field it was
             // typed in is the one a cut or a move works on.
             root.addEventListener('focusin', function () {
-                lastEditedField = field;
+                if (!singleLine) {
+                    lastEditedField = field;
+                }
             });
             // The arrows and Enter belong to the panel of a colon while it is open
             // over this part. The capture phase, as for the paste: Quill's own
             // keyboard answers ArrowDown and Enter, and it must not.
             root.addEventListener('keydown', function (event) {
+                // A heading is one line, so Enter has nothing to do in it: the key
+                // would split the block of the editor and the split of a text reads
+                // a heading as one line.
+                if (singleLine && event.key === 'Enter') {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    return;
+                }
                 if (emojiTarget && emojiTarget.field === field && emojiKeys(event)) {
                     event.stopPropagation();
                 }
@@ -3904,16 +3956,20 @@ jQuery(document).ready(function () {
 
                 event.preventDefault();
                 event.stopPropagation();
+                // Text that comes into a heading arrives with the lines of the page
+                // it was copied from, and a heading keeps one: the breaks fold into
+                // the spaces a typed heading would have had.
+                var pasted = singleLine ? text.replace(/\s*\n+\s*/g, ' ') : text;
                 var range = editor.getSelection(true);
                 editor.deleteText(range.index, range.length, 'api');
-                editor.insertText(range.index, text, 'user');
+                editor.insertText(range.index, pasted, 'user');
 
                 // An address that came in with the text is an address the user
                 // meant to keep, so it is read as one here too; the caret follows
                 // the text back to where the paste left it.
                 var removed = linkifyEditor(field);
                 if (removed > 0) {
-                    var caret = Math.min(range.index + text.length - removed, field.value.length);
+                    var caret = Math.min(range.index + pasted.length - removed, field.value.length);
                     editor.setSelection(caret, 0, 'api');
                     field.__caret = [caret, caret];
                     writeMirror(field, editor.getText().replace(/\n$/, ''));
@@ -3924,7 +3980,8 @@ jQuery(document).ready(function () {
         }
 
         function mountPartEditors() {
-            textParts().forEach(mountPartEditor);
+            textParts().forEach(function (field) { mountPartEditor(field, false); });
+            titleFields().forEach(function (field) { mountPartEditor(field, true); });
         }
 
         // The hidden field of a part carries its list to the server next to the
@@ -3938,7 +3995,7 @@ jQuery(document).ready(function () {
         }
 
         function writeFormattingFields() {
-            textParts().forEach(writeFormattingField);
+            textParts().concat(titleFields()).forEach(writeFormattingField);
         }
 
         // The text and the highlighting of a part written together: the value goes
@@ -4504,9 +4561,9 @@ jQuery(document).ready(function () {
             closeEmojiPanel();
 
             // The write of the mirror can cut the part anew and replace every field
-            // of it but the first: the caret only goes back where a part of the page
-            // still stands.
-            if (textParts().indexOf(field) !== -1) {
+            // of it but the first: the caret only goes back where a field of the page
+            // still stands — a heading of a part included.
+            if (textParts().concat(titleFields()).indexOf(field) !== -1) {
                 var caret = Math.min(at + item.emoji.length, field.value.length);
 
                 editor.focus();
@@ -4606,6 +4663,15 @@ jQuery(document).ready(function () {
         function readTitles() {
             return titleFields().map(function (field) {
                 return field.value;
+            });
+        }
+
+        // The marks of every heading, in the order of the parts. A heading is a field
+        // of the list like its text, so its list is read the same way — from the
+        // editor that stands over it, not from the json the form was filled with.
+        function readTitleFormats() {
+            return titleFields().map(function (field) {
+                return formattingOf(field);
             });
         }
 
@@ -5971,6 +6037,7 @@ jQuery(document).ready(function () {
 
         function updateCounters() {
             var titles = readTitles();
+            var titleMarks = readTitleFormats();
 
             textParts().forEach(function (field, index) {
                 var counter = field.closest('.publication-text-block').querySelector('.publication-text-count');
@@ -5978,8 +6045,10 @@ jQuery(document).ready(function () {
                     return;
                 }
                 // The number of the message the channel gets, not of the text in
-                // the field: a heading the part carries is part of that message.
-                var shown = composedMessage(titles[index] || '', field.value, formattingOf(field)).text.length;
+                // the field: a heading the part carries is part of that message,
+                // and so are the marks the reader set over it.
+                var shown = composedMessage(
+                    titles[index] || '', field.value, formattingOf(field), titleMarks[index] || []).text.length;
                 counter.textContent = shown + ' / ' + __TEXT_PART_LIMIT;
                 counter.className = 'publication-text-count'
                     + (shown > __TEXT_PART_LIMIT ? ' text-danger' : ' text-muted');
@@ -6133,15 +6202,19 @@ jQuery(document).ready(function () {
         // `titles` is the heading of every part; without it a part keeps the
         // heading that was in its field, and a part that appears gets none —
         // merging two parts keeps the heading of the one that stays, since a
-        // message has one first line. `slots` is the row every part was taken out
-        // of, and it is carried the same way: a part keeps the row it came with and
+        // message has one first line. `titleFormats` is the marking of those
+        // headings, counted over the heading of the same place, and it is carried
+        // exactly as the headings are: a heading that stays keeps its marks.
+        // `slots` is the row every part was taken out of, and it is carried the
+        // same way: a part keeps the row it came with and
         // a part that appears carries none, because nothing of it was saved.
-        function setTextParts(values, groups, files, formats, titles, slots) {
+        function setTextParts(values, groups, files, formats, titles, titleFormats, slots) {
             // The blocks that are about to be replaced carry the pickers, the
-            // headings and the slot of the parts, so all three are read while
-            // the fields still exist.
+            // headings, the marks of those headings and the slot of the parts, so
+            // all four are read while the fields still exist.
             var carriedFiles = files === undefined ? readFileGroups() : files;
             var carriedTitles = titles === undefined ? readTitles() : titles;
+            var carriedTitleFormats = titleFormats === undefined ? readTitleFormats() : titleFormats;
             var carriedSlots = slots === undefined ? readSlots() : slots;
             var carriedTimes = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-at'))
                 .map(function (input) { return { value: input.value, changed: input.dataset.userChanged || '' }; });
@@ -6175,11 +6248,13 @@ jQuery(document).ready(function () {
 
                 // A cloned block is one part of the list of headings the form
                 // submits, so it loses the name of the shared field it was
-                // cloned with.
+                // cloned with — and so does the field its marks travel in.
                 var title = block.querySelector('.publication-title-field');
                 title.id = 'publicationPartTitle' + (index + 1);
                 title.name = 'publicationPartTitle[]';
                 block.querySelector('.publication-title-label').setAttribute('for', title.id);
+                block.querySelector('.publication-title-editor .publication-format-field')
+                    .name = 'publicationPartTitleFormatting[]';
 
                 var album = block.querySelector('.publication-part-album-field');
                 album.id = 'publicationPartImages' + (index + 1);
@@ -6231,6 +6306,12 @@ jQuery(document).ready(function () {
 
             titleFields().forEach(function (field, index) {
                 field.value = carriedTitles[index] || '';
+                field.__formatting = (carriedTitleFormats || [])[index] || [];
+                // The heading of the first part wears the editor it was mounted with
+                // and no block is cloned for it, so the marks written under its value
+                // are painted by this hand — the write of the value paints the ones
+                // that stood here before.
+                paintEditor(field);
             });
 
             mountPartEditors();
@@ -6282,7 +6363,7 @@ jQuery(document).ready(function () {
             var parts = splitIntoParts(text);
             var headed = headingsFromParts(parts,
                 formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)),
-                readTitles());
+                readTitles(), readTitleFormats());
 
             // The whole text is cut anew, so the albums of the parts come together
             // in the first of them: none of the new parts is the one a list was
@@ -6290,7 +6371,7 @@ jQuery(document).ready(function () {
             setTextParts(headed.values,
                 asTexts(flattenGroups(readImageGroups())),
                 flattenGroups(readFileGroups()),
-                headed.formats, headed.titles);
+                headed.formats, headed.titles, headed.titleFormats, undefined);
 
             return true;
         }
@@ -6348,18 +6429,20 @@ jQuery(document).ready(function () {
 
         // The headings of the parts a split has just made: a part whose heading field
         // holds nothing of its own takes its first sentence out of its own text, and
-        // whatever stands behind the sentence keeps the highlighting it had. A heading
-        // that is already there is left alone — it is the name of a topic the fill put
-        // there, or a line the reader wrote. The number of the part the field opens with
-        // is not such a heading: it is the page that wrote it, and a field holding
-        // nothing but it is as empty as one that holds nothing. A part holding no second
-        // sentence is handed back by firstSentenceAsHeading() exactly as it stood, so
-        // nothing is written for it.
-        function cutHeadingsFromParts(values, formats, titles, on) {
+        // whatever stands behind the sentence keeps the highlighting it had — the
+        // spans of the sentence itself move into the list of marks the heading wears.
+        // A heading that is already there is left alone — it is the name of a topic
+        // the fill put there, or a line the reader wrote. The number of the part the
+        // field opens with is not such a heading: it is the page that wrote it, and a
+        // field holding nothing but it is as empty as one that holds nothing. A part
+        // holding no second sentence is handed back by firstSentenceAsHeading()
+        // exactly as it stood, so nothing is written for it.
+        function cutHeadingsFromParts(values, formats, titles, titleFormats, on) {
             var kept = {
                 values: (values || []).slice(),
                 formats: (formats || []).slice(),
-                titles: (titles || []).slice()
+                titles: (titles || []).slice(),
+                titleFormats: (titleFormats || []).slice()
             };
 
             // A text the form still keeps in one field takes its heading from its
@@ -6382,6 +6465,17 @@ jQuery(document).ready(function () {
                     value.length - heading.text.length,
                     Number.MAX_SAFE_INTEGER
                 );
+                // The sentence that left the text is the heading now, and the marks
+                // the reader set over it go with it: they are counted from the
+                // beginning of the heading from here on, and a mark the seam cuts
+                // in two is cut here too. The field of such a heading was empty, so
+                // nothing of its own is left behind — the list of the part's text
+                // taken before the tail was rebased is the whole of it.
+                kept.titleFormats[index] = takeEntities(
+                    formats[index] || [],
+                    0,
+                    heading.title.length
+                );
                 kept.values[index] = heading.text;
                 kept.titles[index] = heading.title;
             });
@@ -6392,17 +6486,25 @@ jQuery(document).ready(function () {
         // The one read of the switches of the header behind the pass, so every rebuild
         // of the parts hands over its lists and says nothing of the field. The number
         // of a part goes in front of the heading its own part took, and comes off it
-        // again where either of the two switches stands off.
-        function headingsFromParts(values, formats, titles) {
+        // again where either of the two switches stands off. A heading that is rewritten
+        // by that number carries its marks along with its words: the number is part of
+        // the field, so a mark the reader set over the words stands behind it.
+        function headingsFromParts(values, formats, titles, titleFormats) {
             var headed = cutHeadingsFromParts(
                 values,
                 formats,
                 titles,
+                titleFormats,
                 !!(titleFromFirstLineInput && titleFromFirstLineInput.checked)
             );
 
+            var bare = headed.titles.slice();
+
             headed.titles = numberHeadings(headed.titles,
                 headingNumbersOn() && headed.values.length >= 2);
+            headed.titleFormats = (headed.titleFormats || []).map(function (marks, index) {
+                return remapEntities(marks || [], bare[index], headed.titles[index]);
+            });
 
             return headed;
         }
@@ -6413,20 +6515,23 @@ jQuery(document).ready(function () {
         // `formatting` is the highlighting the record was saved with, cut up along
         // with the text the parts are made of. `title` is the heading of the
         // record, which opens the first of those parts; a forum post has none.
+        // `titleFormatting` is the marking that heading was saved with, counted over
+        // the very heading the field now holds.
         // `slot` is the row the record was opened from: only the first of the parts
         // stands in it, the rest are cut out of its text here and belong to no row
         // at all yet.
-        function loadText(text, formatting, title, slot) {
+        function loadText(text, formatting, title, titleFormatting, slot) {
             var parts = splitIntoParts(text);
             var headed = headingsFromParts(parts,
                 formatsOfParts(parts, text, formatting || []),
-                [title || '']);
+                [title || ''], [titleFormatting || []]);
 
             setTextParts(headed.values,
                 emptyGroups(parts.length),
                 emptyFileGroups(parts.length),
                 headed.formats,
                 headed.titles,
+                headed.titleFormats,
                 [slot || '']);
         }
 
@@ -6645,6 +6750,7 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
 
             // The part that starts below the caret begins without pictures of its
@@ -6655,13 +6761,15 @@ jQuery(document).ready(function () {
             groups.splice(index + 1, 0, []);
             files.splice(index + 1, 0, []);
             titles.splice(index + 1, 0, '');
+            titleFormats.splice(index + 1, 0, []);
             slots.splice(index + 1, 0, childSlotOf(slots[index]));
 
             var headed = headingsFromParts(bare.values.slice(0, index)
                 .concat([head, tail])
-                .concat(bare.values.slice(index + 1)), formats, titles);
+                .concat(bare.values.slice(index + 1)), formats, titles, titleFormats);
 
-            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles,
+                headed.titleFormats, slots);
 
             caretOfPart(textParts()[index + 1], 0);
         }
@@ -6741,15 +6849,15 @@ jQuery(document).ready(function () {
 
             var values = parts.length > 0 ? parts : [''];
             // The whole run is laid out again, so the only heading the publication
-            // keeps is the one it opens with.
+            // keeps is the one it opens with — and so are its marks.
             var headed = headingsFromParts(values,
                 formatsOfParts(parts, text, joinFormats(bare.values, bare.formats)),
-                [readTitles()[0] || '']);
+                [readTitles()[0] || ''], [readTitleFormats()[0] || []]);
 
             setTextParts(headed.values,
                 asTexts(flattenGroups(readImageGroups())),
                 flattenGroups(readFileGroups()),
-                headed.formats, headed.titles);
+                headed.formats, headed.titles, headed.titleFormats, undefined);
         }
 
         // --- joining two neighbouring parts -------------------------------------
@@ -6803,13 +6911,16 @@ jQuery(document).ready(function () {
 
             var files = spliceImageGroups(alignGroups(readFileGroups(), bare.values.length), index);
             // The heading of the part that goes away goes with it: one message has
-            // one first line, and the part it grew into keeps its own. The pill of
+            // one first line, and the part it grew into keeps its own — its marks
+            // come along the same way. The pill of
             // the block is kept the same way — the joined text is the record that
             // stood above, and the one below it is gone.
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
 
             titles.splice(index + 1, 1);
+            titleFormats.splice(index + 1, 1);
             slots.splice(index + 1, 1);
 
             var merged = joinedFormats(
@@ -6823,7 +6934,7 @@ jQuery(document).ready(function () {
             bare.formats[index] = merged;
             bare.values.splice(index + 1, 1);
             bare.formats.splice(index + 1, 1);
-            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles, slots);
+            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles, titleFormats, slots);
 
             // The joined text does not have to fit one message, so it goes back
             // through the split when it stopped fitting.
@@ -6838,7 +6949,7 @@ jQuery(document).ready(function () {
         // An empty part grown at one of the places a list of N parts offers — the
         // head, a seam of two parts, the tail. Nothing of it is saved anywhere, so
         // it comes without a heading, an album, picked files or a pill of its own,
-        // and the parts around it keep theirs: the six lists the rebuild reads are
+        // and the parts around it keep theirs: the seven lists the rebuild reads are
         // the ones the form already holds, and only a place is opened between them.
         // Where a part lands decides whose album it splits from, so the two ends are
         // not special: `0` takes the shared field of the first part, `N` stands
@@ -6855,6 +6966,7 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
 
             values.splice(index, 0, '');
@@ -6862,17 +6974,19 @@ jQuery(document).ready(function () {
             groups.splice(index, 0, []);
             files.splice(index, 0, []);
             titles.splice(index, 0, '');
+            titleFormats.splice(index, 0, []);
             slots.splice(index, 0, '');
 
-            var headed = headingsFromParts(values, formats, titles);
+            var headed = headingsFromParts(values, formats, titles, titleFormats);
 
-            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles,
+                headed.titleFormats, slots);
 
             // The new part is the one the reader came to fill.
             caretOfPart(textParts()[index], 0);
         }
 
-        // A part the reader invented is freed the way it was grown: the six lists the
+        // A part the reader invented is freed the way it was grown: the seven lists the
         // rebuild reads give up what stands at this one place, and the part itself stays
         // in the form to be filled again. Its slot is not touched — the row the part was
         // taken out of is still the row a save of this part writes into, and the pill
@@ -6885,6 +6999,7 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), values.length);
             var files = alignGroups(readFileGroups(), values.length);
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
             var partAt = partBlocks()[index].querySelector('.publication-part-at');
 
@@ -6893,6 +7008,7 @@ jQuery(document).ready(function () {
             groups[index] = [];
             files[index] = [];
             titles[index] = '';
+            titleFormats[index] = [];
 
             if (index === 0) {
                 // The keyboard of the first part is the shared field of the form, and the
@@ -6907,13 +7023,14 @@ jQuery(document).ready(function () {
                 delete partAt.dataset.userChanged;
             }
 
-            var headed = headingsFromParts(values, formats, titles);
+            var headed = headingsFromParts(values, formats, titles, titleFormats);
 
-            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles,
+                headed.titleFormats, slots);
         }
 
         // The block of a part nothing is saved under goes out of the form the way a merged
-        // part does: the six lists lose the entry of this place, and the rebuild counts the
+        // part does: the seven lists lose the entry of this place, and the rebuild counts the
         // numbers, renames the fields and hands over the shared album by the new places.
         function removePartAt(index) {
             var bare = bareParts();
@@ -6922,6 +7039,7 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), values.length);
             var files = alignGroups(readFileGroups(), values.length);
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
 
             values.splice(index, 1);
@@ -6929,11 +7047,13 @@ jQuery(document).ready(function () {
             groups.splice(index, 1);
             files.splice(index, 1);
             titles.splice(index, 1);
+            titleFormats.splice(index, 1);
             slots.splice(index, 1);
 
-            var headed = headingsFromParts(values, formats, titles);
+            var headed = headingsFromParts(values, formats, titles, titleFormats);
 
-            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles, slots);
+            setTextParts(headed.values, asTexts(groups), files, headed.formats, headed.titles,
+                headed.titleFormats, slots);
         }
 
         // The row a part has just taken is written back into the part: its pill names the
@@ -6987,7 +7107,7 @@ jQuery(document).ready(function () {
             field.setSelectionRange(at, at);
         }
 
-        // A part traded with its neighbour: the six lists the parts are rebuilt from
+        // A part traded with its neighbour: the seven lists the parts are rebuilt from
         // exchange the two places the move touches, and the rebuild does the rest —
         // it counts the numbers again, names the fields and the labels by the new
         // places, and hands the shared album of the first part over to whichever part
@@ -7006,6 +7126,7 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
             // The caret is counted over what stands in the field, where the line of
             // the number goes before the text of the part; a caret left inside that
@@ -7018,9 +7139,10 @@ jQuery(document).ready(function () {
             exchange(groups, index, other);
             exchange(files, index, other);
             exchange(titles, index, other);
+            exchange(titleFormats, index, other);
             exchange(slots, index, other);
 
-            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles, slots);
+            setTextParts(bare.values, asTexts(groups), files, bare.formats, titles, titleFormats, slots);
 
             // The caret marks the part that moved, now standing in its new place.
             caretOfPart(textParts()[other], at);
@@ -7247,22 +7369,25 @@ jQuery(document).ready(function () {
             var groups = alignGroups(readImageGroups(), bare.values.length);
             var files = alignGroups(readFileGroups(), bare.values.length);
             var titles = readTitles();
+            var titleFormats = readTitleFormats();
             var slots = readSlots();
 
             if (moved.values.length === bare.values.length + 1) {
                 groups.splice(moved.index, 0, []);
                 files.splice(moved.index, 0, []);
                 titles.splice(moved.index, 0, '');
+                titleFormats.splice(moved.index, 0, []);
                 slots.splice(moved.index, 0, '');
             } else if (moved.values.length === bare.values.length - 1) {
                 var joined = forward ? index : index - 1;
                 groups = spliceImageGroups(groups, joined);
                 files = spliceImageGroups(files, joined);
                 titles.splice(joined + 1, 1);
+                titleFormats.splice(joined + 1, 1);
                 slots.splice(joined + 1, 1);
             }
 
-            setTextParts(moved.values, asTexts(groups), files, moved.formats, titles, slots);
+            setTextParts(moved.values, asTexts(groups), files, moved.formats, titles, titleFormats, slots);
 
             // The caret stays where the moved text came to rest.
             caretOfPart(textParts()[moved.index], moved.caret);
@@ -7961,15 +8086,18 @@ jQuery(document).ready(function () {
             var fields = textParts();
             var buttons = readButtonGroups();
             var titles = readTitles();
+            var titleMarks = readTitleFormats();
             var shown = [];
 
             partValues().forEach(function (value, index) {
                 var pictures = albums[index] || [];
                 if (partIsShown(value, pictures)) {
                     // Every card shows the message the channel will get: the
-                    // heading of the part over its text, bold, with the number of
-                    // a numbered part at the end of the heading.
-                    var message = composedMessage(titles[index] || '', value, formattingOf(fields[index]));
+                    // heading of the part over its text, wearing the marks the
+                    // reader set over it or, where he set none, the whole line
+                    // bold, with the number of a numbered part at its end.
+                    var message = composedMessage(
+                        titles[index] || '', value, formattingOf(fields[index]), titleMarks[index] || []);
                     shown.push({
                         text: message.text,
                         pictures: pictures,
@@ -8059,6 +8187,10 @@ jQuery(document).ready(function () {
             if (!event.target.classList || !event.target.classList.contains('publication-title-field')) {
                 return;
             }
+            // A mark clicked over a heading leaves its words untouched, so the write
+            // of the mirror carries no text of a part and none of the hands below
+            // writes the field the marks of this heading travel in.
+            writeFormattingField(event.target);
             splitIfNeeded();
             updateCounters();
             update();
@@ -8534,7 +8666,8 @@ jQuery(document).ready(function () {
             var headed = headingsFromParts(
                 parts.map(function (part) { return part.text || ''; }),
                 parts.map(function (part) { return parseFormatting(part.formatting); }),
-                parts.map(function (part) { return part.title || ''; })
+                parts.map(function (part) { return part.title || ''; }),
+                parts.map(function (part) { return parseFormatting(part.titleFormatting); })
             );
 
             // Parts are individual here by the fact of standing in the lists at all,
@@ -8545,7 +8678,7 @@ jQuery(document).ready(function () {
             }
 
             setTextParts(headed.values, asTexts(groups), emptyFileGroups(parts.length),
-                headed.formats, headed.titles, slots);
+                headed.formats, headed.titles, headed.titleFormats, slots);
 
             if (keyboards.some(function (list) { return list.length > 0; }) && buttonEveryPartInput) {
                 buttonEveryPartInput.checked = true;
@@ -8633,6 +8766,7 @@ jQuery(document).ready(function () {
                 log.getAttribute('data-text') || '',
                 parseFormatting(log.getAttribute('data-formatting')),
                 log.getAttribute('data-title') || '',
+                parseFormatting(log.getAttribute('data-title-formatting')),
                 slotOfRow(log)
             );
             fillImages(log.getAttribute('data-image-urls') || '');
@@ -8727,7 +8861,7 @@ jQuery(document).ready(function () {
             // The buttons of the record come out of the form the same way the text
             // does: the shared field first, the boxes of the parts behind it.
             fillButtons('');
-            setTextParts([''], [''], [], undefined, [''], ['']);
+            setTextParts([''], [''], [], undefined, [''], [[]], ['']);
             // The group the form has saved is not the group of the next one: its
             // id has gone into the records with the parts themselves, and a time
             // the reader typed for a part of that group is no time of this form.
@@ -8848,7 +8982,7 @@ jQuery(document).ready(function () {
                 text = title + "\n\n" + text;
             }
             var heading = firstLineAsHeading(text);
-            loadText(heading.text, undefined, heading.title, forumSlot());
+            loadText(heading.text, undefined, heading.title, undefined, forumSlot());
             fillImages(btn.getAttribute('data-image-urls') || '');
             if (sourceTypeInput && sourceIdInput) {
                 sourceTypeInput.value = 'new';
@@ -8993,9 +9127,9 @@ jQuery(document).ready(function () {
                     var parts = threadTextParts(entities);
                     var heading = firstLineAsHeading(parts[0]);
                     var headed = headingsFromParts([heading.text].concat(parts.slice(1)),
-                        [], [heading.title]);
+                        [], [heading.title], [[]]);
                     setTextParts(headed.values,
-                        undefined, undefined, headed.formats, headed.titles,
+                        undefined, undefined, headed.formats, headed.titles, headed.titleFormats,
                         headed.values.map(function () { return forumSlot(); }));
                     asTexts(threadImageGroups(entities)).forEach(function (raw, index) {
                         writeImages(index, raw, true);
@@ -9004,7 +9138,7 @@ jQuery(document).ready(function () {
                     // The thread is one text here, so its pictures are one album
                     // of the first part.
                     var whole = firstLineAsHeading(threadTexts(entities).join("\n\n"));
-                    loadText(whole.text, undefined, whole.title, forumSlot());
+                    loadText(whole.text, undefined, whole.title, undefined, forumSlot());
                     fillImages(threadImages(entities));
                 }
                 if (sourceTypeInput && sourceIdInput) {

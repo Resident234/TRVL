@@ -153,7 +153,7 @@ final class PublicationsService
      *
      * @param string[] $imageUrls
      * @throws InvalidArgumentException when the part carries neither text nor
-     * images, or when its formatting does not fit the text
+     * images, or when the spans of its heading or of its text do not fit them
      */
     public function saveDraft(
         string $text,
@@ -161,11 +161,20 @@ final class PublicationsService
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         ?ForumPublicationRef $forumRef = null,
     ): void {
-        $this->assertPartValid($title, $text, $formatting, $imageUrls);
+        $this->assertPartValid($title, $titleFormatting, $text, $formatting, $imageUrls);
         $buttons->assertValid();
-        $id = $this->publications->createDraft($text, $imageUrls, $this->now(), $formatting, $buttons, $title);
+        $id = $this->publications->createDraft(
+            $text,
+            $imageUrls,
+            $this->now(),
+            $formatting,
+            $buttons,
+            $title,
+            $titleFormatting,
+        );
         $this->bindForumRef($id, $forumRef);
     }
 
@@ -179,7 +188,7 @@ final class PublicationsService
      *
      * @param string[] $imageUrls
      * @throws InvalidArgumentException when the part carries neither text nor
-     * images, or when its formatting does not fit the text
+     * images, or when the spans of its heading or of its text do not fit them
      */
     public function savePartAsDraft(
         string $text,
@@ -187,11 +196,13 @@ final class PublicationsService
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $groupId,
     ): int {
         $text = trim($text);
+        $titleFormatting = self::trimFormatting($title, $titleFormatting);
         $title = trim($title);
-        $this->assertPartValid($title, $text, $formatting, $imageUrls);
+        $this->assertPartValid($title, $titleFormatting, $text, $formatting, $imageUrls);
         $buttons->assertValid();
 
         return $this->publications->createDraft(
@@ -201,6 +212,7 @@ final class PublicationsService
             $formatting,
             $buttons,
             $title,
+            $titleFormatting,
             $groupId,
             $groupId === '' ? 0 : $this->nextGroupPlace($groupId),
         );
@@ -229,8 +241,9 @@ final class PublicationsService
      * "forum entity - publication" link is remembered.
      *
      * @param string[] $imageUrls
-     * @throws InvalidArgumentException when the part carries neither text nor images
-     * or the date is invalid
+     * @throws InvalidArgumentException when the part carries neither text nor images,
+     * when the spans of its heading or of its text do not fit them, or the date is
+     * invalid
      */
     public function schedulePost(
         string $text,
@@ -238,11 +251,12 @@ final class PublicationsService
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $publishedAt,
         ?ForumPublicationRef $forumRef = null,
         ?string $userTimezone = null,
     ): void {
-        $this->assertPartValid($title, $text, $formatting, $imageUrls);
+        $this->assertPartValid($title, $titleFormatting, $text, $formatting, $imageUrls);
         $buttons->assertValid();
         $normalized = $this->normalizeDate($publishedAt, $userTimezone);
         $id = $this->publications->createPost(
@@ -253,6 +267,7 @@ final class PublicationsService
             $formatting,
             $buttons,
             $title,
+            $titleFormatting,
         );
         $this->bindForumRef($id, $forumRef);
     }
@@ -277,6 +292,11 @@ final class PublicationsService
      * heading of every part in the same order again; a part with an empty one
      * goes out as a plain message, and the heading of a numbered part takes the
      * «Часть N» line out of its text and puts it at the end of that heading.
+     * $titleFormats is the marking the reader set over those headings, one list
+     * per part in the same order once more, counted from the heading the form
+     * shows and so trimmed along with it: a heading that carries no marks of its
+     * own goes out under the plain bold line the composition puts over it, and
+     * one that carries some wears exactly those.
      *
      * $individualParts is the switch of the form read at the submit: with it the
      * parts are stored as one group, of which only the first part enters the
@@ -294,12 +314,13 @@ final class PublicationsService
      * @param MessageEntities[] $formats
      * @param LinkButtons[] $buttons
      * @param string[] $titles
+     * @param MessageEntities[] $titleFormats
      * @param string[] $partTimes
      * @throws InvalidArgumentException when a part carries neither text nor its own
-     * album or is longer than the Telegram limit, when its formatting does not fit
-     * it, when one of its buttons is half-filled or malformed, when the date is
-     * invalid, or when the parts of a group are given times that do not follow
-     * each other
+     * album or is longer than the Telegram limit, when the spans of its heading or of
+     * its text do not fit them, when one of its buttons is half-filled or malformed,
+     * when the date is invalid, or when the parts of a group are given times that do
+     * not follow each other
      */
     public function saveParts(
         array $texts,
@@ -307,6 +328,7 @@ final class PublicationsService
         array $formats,
         array $buttons,
         array $titles,
+        array $titleFormats,
         string $publishedAt,
         string $action,
         ?ForumPublicationRef $forumRef = null,
@@ -319,22 +341,39 @@ final class PublicationsService
         $formatting = [];
         $keyboard = [];
         $headings = [];
+        $headingMarks = [];
         foreach (array_values($texts) as $index => $text) {
+            $heading = (string)($titles[$index] ?? '');
             $parts[] = trim($text);
             $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
             $keyboard[] = $buttons[$index] ?? LinkButtons::empty();
-            $headings[] = trim((string)($titles[$index] ?? ''));
+            $headings[] = trim($heading);
+            $headingMarks[] = self::trimFormatting($heading, $titleFormats[$index] ?? new MessageEntities());
         }
         $albums = array_values($imageGroups);
 
         foreach ($parts as $index => $text) {
-            $this->assertPartValid($headings[$index], $text, $formatting[$index], $albums[$index] ?? []);
+            $this->assertPartValid(
+                $headings[$index],
+                $headingMarks[$index],
+                $text,
+                $formatting[$index],
+                $albums[$index] ?? [],
+            );
             $keyboard[$index]->assertValid();
         }
 
         if (count($parts) === 1) {
             if ($action === 'draft') {
-                $this->saveDraft($parts[0], $albums[0] ?? [], $formatting[0], $keyboard[0], $headings[0], $forumRef);
+                $this->saveDraft(
+                    $parts[0],
+                    $albums[0] ?? [],
+                    $formatting[0],
+                    $keyboard[0],
+                    $headings[0],
+                    $headingMarks[0],
+                    $forumRef,
+                );
 
                 return;
             }
@@ -345,6 +384,7 @@ final class PublicationsService
                 $formatting[0],
                 $keyboard[0],
                 $headings[0],
+                $headingMarks[0],
                 $publishedAt,
                 $forumRef,
                 $userTimezone,
@@ -373,6 +413,7 @@ final class PublicationsService
                     'formatting' => $formatting[$index],
                     'buttons' => $keyboard[$index],
                     'title' => $headings[$index],
+                    'titleFormatting' => $headingMarks[$index],
                 ];
             }
 
@@ -396,6 +437,7 @@ final class PublicationsService
                 'formatting' => $formatting[$index],
                 'buttons' => $keyboard[$index],
                 'title' => $headings[$index],
+                'titleFormatting' => $headingMarks[$index],
                 'publishedAt' => $partAt,
             ];
         }
@@ -641,6 +683,7 @@ final class PublicationsService
                 $draft->formatting,
                 $draft->buttons,
                 $draft->title,
+                $draft->titleFormatting,
             ),
             $now,
         );
@@ -670,6 +713,7 @@ final class PublicationsService
                 $draft->formatting,
                 $draft->buttons,
                 $draft->title,
+                $draft->titleFormatting,
             ),
             $now,
         );
@@ -703,6 +747,7 @@ final class PublicationsService
             $post->formatting,
             $post->buttons,
             $post->title,
+            $post->titleFormatting,
         );
     }
 
@@ -967,10 +1012,14 @@ final class PublicationsService
      * created_at is always preserved; updated_at is set to the current
      * time on every move or update.
      *
+     * $titleFormatting is what the reader set over the heading, and the heading
+     * is stored trimmed the way a new part is: the composition puts its marks at
+     * the head of the message, so they move with the whitespace the heading loses.
+     *
      * @param string[] $imageUrls
      * @throws InvalidArgumentException when the record carries neither text nor
-     * images, when its formatting does not fit it, the button is malformed, the
-     * date is invalid or the source record does not exist
+     * images, when the spans of its heading or of its text do not fit them, the
+     * button is malformed, the date is invalid or the source record does not exist
      */
     public function saveFromForm(
         string $text,
@@ -978,13 +1027,16 @@ final class PublicationsService
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $publishedAt,
         string $source,
         ?int $sourceId,
         string $action,
         ?string $userTimezone = null,
     ): void {
-        $this->assertPartValid($title, $text, $formatting, $imageUrls);
+        $titleFormatting = self::trimFormatting($title, $titleFormatting);
+        $title = trim($title);
+        $this->assertPartValid($title, $titleFormatting, $text, $formatting, $imageUrls);
         $buttons->assertValid();
         $now = $this->now();
 
@@ -1003,6 +1055,7 @@ final class PublicationsService
                         $formatting,
                         $buttons,
                         $title,
+                        $titleFormatting,
                     ),
                     $now,
                 );
@@ -1021,6 +1074,7 @@ final class PublicationsService
                     $formatting,
                     $buttons,
                     $title,
+                    $titleFormatting,
                 ),
                 $now,
             );
@@ -1033,7 +1087,16 @@ final class PublicationsService
             $this->assertDraftExists($sourceId);
             if ($action === 'draft') {
                 // 6) draft + "Сохранить": update in place.
-                $this->publications->updateDraft($sourceId, $text, $imageUrls, $now, $formatting, $buttons, $title);
+                $this->publications->updateDraft(
+                    $sourceId,
+                    $text,
+                    $imageUrls,
+                    $now,
+                    $formatting,
+                    $buttons,
+                    $title,
+                    $titleFormatting,
+                );
 
                 return;
             }
@@ -1049,6 +1112,7 @@ final class PublicationsService
                     $formatting,
                     $buttons,
                     $title,
+                    $titleFormatting,
                 ),
                 $now,
             );
@@ -1077,6 +1141,7 @@ final class PublicationsService
                         $formatting,
                         $buttons,
                         $title,
+                        $titleFormatting,
                     ),
                     $now,
                 );
@@ -1089,6 +1154,7 @@ final class PublicationsService
                     $formatting,
                     $buttons,
                     $title,
+                    $titleFormatting,
                 );
 
                 return;
@@ -1108,6 +1174,7 @@ final class PublicationsService
                     $formatting,
                     $buttons,
                     $title,
+                    $titleFormatting,
                 ),
                 $now,
             );
@@ -1128,6 +1195,7 @@ final class PublicationsService
                 $formatting,
                 $buttons,
                 $title,
+                $titleFormatting,
             );
 
             return;
@@ -1144,6 +1212,7 @@ final class PublicationsService
                 $formatting,
                 $buttons,
                 $title,
+                $titleFormatting,
             ),
             $now,
         );
@@ -1178,19 +1247,27 @@ final class PublicationsService
      * state of the part above it, so a new part cannot slip into the channel ahead
      * of one that still waits there.
      *
+     * $titleFormats is the marking the reader set over the heading of every part,
+     * one list in the order of the texts, counted from the heading the form shows
+     * and so trimmed along with it: a heading that carries no marks of its own
+     * goes out under the plain bold line the composition puts over it, and one
+     * that carries some wears exactly those.
+     *
      * @param string[] $texts
      * @param array<int, string[]> $imageGroups
      * @param MessageEntities[] $formats
      * @param LinkButtons[] $buttons
      * @param string[] $titles
+     * @param MessageEntities[] $titleFormats
      * @param array<int, array{id: int|null, source: string}> $slots one slot per
      *        part: the row it came back to and the table that holds it
      * @param string[] $partTimes the time of the queue row of every part, empty
      *        where the part was given none
      * @throws InvalidArgumentException when a part carries neither text nor its own
-     *         album or is longer than the Telegram limit, when its formatting does
-     *         not fit it, when the parts and their slots do not line up, or when a
-     *         slot names a row that no longer belongs to the group
+     *         album or is longer than the Telegram limit, when the spans of a
+     *         heading or of the text under it do not fit them, when the parts and
+     *         their slots do not line up, or when a slot names a row that no longer
+     *         belongs to the group
      */
     public function saveGroupFromForm(
         array $texts,
@@ -1198,6 +1275,7 @@ final class PublicationsService
         array $formats,
         array $buttons,
         array $titles,
+        array $titleFormats,
         array $slots,
         array $partTimes,
         string $publishedAt,
@@ -1209,16 +1287,25 @@ final class PublicationsService
         $formatting = [];
         $keyboard = [];
         $headings = [];
+        $headingMarks = [];
         foreach (array_values($texts) as $index => $text) {
+            $heading = (string)($titles[$index] ?? '');
             $parts[] = trim($text);
             $formatting[] = self::trimFormatting($text, $formats[$index] ?? new MessageEntities());
             $keyboard[] = $buttons[$index] ?? LinkButtons::empty();
-            $headings[] = trim((string)($titles[$index] ?? ''));
+            $headings[] = trim($heading);
+            $headingMarks[] = self::trimFormatting($heading, $titleFormats[$index] ?? new MessageEntities());
         }
         $albums = array_values($imageGroups);
 
         foreach ($parts as $index => $text) {
-            $this->assertPartValid($headings[$index], $text, $formatting[$index], $albums[$index] ?? []);
+            $this->assertPartValid(
+                $headings[$index],
+                $headingMarks[$index],
+                $text,
+                $formatting[$index],
+                $albums[$index] ?? [],
+            );
             $keyboard[$index]->assertValid();
         }
 
@@ -1261,6 +1348,7 @@ final class PublicationsService
                         $formatting[$index],
                         $keyboard[$index],
                         $headings[$index],
+                        $headingMarks[$index],
                         $groupId,
                         $place,
                     );
@@ -1276,6 +1364,7 @@ final class PublicationsService
                     $formatting[$index],
                     $keyboard[$index],
                     $headings[$index],
+                    $headingMarks[$index],
                     $groupId,
                     $place,
                     $queueOpen,
@@ -1312,6 +1401,7 @@ final class PublicationsService
                                 $formatting[$index],
                                 $keyboard[$index],
                                 $headings[$index],
+                                $headingMarks[$index],
                             )
                             ->standsAt($place),
                         $now,
@@ -1336,6 +1426,7 @@ final class PublicationsService
                             $formatting[$index],
                             $keyboard[$index],
                             $headings[$index],
+                            $headingMarks[$index],
                         )
                         ->standsAt($place, $queueOpen),
                     $now,
@@ -1353,6 +1444,7 @@ final class PublicationsService
                         $formatting[$index],
                         $keyboard[$index],
                         $headings[$index],
+                        $headingMarks[$index],
                         $place,
                     );
 
@@ -1371,6 +1463,7 @@ final class PublicationsService
                             $formatting[$index],
                             $keyboard[$index],
                             $headings[$index],
+                            $headingMarks[$index],
                         )
                         ->standsAt($place, $queueOpen),
                     $now,
@@ -1398,6 +1491,7 @@ final class PublicationsService
                             $formatting[$index],
                             $keyboard[$index],
                             $headings[$index],
+                            $headingMarks[$index],
                         )
                         ->standsAt($place),
                     $now,
@@ -1419,6 +1513,7 @@ final class PublicationsService
                             $formatting[$index],
                             $keyboard[$index],
                             $headings[$index],
+                            $headingMarks[$index],
                         ),
                         $now,
                     );
@@ -1439,6 +1534,7 @@ final class PublicationsService
                     $formatting[$index],
                     $keyboard[$index],
                     $headings[$index],
+                    $headingMarks[$index],
                     $place,
                 );
                 $queueOpen = $queueOpen && $record->partReleased;
@@ -1525,6 +1621,7 @@ final class PublicationsService
                 $record->formatting,
                 $record->buttons,
                 $record->title,
+                $record->titleFormatting,
             ),
             $now,
         );
@@ -1554,6 +1651,7 @@ final class PublicationsService
                 $record->formatting,
                 $record->buttons,
                 $record->title,
+                $record->titleFormatting,
             ),
             $now,
         );
@@ -1687,14 +1785,17 @@ final class PublicationsService
     /**
      * $album is the picture list of this very part: an album carries a message
      * on its own, so the text of a part that brings pictures may stay empty.
+     * $titleFormatting is the marks the reader set over the heading, counted from
+     * the heading as it is stored here — the same rule the body spans follow.
      *
      * @param string[] $album
      * @throws InvalidArgumentException when the part has neither text nor album,
-     * when its message is longer than the limit Telegram accepts, or when its
-     * formatting does not describe real spans of it
+     * when its message is longer than the limit Telegram accepts, or when the
+     * spans of its heading or of its body do not describe real spans of them
      */
     private function assertPartValid(
         string $title,
+        MessageEntities $titleFormatting,
         string $text,
         MessageEntities $formatting,
         array $album = [],
@@ -1714,6 +1815,7 @@ final class PublicationsService
             );
         }
 
+        $titleFormatting->assertFitsText($title);
         $formatting->assertFitsText($text);
     }
 

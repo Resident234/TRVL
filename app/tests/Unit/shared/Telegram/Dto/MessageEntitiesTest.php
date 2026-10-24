@@ -186,4 +186,65 @@ final class MessageEntitiesTest extends Unit
 
         $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 6]], $entities->toArray());
     }
+
+    public function testAHeadingWithMarksOfItsOwnWearsThemInsteadOfTheBoldRule(): void
+    {
+        $entities = MessageEntities::fromArray([['type' => 'italic', 'offset' => 0, 'length' => 5]])
+            ->underHeading(
+                'Заголовок',
+                "\n\n",
+                0,
+                MessageEntities::fromArray([['type' => 'underline', 'offset' => 3, 'length' => 4]]),
+            );
+
+        $this->assertSame([
+            ['type' => 'underline', 'offset' => 3, 'length' => 4],
+            ['type' => 'italic', 'offset' => 11, 'length' => 5],
+        ], $entities->toArray());
+    }
+
+    public function testTheBodyOfAMarkedHeadingMovesAsFarAsTheBodyOfAPlainOne(): void
+    {
+        // The same heading that took the number line over, now wearing marks of
+        // its own: the heading loses the bold over its whole length and gains the
+        // two spans the reader set, and the stored span moves exactly where it
+        // moved before — behind the heading, over the blank line, less the number.
+        $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 9, 'length' => 7]])
+            ->underHeading(
+                'Заголовок. Часть 1',
+                "\n\n",
+                9,
+                MessageEntities::fromArray([
+                    ['type' => 'italic', 'offset' => 0, 'length' => 4],
+                    ['type' => 'underline', 'offset' => 11, 'length' => 5],
+                ]),
+            );
+
+        $this->assertSame([
+            ['type' => 'italic', 'offset' => 0, 'length' => 4],
+            ['type' => 'underline', 'offset' => 11, 'length' => 5],
+            ['type' => 'bold', 'offset' => 20, 'length' => 7],
+        ], $entities->toArray());
+    }
+
+    public function testAnEmptyOwnListLeavesTheHeadingRuleAsItWas(): void
+    {
+        $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 4]])
+            ->underHeading('Заголовок', "\n\n", 0, new MessageEntities());
+
+        $this->assertSame([
+            ['type' => 'bold', 'offset' => 0, 'length' => 9],
+            ['type' => 'bold', 'offset' => 11, 'length' => 4],
+        ], $entities->toArray());
+    }
+
+    public function testMarksOfAnEmptyHeadingGoWhereTheHeadingWent(): void
+    {
+        $own = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 4]]);
+
+        $entities = MessageEntities::fromArray([['type' => 'italic', 'offset' => 3, 'length' => 2]])
+            ->underHeading('', "\n\n", 0, $own);
+
+        $this->assertSame([['type' => 'italic', 'offset' => 3, 'length' => 2]], $entities->toArray());
+    }
 }

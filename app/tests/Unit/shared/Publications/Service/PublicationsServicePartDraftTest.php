@@ -74,6 +74,7 @@ final class PublicationsServicePartDraftTest extends Unit
                 $this->anything(),
                 $this->anything(),
                 '',
+                $this->anything(),
                 self::GROUP,
                 4,
             )
@@ -85,6 +86,7 @@ final class PublicationsServicePartDraftTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             self::GROUP,
         );
 
@@ -109,6 +111,7 @@ final class PublicationsServicePartDraftTest extends Unit
                 $this->anything(),
                 $this->anything(),
                 '',
+                $this->anything(),
                 '',
                 0,
             )
@@ -120,6 +123,7 @@ final class PublicationsServicePartDraftTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             '',
         );
 
@@ -139,6 +143,7 @@ final class PublicationsServicePartDraftTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             self::GROUP,
         );
     }

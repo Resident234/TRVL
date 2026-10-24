@@ -45,6 +45,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
         );
 
         $drafts = $this->_repository->allDrafts();
@@ -67,6 +68,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
         );
 
         $posts = $this->_repository->allPosts();
@@ -82,14 +84,14 @@ final class PublicationRepositoryTest extends Unit
         $bold = [['type' => 'bold', 'offset' => 0, 'length' => 5]];
         $italic = [['type' => 'italic', 'offset' => 7, 'length' => 5]];
 
-        $this->_repository->createDraft('Жирный текст', [], '2026-09-10 10:00:00', new MessageEntities($bold), new LinkButtons(), '');
-        $this->_repository->createPost('Жирный текст', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities($bold), new LinkButtons(), '');
+        $this->_repository->createDraft('Жирный текст', [], '2026-09-10 10:00:00', new MessageEntities($bold), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->createPost('Жирный текст', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities($bold), new LinkButtons(), '', new MessageEntities());
 
         $this->assertSame($bold, $this->_repository->allDrafts()[0]->formatting->toArray());
         $this->assertSame($bold, $this->_repository->allPosts()[0]->formatting->toArray());
 
-        $this->_repository->updateDraft(1, 'Курсивный текст', [], '2026-09-10 11:00:00', new MessageEntities($italic), new LinkButtons(), '');
-        $this->_repository->updatePost(1, 'Курсивный текст', [], '2026-09-10 22:00:00', '2026-09-10 11:00:00', new MessageEntities($italic), new LinkButtons(), '');
+        $this->_repository->updateDraft(1, 'Курсивный текст', [], '2026-09-10 11:00:00', new MessageEntities($italic), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->updatePost(1, 'Курсивный текст', [], '2026-09-10 22:00:00', '2026-09-10 11:00:00', new MessageEntities($italic), new LinkButtons(), '', new MessageEntities());
 
         $this->assertSame($italic, $this->_repository->allDrafts()[0]->formatting->toArray());
         $this->assertSame($italic, $this->_repository->allPosts()[0]->formatting->toArray());
@@ -102,8 +104,8 @@ final class PublicationRepositoryTest extends Unit
             ['https://example.com/poll', 'https://example.com/open'],
         );
 
-        $this->_repository->createDraft('Черновик с кнопками', [], '2026-09-10 10:00:00', new MessageEntities(), $poll, '');
-        $this->_repository->createPost('Пост с кнопками', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities(), $poll, '');
+        $this->_repository->createDraft('Черновик с кнопками', [], '2026-09-10 10:00:00', new MessageEntities(), $poll, '', new MessageEntities());
+        $this->_repository->createPost('Пост с кнопками', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities(), $poll, '', new MessageEntities());
 
         $this->assertSame($poll->toArray(), $this->_repository->allDrafts()[0]->buttons->toArray());
         $this->assertSame($poll->toArray(), $this->_repository->allPosts()[0]->buttons->toArray());
@@ -117,6 +119,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             LinkButtons::empty(),
             '',
+            new MessageEntities(),
         );
 
         $post = $this->_repository->allPosts()[0];
@@ -126,17 +129,191 @@ final class PublicationRepositoryTest extends Unit
 
     public function testTitleSurvivesCreateAndUpdate(): void
     {
-        $this->_repository->createDraft('Черновик с заголовком', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), 'Ищем попутчиков');
-        $this->_repository->createPost('Пост с заголовком', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), 'Ищем попутчиков');
+        $this->_repository->createDraft('Черновик с заголовком', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), 'Ищем попутчиков', new MessageEntities());
+        $this->_repository->createPost('Пост с заголовком', [], '2026-09-10 21:30:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), 'Ищем попутчиков', new MessageEntities());
 
         $this->assertSame('Ищем попутчиков', $this->_repository->allDrafts()[0]->title);
         $this->assertSame('Ищем попутчиков', $this->_repository->allPosts()[0]->title);
 
-        $this->_repository->updateDraft(1, 'Черновик без заголовка', [], '2026-09-10 11:00:00', new MessageEntities(), new LinkButtons(), '');
-        $this->_repository->updatePost(1, 'Пост без заголовка', [], '2026-09-10 22:00:00', '2026-09-10 11:00:00', new MessageEntities(), new LinkButtons(), '');
+        $this->_repository->updateDraft(1, 'Черновик без заголовка', [], '2026-09-10 11:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->updatePost(1, 'Пост без заголовка', [], '2026-09-10 22:00:00', '2026-09-10 11:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
 
         $this->assertSame('', $this->_repository->allDrafts()[0]->title);
         $this->assertSame('', $this->_repository->allPosts()[0]->title);
+    }
+
+    public function testHeadingMarksSurviveCreateAndUpdate(): void
+    {
+        $underline = [['type' => 'underline', 'offset' => 0, 'length' => 5]];
+        $link = [['type' => 'text_link', 'offset' => 0, 'length' => 6, 'url' => 'https://example.com/a']];
+
+        $this->_repository->createDraft(
+            'Текст черновика',
+            [],
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            'Ищем попутчиков',
+            new MessageEntities($underline),
+        );
+        $this->_repository->createPost(
+            'Текст поста',
+            [],
+            '2026-09-10 21:30:00',
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            'Ищем попутчиков',
+            new MessageEntities($underline),
+        );
+
+        $this->assertSame($underline, $this->_repository->allDrafts()[0]->titleFormatting->toArray());
+        $this->assertSame($underline, $this->_repository->allPosts()[0]->titleFormatting->toArray());
+        $this->assertSame(
+            [],
+            $this->_repository->allPosts()[0]->formatting->toArray(),
+            'The marks of the heading are stored beside the body, not inside it.',
+        );
+
+        $this->_repository->updateDraft(
+            1,
+            'Текст черновика',
+            [],
+            '2026-09-10 11:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            'Ищем попутчиков',
+            new MessageEntities($link),
+        );
+        $this->_repository->updatePost(
+            1,
+            'Текст поста',
+            [],
+            '2026-09-10 22:00:00',
+            '2026-09-10 11:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            'Ищем попутчиков',
+            new MessageEntities($link),
+        );
+
+        $this->assertSame($link, $this->_repository->allDrafts()[0]->titleFormatting->toArray());
+        $this->assertSame($link, $this->_repository->allPosts()[0]->titleFormatting->toArray());
+    }
+
+    public function testHeadingMarksOfEveryPartAreStoredWithItsRow(): void
+    {
+        $marked = [['type' => 'bold', 'offset' => 0, 'length' => 5]];
+        $group = 'abababababababababababababababab';
+
+        $this->_repository->createPosts([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Альфа текст', 'titleFormatting' => new MessageEntities($marked), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Браво текст', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
+        ], '2026-09-10 10:00:00', $group);
+
+        $marksByPlace = [];
+        foreach ($this->_repository->findGroupRows($group) as $row) {
+            $marksByPlace[$row->partOrder] = $row->titleFormatting->toArray();
+        }
+
+        $this->assertSame(
+            [1 => $marked, 2 => []],
+            $marksByPlace,
+            'Every part of a group comes back with the marks its own heading wears.',
+        );
+    }
+
+    public function testHeadingMarksTravelWithAPartThatMovesToDraftsAndBack(): void
+    {
+        $marked = [['type' => 'italic', 'offset' => 0, 'length' => 4]];
+        $group = 'abababababababababababababababab';
+
+        $postId = $this->_repository->createStagedGroup([
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Альфа', 'titleFormatting' => new MessageEntities($marked), 'publishedAt' => '2026-09-10 21:30:00'],
+        ], $group, '2026-09-10 10:00:00');
+
+        $post = $this->_repository->findPost($postId);
+        $this->_repository->deletePost($postId);
+        $draftId = $this->_repository->insertDraftWithHistory($post, '2026-09-10 11:00:00');
+
+        $this->assertSame(
+            $marked,
+            $this->_repository->findDraft($draftId)->titleFormatting->toArray(),
+            'A part that leaves the queue for the drafts carries its heading marks with it.',
+        );
+
+        $draft = $this->_repository->findDraft($draftId);
+        $this->_repository->deleteDraft($draftId);
+        $backId = $this->_repository->insertPostWithHistory($draft, '2026-09-10 12:00:00');
+
+        $this->assertSame(
+            $marked,
+            $this->_repository->findDueForPublishing('2026-09-10 21:35:00')[0]->titleFormatting->toArray(),
+            'The queue reads the marks of the heading it is about to send.',
+        );
+        $this->assertSame($marked, $this->_repository->findPost($backId)->titleFormatting->toArray());
+    }
+
+    public function testHeadingMarksAreWrittenIntoTheRowLeftBehindByAPart(): void
+    {
+        $marked = [['type' => 'underline', 'offset' => 0, 'length' => 5]];
+
+        $postId = $this->_repository->createPost(
+            'Уходящая часть',
+            [],
+            '2026-09-10 21:30:00',
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            'Альфа текст',
+            new MessageEntities($marked),
+        );
+        $post = $this->_repository->findPost($postId);
+
+        // Both of the rows a part leaves in the deleted block are written from the
+        // DTO: the history of the record it was, and the debt the channel owes.
+        $deletedId = $this->_repository->insertDeletedWithHistory($post, '2026-09-10 11:00:00');
+        $this->assertSame(
+            $marked,
+            $this->_repository->allDeleted()[0]->titleFormatting->toArray(),
+            'A part that goes to the deleted list carries its heading marks there.',
+        );
+
+        $deleted = $this->_repository->findDeleted($deletedId);
+        $this->_repository->deleteDeleted($deletedId);
+        $this->_repository->insertChannelDeletionTicket($deleted, '2026-09-10 12:00:00');
+
+        $ticket = $this->_repository->findPendingChannelDeletion();
+        $this->assertSame(
+            $marked,
+            $ticket[0]->titleFormatting->toArray(),
+            'The debt a part leaves for the channel carries its heading marks too.',
+        );
+    }
+
+    public function testHeadingMarksAreWrittenIntoTheArchiveOfAnEditedPart(): void
+    {
+        $marked = [['type' => 'text_link', 'offset' => 0, 'length' => 5, 'url' => 'https://example.com/a']];
+
+        $postId = $this->_repository->createPost(
+            'Отправленная часть',
+            [],
+            '2026-09-10 21:30:00',
+            '2026-09-10 10:00:00',
+            new MessageEntities(),
+            new LinkButtons(),
+            'Альфа',
+            new MessageEntities($marked),
+        );
+        $this->_repository->storeTelegramId($postId, 777, '2026-09-10 21:30:00', '2026-09-10 21:30:00');
+
+        $this->_repository->archiveEdited($this->_repository->findPost($postId), '2026-09-11 10:00:00');
+
+        $this->assertSame(
+            $marked,
+            $this->_repository->findPendingChannelEdits()[0]->titleFormatting->toArray(),
+            'The archive of a rewritten message keeps the marks its heading wore.',
+        );
     }
 
     public function testCreatePostsStoresEveryPartInOrder(): void
@@ -148,6 +325,7 @@ final class PublicationRepositoryTest extends Unit
                 'formatting' => new MessageEntities(),
                 'buttons' => LinkButtons::fromPairs(['Пройти опрос'], ['https://example.com/poll']),
                 'title' => 'Ищем попутчиков',
+                'titleFormatting' => new MessageEntities(),
                 'publishedAt' => '2026-09-10 21:30:00',
             ],
             [
@@ -156,6 +334,7 @@ final class PublicationRepositoryTest extends Unit
                 'formatting' => new MessageEntities(),
                 'buttons' => new LinkButtons(),
                 'title' => 'Что берём с собой',
+                'titleFormatting' => new MessageEntities(),
                 'publishedAt' => '2026-09-10 21:31:00',
             ],
             [
@@ -164,6 +343,7 @@ final class PublicationRepositoryTest extends Unit
                 'formatting' => new MessageEntities(),
                 'buttons' => new LinkButtons(),
                 'title' => '',
+                'titleFormatting' => new MessageEntities(),
                 'publishedAt' => '2026-09-10 21:32:00',
             ],
         ], '2026-09-10 10:00:00');
@@ -202,8 +382,8 @@ final class PublicationRepositoryTest extends Unit
     public function testCreateDraftsStoresEveryPart(): void
     {
         $firstId = $this->_repository->createDrafts([
-            ['text' => 'Часть 1', 'imageUrls' => ['https://example.com/a.png'], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Ищем попутчиков'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Что берём с собой'],
+            ['text' => 'Часть 1', 'imageUrls' => ['https://example.com/a.png'], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Ищем попутчиков', 'titleFormatting' => new MessageEntities()],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => 'Что берём с собой', 'titleFormatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00');
 
         $drafts = $this->_repository->allDrafts();
@@ -236,6 +416,7 @@ final class PublicationRepositoryTest extends Unit
                     'formatting' => new MessageEntities(),
                     'buttons' => new LinkButtons(),
                     'title' => '',
+                    'titleFormatting' => new MessageEntities(),
                     'publishedAt' => '2026-09-10 21:30:00',
                 ],
                 [
@@ -244,6 +425,7 @@ final class PublicationRepositoryTest extends Unit
                     'formatting' => new MessageEntities(),
                     'buttons' => new LinkButtons(),
                     'title' => '',
+                    'titleFormatting' => new MessageEntities(),
                     'publishedAt' => 'не дата',
                 ],
             ], '2026-09-10 10:00:00');
@@ -257,8 +439,8 @@ final class PublicationRepositoryTest extends Unit
 
     public function testAllPostsSortedByPublishedAtDescending(): void
     {
-        $this->_repository->createPost('Поздний', [], '2026-09-10 22:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
-        $this->_repository->createPost('Ранний', [], '2026-09-10 21:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
+        $this->_repository->createPost('Поздний', [], '2026-09-10 22:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->createPost('Ранний', [], '2026-09-10 21:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
 
         $posts = $this->_repository->allPosts();
 
@@ -268,9 +450,9 @@ final class PublicationRepositoryTest extends Unit
 
     public function testAllDraftsSortedByUpdatedAtDescending(): void
     {
-        $this->_repository->createDraft('Первый', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
-        $this->_repository->createDraft('Второй', [], '2026-09-10 11:00:00', new MessageEntities(), new LinkButtons(), '');
-        $this->_repository->updateDraft(1, 'Первый обновлён', [], '2026-09-10 12:00:00', new MessageEntities(), new LinkButtons(), '');
+        $this->_repository->createDraft('Первый', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->createDraft('Второй', [], '2026-09-10 11:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->updateDraft(1, 'Первый обновлён', [], '2026-09-10 12:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
 
         $drafts = $this->_repository->allDrafts();
 
@@ -280,9 +462,9 @@ final class PublicationRepositoryTest extends Unit
 
     public function testFindDueForPublishingReturnsOnlyDueUnpublished(): void
     {
-        $this->_repository->createPost('Прошлое', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00', new MessageEntities(), new LinkButtons(), '');
-        $this->_repository->createPost('Наступившее', [], '2026-09-10 12:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
-        $this->_repository->createPost('Будущее', [], '2026-09-11 12:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
+        $this->_repository->createPost('Прошлое', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->createPost('Наступившее', [], '2026-09-10 12:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
+        $this->_repository->createPost('Будущее', [], '2026-09-11 12:00:00', '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
 
         $due = $this->_repository->findDueForPublishing('2026-09-10 20:00:00');
 
@@ -293,7 +475,7 @@ final class PublicationRepositoryTest extends Unit
 
     public function testFindDueSkipsPostsWithTelegramId(): void
     {
-        $this->_repository->createPost('Опубликованный', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00', new MessageEntities(), new LinkButtons(), '');
+        $this->_repository->createPost('Опубликованный', [], '2026-09-09 12:00:00', '2026-09-09 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
         $this->_repository->storeTelegramId(1, 4242, '2026-09-09 12:05:00', '2026-09-09 12:05:30');
 
         $due = $this->_repository->findDueForPublishing('2026-09-10 20:00:00');
@@ -421,8 +603,8 @@ final class PublicationRepositoryTest extends Unit
     public function testCreateDraftsMarksEveryPartOfOneGroup(): void
     {
         $this->_repository->createDrafts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
 
         $drafts = $this->_repository->allDrafts();
@@ -463,7 +645,7 @@ final class PublicationRepositoryTest extends Unit
 
     public function testCreateDraftsLeavesASingleRowUngrouped(): void
     {
-        $this->_repository->createDraft('Одна часть', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '');
+        $this->_repository->createDraft('Одна часть', [], '2026-09-10 10:00:00', new MessageEntities(), new LinkButtons(), '', new MessageEntities());
 
         $draft = $this->_repository->allDrafts()[0];
 
@@ -475,9 +657,9 @@ final class PublicationRepositoryTest extends Unit
     public function testPlainPostsOfASplitKeepEveryPartReleasableToTheQueue(): void
     {
         $this->_repository->createPosts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
-            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:32:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:32:00'],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
 
         $posts = $this->_repository->allPosts();
@@ -502,9 +684,9 @@ final class PublicationRepositoryTest extends Unit
     public function testGroupTotalCountsThePartsLivingInAnyBlock(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
-            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:32:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:32:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
 
         // The publication breaks into fragments: part 2 goes to drafts, part 3 to
@@ -536,12 +718,12 @@ final class PublicationRepositoryTest extends Unit
     public function testFindGroupRowsReturnsEveryLivePartInItsPlace(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
         $this->_repository->createDrafts([
-            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
-            ['text' => 'Чужая часть', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
+            ['text' => 'Чужая часть', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00', 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd');
 
         $rows = $this->_repository->findGroupRows('abababababababababababababababab');
@@ -558,8 +740,8 @@ final class PublicationRepositoryTest extends Unit
     public function testFindGroupRowsReadsTheDraftsAndTheDeletedRowsOfAGroup(): void
     {
         $this->_repository->createDrafts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
         $draft = $this->_repository->findDraft(2);
         $this->_repository->deleteDraft(2);
@@ -578,8 +760,8 @@ final class PublicationRepositoryTest extends Unit
     public function testWaitingPartKeepsItsStateAcrossTheMoveToDeletedAndBack(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
 
         $this->assertTrue($this->_repository->findPost(1)->partReleased);
@@ -608,8 +790,8 @@ final class PublicationRepositoryTest extends Unit
     public function testGroupExistsSeesAGroupStoredOutsideThePostsTable(): void
     {
         $this->_repository->createDrafts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
 
         $this->assertTrue(
@@ -622,8 +804,8 @@ final class PublicationRepositoryTest extends Unit
     public function testMovedPartKeepsItsGroupAndPlace(): void
     {
         $this->_repository->createPosts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
 
         $first = $this->_repository->findPost(1);
@@ -646,6 +828,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             'abababababababababababababababab',
             3,
             false,
@@ -668,6 +851,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
         );
 
         $post = $this->_repository->findPost($id);
@@ -685,6 +869,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             'abababababababababababababababab',
             2,
         );
@@ -698,8 +883,8 @@ final class PublicationRepositoryTest extends Unit
     public function testUpdatePostRewritesThePlaceOfAPart(): void
     {
         $this->_repository->createPosts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
 
         $this->_repository->updatePost(
@@ -711,6 +896,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             2,
         );
         $this->_repository->updatePost(
@@ -722,6 +908,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
         );
 
         $moved = $this->_repository->findPost(1);
@@ -741,8 +928,8 @@ final class PublicationRepositoryTest extends Unit
     public function testUpdateDraftRewritesThePlaceOfAPart(): void
     {
         $this->_repository->createDrafts([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => ''],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities()],
         ], '2026-09-10 10:00:00', 'abababababababababababababababab');
 
         $this->_repository->updateDraft(
@@ -753,6 +940,7 @@ final class PublicationRepositoryTest extends Unit
             new MessageEntities(),
             new LinkButtons(),
             '',
+            new MessageEntities(),
             1,
         );
 
@@ -766,9 +954,9 @@ final class PublicationRepositoryTest extends Unit
     public function testReleasePartOpensTheRowThatWaitsAndNobodyBelowIt(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
-            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:32:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 3', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:32:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
 
         $this->_repository->releasePart('abababababababababababababababab', 2, '2026-09-10 21:35:00', '2026-09-10 11:00:00');
@@ -798,8 +986,8 @@ final class PublicationRepositoryTest extends Unit
     public function testReleasePartRefusesARowTheQueueAlreadyHolds(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
 
         $this->_repository->releasePart('abababababababababababababababab', 2, '2026-09-10 21:35:00', '2026-09-10 11:00:00');
@@ -825,8 +1013,8 @@ final class PublicationRepositoryTest extends Unit
     public function testArchivingAnEditedPartKeepsItsGroupAndItsPlace(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
 
         $first = $this->_repository->findPost(1);
@@ -853,8 +1041,8 @@ final class PublicationRepositoryTest extends Unit
     public function testADeletionTicketCarriesNoGroup(): void
     {
         $this->_repository->createStagedGroup([
-            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:30:00'],
-            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'publishedAt' => '2026-09-10 21:31:00'],
+            ['text' => 'Часть 1', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:30:00'],
+            ['text' => 'Часть 2', 'imageUrls' => [], 'formatting' => new MessageEntities(), 'buttons' => new LinkButtons(), 'title' => '', 'titleFormatting' => new MessageEntities(), 'publishedAt' => '2026-09-10 21:31:00'],
         ], 'abababababababababababababababab', '2026-09-10 10:00:00');
 
         $this->_repository->storeTelegramId(1, 5658, '2026-09-10 21:30:00', '2026-09-10 11:00:00');

@@ -13,6 +13,7 @@ use yii\helpers\Html;
      data-formatting="<?= Html::encode($record->formatting->toJson()) ?>"
      data-button="<?= Html::encode($record->buttons->toJson()) ?>"
      data-title="<?= Html::encode($record->title) ?>"
+     data-title-formatting="<?= Html::encode($record->titleFormatting->toJson()) ?>"
      data-source-type="draft" data-source-id="<?= $record->id ?>"
      data-part-group-id="<?= Html::encode($record->partGroupId ?? '') ?>"
      data-habitat="draft"

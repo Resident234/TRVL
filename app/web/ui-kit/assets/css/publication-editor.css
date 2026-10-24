@@ -51,6 +51,19 @@
     font-family: var(--bs-font-monospace);
 }
 
+/* The heading of a part is one line: its box stands as short as the field it
+   replaced, keeps the gap that field had from the row of the text below it and
+   has no room to scroll a second line into. */
+.publication-title-editor {
+    margin-bottom: 0.5rem;
+}
+
+.publication-title-editor .ql-editor {
+    min-height: 0;
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+}
+
 /* The same spans the channel shows: the preview of a part is built out of the
    entity list of its text, so the browser defaults are all that is needed. */
 .publication-preview-part code {

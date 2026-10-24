@@ -125,6 +125,7 @@ final class PublicationsServiceGroupSaveTest extends Unit
             array_fill(0, $count, new MessageEntities()),
             array_fill(0, $count, new LinkButtons()),
             array_fill(0, $count, ''),
+            array_fill(0, $count, new MessageEntities()),
             $slots,
             $times,
             $publishedAt,
@@ -167,6 +168,7 @@ final class PublicationsServiceGroupSaveTest extends Unit
                     MessageEntities $formatting,
                     LinkButtons $buttons,
                     string $title,
+                    MessageEntities $titleFormatting,
                     ?int $partOrder = null,
                 ): void {
                     $this->_calls['updatePost'][] = [$id, $text, $publishedAt, $partOrder];
@@ -184,6 +186,7 @@ final class PublicationsServiceGroupSaveTest extends Unit
                     MessageEntities $formatting,
                     LinkButtons $buttons,
                     string $title,
+                    MessageEntities $titleFormatting,
                     ?int $partOrder = null,
                 ): void {
                     $this->_calls['updateDraft'][] = [$id, $text, $partOrder];
@@ -201,6 +204,7 @@ final class PublicationsServiceGroupSaveTest extends Unit
                     MessageEntities $formatting,
                     LinkButtons $buttons,
                     string $title,
+                    MessageEntities $titleFormatting,
                     string $groupId = '',
                     int $partOrder = 0,
                     bool $partReleased = true,
@@ -221,6 +225,7 @@ final class PublicationsServiceGroupSaveTest extends Unit
                     MessageEntities $formatting,
                     LinkButtons $buttons,
                     string $title,
+                    MessageEntities $titleFormatting,
                     string $groupId = '',
                     int $partOrder = 0,
                 ): int {

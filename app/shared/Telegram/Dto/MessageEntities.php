@@ -136,16 +136,28 @@ final readonly class MessageEntities
      * list's own text — the «Часть N» line a numbered part starts with, which the
      * heading takes over instead of repeating — and the list moves by that much
      * less.
+     *
+     * $own is the formatting the reader set over the heading itself, counted from
+     * its beginning. A heading that carries none wears the bold line the rule
+     * puts over it; a heading that carries some wears exactly those marks, and the
+     * rule steps back for them. The body moves behind either of the two shapes,
+     * which is why the marks of the heading need no shift of their own.
      */
-    public function underHeading(string $heading, string $gap = "\n\n", int $moved = 0): self
-    {
+    public function underHeading(
+        string $heading,
+        string $gap = "\n\n",
+        int $moved = 0,
+        self $own = new self(),
+    ): self {
         $units = self::utf16Length($heading);
 
         if ($units === 0) {
             return $this;
         }
 
-        $entities = [['type' => 'bold', 'offset' => 0, 'length' => $units]];
+        $entities = $own->isEmpty()
+            ? [['type' => 'bold', 'offset' => 0, 'length' => $units]]
+            : $own->toArray();
         $behind = $units + self::utf16Length($gap) - $moved;
 
         foreach ($this->entities as $entity) {

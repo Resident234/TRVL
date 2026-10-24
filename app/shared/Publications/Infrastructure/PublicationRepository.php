@@ -18,6 +18,13 @@ use yii\db\Connection;
  */
 final class PublicationRepository implements PublicationRepositoryInterface
 {
+    /**
+     * The columns every read of a publication row carries: the text of the part,
+     * the images it is sent with, the marks of the body and of the heading, the
+     * buttons under the message and the heading itself.
+     */
+    private const CONTENT_COLUMNS = 'id, text, image_urls, formatting, button, title, title_formatting, ';
+
     public function __construct(private readonly Connection $db)
     {
     }
@@ -25,7 +32,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allPosts(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at, '
             . $this->partColumns()
             . ' FROM {{%publications_post}}'
             . $this->order('published_at', $oldestFirst),
@@ -37,7 +44,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allDrafts(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, formatting, button, title, NULL AS telegram_id, NULL AS published_at, created_at, updated_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'NULL AS telegram_id, NULL AS published_at, created_at, updated_at, '
             . $this->awayPartColumns() . $this->partGroupTotal('publications_draft')
             . ' FROM {{%publications_draft}}'
             . $this->order('updated_at', $oldestFirst),
@@ -63,6 +70,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $groupId = '',
         int $partOrder = 0,
     ): int {
@@ -72,6 +80,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $formatting->toArray(),
             'button' => $buttons->toArray(),
             'title' => $title,
+            'title_formatting' => $titleFormatting->toArray(),
             'created_at' => $now,
             'updated_at' => $now,
         ], $this->groupColumns($groupId, $partOrder, true)));
@@ -85,6 +94,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $groupId = '',
         int $partOrder = 0,
         bool $partReleased = true,
@@ -95,6 +105,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $formatting->toArray(),
             'button' => $buttons->toArray(),
             'title' => $title,
+            'title_formatting' => $titleFormatting->toArray(),
             'published_at' => $publishedAt,
             'created_at' => $now,
             'updated_at' => $now,
@@ -102,7 +113,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     }
 
     /**
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, titleFormatting: MessageEntities, publishedAt: string}> $parts
      * @param string $groupId the id that binds these parts into one publication,
      *        empty when the rows are separate publications of their own
      */
@@ -136,7 +147,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     }
 
     /**
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, titleFormatting: MessageEntities}> $parts
      */
     public function createDrafts(array $parts, string $now, string $groupId = ''): int
     {
@@ -146,7 +157,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDueForPublishing(string $now): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at, '
             . $this->partColumns()
             . ' FROM {{%publications_post}}'
             . ' WHERE telegram_id IS NULL AND part_released = TRUE AND published_at <= :now'
@@ -170,7 +181,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPartGroup(string $groupId): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at, '
             . $this->partColumns()
             . ' FROM {{%publications_post}} WHERE part_group_id = :group ORDER BY part_order ASC',
             [':group' => $groupId],
@@ -187,7 +198,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
      */
     public function findGroupRows(string $groupId): array
     {
-        $front = 'id, text, image_urls, formatting, button, title, ';
+        $front = self::CONTENT_COLUMNS;
         $back = 'created_at, updated_at, part_group_id, part_order, part_released, ';
 
         return $this->hydrateAll(
@@ -229,7 +240,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPost(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at, '
             . $this->partColumns()
             . ' FROM {{%publications_post}} WHERE id = :id',
             [':id' => $id],
@@ -239,7 +250,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, formatting, button, title, NULL AS telegram_id, NULL AS published_at, created_at, updated_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'NULL AS telegram_id, NULL AS published_at, created_at, updated_at, '
             . $this->awayPartColumns() . $this->partGroupTotal('publications_draft')
             . ' FROM {{%publications_draft}} WHERE id = :id',
             [':id' => $id],
@@ -255,6 +266,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         ?int $partOrder = null,
     ): void {
         $columns = [
@@ -263,6 +275,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $formatting->toArray(),
             'button' => $buttons->toArray(),
             'title' => $title,
+            'title_formatting' => $titleFormatting->toArray(),
             'published_at' => $publishedAt,
             'updated_at' => $now,
         ];
@@ -285,6 +298,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         ?int $partOrder = null,
     ): void {
         $columns = [
@@ -293,6 +307,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $formatting->toArray(),
             'button' => $buttons->toArray(),
             'title' => $title,
+            'title_formatting' => $titleFormatting->toArray(),
             'updated_at' => $now,
         ];
 
@@ -345,6 +360,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $post->formatting->toArray(),
             'button' => $post->buttons->toArray(),
             'title' => $post->title,
+            'title_formatting' => $post->titleFormatting->toArray(),
             'published_at' => $post->publishedAt ?? $now,
             'created_at' => $post->createdAt,
             'updated_at' => $now,
@@ -359,6 +375,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $draft->formatting->toArray(),
             'button' => $draft->buttons->toArray(),
             'title' => $draft->title,
+            'title_formatting' => $draft->titleFormatting->toArray(),
             'created_at' => $draft->createdAt,
             'updated_at' => $now,
         ], $this->partCarriage($draft)));
@@ -373,6 +390,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $post->formatting->toArray(),
             'button' => $post->buttons->toArray(),
             'title' => $post->title,
+            'title_formatting' => $post->titleFormatting->toArray(),
             'published_at' => $post->publishedAt ?? $now,
             'created_at' => $post->createdAt,
             'updated_at' => $now,
@@ -395,7 +413,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function allDeleted(int $limit = 0, int $offset = 0, bool $oldestFirst = false): array
     {
         return $this->page(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, deleted_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at, deleted_at, '
             . $this->awayPartColumns() . $this->partGroupTotal('publications_deleted')
             . ' FROM {{%publications_deleted}}'
             . $this->order('updated_at', $oldestFirst),
@@ -412,7 +430,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findDeleted(int $id): ?PublicationData
     {
         return $this->hydrateOne(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at, deleted_at, '
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at, deleted_at, '
             . $this->awayPartColumns() . $this->partGroupTotal('publications_deleted')
             . ' FROM {{%publications_deleted}} WHERE id = :id',
             [':id' => $id],
@@ -437,7 +455,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPendingChannelDeletion(): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at'
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_deleted}}'
             . ' WHERE deleted_at IS NULL'
             . ' ORDER BY id ASC',
@@ -453,6 +471,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $record->formatting->toArray(),
             'button' => $record->buttons->toArray(),
             'title' => $record->title,
+            'title_formatting' => $record->titleFormatting->toArray(),
             'published_at' => $record->publishedAt,
             'created_at' => $record->createdAt,
             'updated_at' => $now,
@@ -477,6 +496,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
             'formatting' => $record->formatting->toArray(),
             'button' => $record->buttons->toArray(),
             'title' => $record->title,
+            'title_formatting' => $record->titleFormatting->toArray(),
             'published_at' => $record->publishedAt,
             'created_at' => $record->createdAt,
             'updated_at' => $now,
@@ -495,7 +515,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
     public function findPendingChannelEdits(): array
     {
         return $this->hydrateAll(
-            'SELECT id, text, image_urls, formatting, button, title, telegram_id, published_at, created_at, updated_at'
+            'SELECT ' . self::CONTENT_COLUMNS . 'telegram_id, published_at, created_at, updated_at'
             . ' FROM {{%publications_edited}}'
             . ' WHERE edited_at IS NULL'
             . ' ORDER BY id ASC',
@@ -521,7 +541,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
      * every other group stands released, and so does a draft, which has no
      * queue of its own.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt?: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, titleFormatting: MessageEntities, publishedAt?: string}> $parts
      */
     private function insertParts(
         string $table,
@@ -541,6 +561,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                     'formatting' => $part['formatting']->toArray(),
                     'button' => $part['buttons']->toArray(),
                     'title' => $part['title'],
+                    'title_formatting' => $part['titleFormatting']->toArray(),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
@@ -740,6 +761,7 @@ final class PublicationRepository implements PublicationRepositoryInterface
                 ? (int)$row['part_group_total']
                 : null,
             array_key_exists('habitat', $row) && $row['habitat'] !== null ? (string)$row['habitat'] : null,
+            titleFormatting: MessageEntities::fromStored($row['title_formatting']),
         );
     }
 

@@ -54,6 +54,7 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $groupId = '',
         int $partOrder = 0,
     ): int;
@@ -74,6 +75,7 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         string $groupId = '',
         int $partOrder = 0,
         bool $partReleased = true,
@@ -91,7 +93,7 @@ interface PublicationRepositoryInterface
      * publication of its own. A plain group is released to the queue in
      * full — only createStagedGroup() holds the lower parts back.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, titleFormatting: MessageEntities, publishedAt: string}> $parts
      */
     public function createPosts(array $parts, string $now, string $groupId = ''): int;
 
@@ -102,7 +104,7 @@ interface PublicationRepositoryInterface
      * own, so every part of it stands released and a later move to the
      * posts table sends it out at its time.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, titleFormatting: MessageEntities}> $parts
      */
     public function createDrafts(array $parts, string $now, string $groupId = ''): int;
 
@@ -127,7 +129,7 @@ interface PublicationRepositoryInterface
      * Stores the parts of one publication as an ordered group: only its first
      * part enters the queue, the rest wait until they are released one by one.
      *
-     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, publishedAt: string}> $parts
+     * @param array<int, array{text: string, imageUrls: string[], formatting: MessageEntities, buttons: LinkButtons, title: string, titleFormatting: MessageEntities, publishedAt: string}> $parts
      *
      * @return int the id of the first part
      */
@@ -164,10 +166,11 @@ interface PublicationRepositoryInterface
     public function findDraft(int $id): ?PublicationData;
 
     /**
-     * Updates a scheduled post: text, image urls, formatting, buttons, title
-     * and published_at from the form; updated_at is set to $now, created_at
-     * stays untouched. A place rewrites the rank of the row inside its group,
-     * which is what the form gives it; without one the row keeps its place.
+     * Updates a scheduled post: text, image urls, formatting, buttons, title,
+     * the marks of the heading and published_at from the form; updated_at is
+     * set to $now, created_at stays untouched. A place rewrites the rank of the
+     * row inside its group, which is what the form gives it; without one the row
+     * keeps its place.
      */
     public function updatePost(
         int $id,
@@ -178,14 +181,15 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         ?int $partOrder = null,
     ): void;
 
     /**
-     * Updates a draft: text, image urls, formatting, buttons and title from
-     * the form; updated_at is set to $now, created_at stays untouched. A place
-     * rewrites the rank of the row inside its group, which is what the form
-     * gives it; without one the row keeps its place.
+     * Updates a draft: text, image urls, formatting, buttons, title and the
+     * marks of the heading from the form; updated_at is set to $now, created_at
+     * stays untouched. A place rewrites the rank of the row inside its group,
+     * which is what the form gives it; without one the row keeps its place.
      */
     public function updateDraft(
         int $id,
@@ -195,6 +199,7 @@ interface PublicationRepositoryInterface
         MessageEntities $formatting,
         LinkButtons $buttons,
         string $title,
+        MessageEntities $titleFormatting,
         ?int $partOrder = null,
     ): void;
 
