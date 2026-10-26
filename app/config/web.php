@@ -159,6 +159,7 @@ $config = [
                 'distribute-images-save' => 'site/distribute-images-save',
                 'number-parts-save' => 'site/number-parts-save',
                 'heading-number-place-save' => 'site/heading-number-place-save',
+                'heading-formatting-save' => 'site/heading-formatting-save',
                 'publication-part-schedule' => 'site/publication-part-schedule',
                 'forum-text-order-save' => 'site/forum-text-order-save',
                 'forum-viewed' => 'site/forum-viewed',

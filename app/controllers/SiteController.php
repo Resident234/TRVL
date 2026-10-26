@@ -79,6 +79,23 @@ class SiteController extends Controller
     private const ALBUM_LINK_TOKEN = 'l';
     private const ALBUM_FILE_TOKEN = 'f';
 
+    /**
+     * The four marks the block of the heading has a box for, in the order the
+     * boxes stand in the form. The block lays one of them over the whole line of
+     * a heading that carries no marks of its own, so these names are the names of
+     * the boxes, not the names of the entities: the script of the form translates
+     * «strike» into the strikethrough of a message the same way the toolbar of a
+     * heading field does.
+     */
+    private const HEADING_MARKS = ['bold', 'italic', 'strike', 'underline'];
+
+    /**
+     * The marks a form that was never asked stands with. Every heading went out
+     * bold over its whole line before the block existed, so the bold box is the
+     * one that arrives checked.
+     */
+    private const HEADING_MARKS_DEFAULT = ['bold'];
+
     public function __construct(
         $id,
         $module,
@@ -145,6 +162,7 @@ class SiteController extends Controller
                     'distribute-images-save' => ['post'],
                     'number-parts-save' => ['post'],
                     'heading-number-place-save' => ['post'],
+                    'heading-formatting-save' => ['post'],
                     'publication-part-schedule' => ['post'],
                     'publication-part-group' => ['post'],
                     'publication-part-draft' => ['post'],
@@ -311,6 +329,7 @@ class SiteController extends Controller
         $this->syncDistributeImages();
         $this->syncNumberParts();
         $this->syncHeadingNumberPlace();
+        $this->syncHeadingFormatting();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
         }
@@ -336,7 +355,8 @@ class SiteController extends Controller
             || $this->partsPublicationFromQuery($query) !== $this->partsPublication()
             || $this->distributeImagesFromQuery($query) !== $this->distributeImages()
             || $this->numberPartsFromQuery($query) !== $this->numberParts()
-            || $this->headingNumberPlaceFromQuery($query) !== $this->headingNumberPlace();
+            || $this->headingNumberPlaceFromQuery($query) !== $this->headingNumberPlace()
+            || $this->headingFormattingFromQuery($query) !== $this->headingFormatting();
     }
 
     /**
@@ -473,6 +493,15 @@ class SiteController extends Controller
         // form for nothing.
         if ($this->headingNumberPlace() === 'after') {
             $url['headingNumberPlace'] = 'after';
+        }
+
+        // The bold mark is the shape every heading was written with before the
+        // block existed, so mirroring it would hang a parameter over every address
+        // of the form for nothing. An empty list is not that shape: it is the
+        // reader having taken every box off, and it needs a parameter of its own —
+        // the absence of one answers the bold mark.
+        if ($this->headingFormatting() !== self::HEADING_MARKS_DEFAULT) {
+            $url['headingFormatting'] = implode(',', $this->headingFormatting());
         }
 
         return $url;
@@ -829,6 +858,7 @@ class SiteController extends Controller
             'distributeImages' => $this->distributeImages(),
             'numberParts' => $this->numberParts(),
             'headingNumberPlace' => $this->headingNumberPlace(),
+            'headingFormatting' => $this->headingFormatting(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -1240,6 +1270,96 @@ class SiteController extends Controller
     }
 
     /**
+     * Which marks the block of the heading stands with — the state of its four
+     * boxes, kept in the session like the switches above them so a reload opens
+     * the form with the marks the reader left. A heading that carries marks of
+     * its own answers nothing here: the block lays its mark over a bare heading
+     * only, and the page puts it there at the moment the heading leaves the form.
+     *
+     * @return string[]
+     */
+    private function headingFormatting(): array
+    {
+        return $this->normalizeHeadingFormatting(Yii::$app->session->get('headingFormatting'));
+    }
+
+    /**
+     * The marks the address of the page asks for: `?headingFormatting=bold,italic`
+     * for the marks of the boxes and `?headingFormatting=` for a heading that
+     * stands without any of them.
+     *
+     * @param array<string, mixed> $query
+     *
+     * @return string[]
+     */
+    private function headingFormattingFromQuery(array $query): array
+    {
+        return $this->normalizeHeadingFormatting($query['headingFormatting'] ?? null);
+    }
+
+    /**
+     * Resolves the boxes of the heading block the way the pair of radios under the
+     * numbering does: it is a session that has never held a state which adopts the
+     * parameter of the request, so reloading cannot change what the reader left.
+     */
+    private function syncHeadingFormatting(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('headingFormatting')) {
+            return;
+        }
+
+        $session->set('headingFormatting', $this->headingFormattingFromQuery($this->request->get()));
+    }
+
+    /**
+     * Reads the state of the four boxes in whichever shape it arrived. The session
+     * keeps the list itself; the address and the post of the block carry the names
+     * joined by a comma, and a name spaced over the comma is still that name. An
+     * empty string is a real state — every box taken off — while a state that was
+     * never given at all answers the bold mark, and a name the block has no box for
+     * is dropped. The list comes back in the order of the boxes, so two addresses
+     * that say the same marks are one state however the names were typed in.
+     *
+     * @param mixed $state
+     *
+     * @return string[]
+     */
+    private function normalizeHeadingFormatting(mixed $state): array
+    {
+        $asked = null;
+
+        if (is_string($state)) {
+            $asked = array_map('trim', explode(',', $state));
+        }
+
+        if (is_array($state)) {
+            $asked = [];
+
+            foreach ($state as $one) {
+                if (is_string($one)) {
+                    $asked[] = trim($one);
+                }
+            }
+        }
+
+        if ($asked === null) {
+            return self::HEADING_MARKS_DEFAULT;
+        }
+
+        $marks = [];
+
+        foreach (self::HEADING_MARKS as $mark) {
+            if (in_array($mark, $asked, true)) {
+                $marks[] = $mark;
+            }
+        }
+
+        return $marks;
+    }
+
+    /**
      * Stores the state of the switch of the parts and answers with the address that
      * mirrors it, exactly like the album switch does. It redraws nothing: the parts
      * live in the fields of the form, and their own buttons are put there by the
@@ -1317,6 +1437,28 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'headingNumberPlace',
             $this->normalizeHeadingNumberPlace($this->request->post('headingNumberPlace')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the marks the block of the heading stands with and answers with the
+     * address that mirrors them, exactly like the place of a number does. It
+     * redraws nothing: a mark is laid over a heading by the script of the form at
+     * the moment that heading leaves it, so the boxes only ever say what the next
+     * heading is to be wears.
+     *
+     * @return Response
+     */
+    public function actionHeadingFormattingSave(): Response
+    {
+        Yii::$app->session->set(
+            'headingFormatting',
+            $this->normalizeHeadingFormatting($this->request->post('headingFormatting')),
         );
 
         return $this->asJson([

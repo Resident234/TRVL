@@ -164,11 +164,13 @@ final readonly class PublicationData
     }
 
     /**
-     * The highlighting of that text: the whole of the heading line in bold over
-     * the spans of the body, which have moved behind it and over the blank line,
-     * less the number the heading took out of the head of the text. A heading
-     * that wears marks of its own is sent with exactly those instead of the bold
-     * line, and the body moves behind it the same way.
+     * The highlighting of that text: the marks the heading was saved with over the
+     * spans of the body, which have moved behind it and over the blank line, less
+     * the number the heading took out of the head of the text. A heading saved
+     * without marks of its own goes out plain — the boxes of the heading block are
+     * what put a mark over its line, and they do it before the form is written. A
+     * mark over the whole of a heading reaches the number that line gains, which is
+     * what the same composition on the page does to the preview.
      */
     public function messageEntities(): MessageEntities
     {
@@ -178,7 +180,7 @@ final readonly class PublicationData
             $header,
             $body === '' ? '' : self::HEADING_GAP,
             $moved,
-            $this->titleFormatting,
+            $this->titleFormatting->widenedToHeading($this->title, $header),
         );
     }
 

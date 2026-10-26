@@ -126,11 +126,10 @@ final readonly class MessageEntities
     }
 
     /**
-     * The same list lying under a heading of its own: the whole of $heading is
-     * bold, and every span the list holds moves behind it and over the $gap that
-     * separates the two — so the offsets of an empty heading are the offsets the
-     * list already had, which is how a part without a title keeps the formatting
-     * it was saved with.
+     * The same list lying under a heading of its own: every span the list holds
+     * moves behind it and over the $gap that separates the two — so the offsets of
+     * an empty heading are the offsets the list already had, which is how a part
+     * without a title keeps the formatting it was saved with.
      *
      * $moved is how much of the heading was already standing at the head of the
      * list's own text — the «Часть N» line a numbered part starts with, which the
@@ -138,10 +137,11 @@ final readonly class MessageEntities
      * less.
      *
      * $own is the formatting the reader set over the heading itself, counted from
-     * its beginning. A heading that carries none wears the bold line the rule
-     * puts over it; a heading that carries some wears exactly those marks, and the
-     * rule steps back for them. The body moves behind either of the two shapes,
-     * which is why the marks of the heading need no shift of their own.
+     * its beginning, and it is the only formatting the heading wears: the boxes of
+     * the heading block stamp their marks over the whole line before the form goes
+     * out, so a heading saved without marks goes out plain. The body moves behind
+     * either of the two shapes, which is why the marks of the heading need no shift
+     * of their own.
      */
     public function underHeading(
         string $heading,
@@ -155,15 +155,44 @@ final readonly class MessageEntities
             return $this;
         }
 
-        $entities = $own->isEmpty()
-            ? [['type' => 'bold', 'offset' => 0, 'length' => $units]]
-            : $own->toArray();
+        $entities = $own->toArray();
         $behind = $units + self::utf16Length($gap) - $moved;
 
         foreach ($this->entities as $entity) {
             $shifted = $entity;
             $shifted['offset'] = (int) $entity['offset'] + $behind;
             $entities[] = $shifted;
+        }
+
+        return new self($entities);
+    }
+
+    /**
+     * The same list measured over the line a heading goes out as instead of over the
+     * words of its field: a numbered part hands the number from the head of its body
+     * up into the heading, so that line is longer than the field by exactly the number,
+     * and a span that stood from the beginning of the field to its end is stood to the
+     * end of the line. A span the reader stopped short of the end claims the piece it
+     * always claimed, and a list whose heading gained nothing comes back as it was
+     * saved. This belongs to the way out and not to the field: the list a record
+     * carries is checked against the words of the field, and a mark that reaches over a
+     * number the field does not hold is a record the server refuses.
+     */
+    public function widenedToHeading(string $title, string $heading): self
+    {
+        $units = self::utf16Length(trim($title));
+        $line = self::utf16Length($heading);
+
+        if ($line <= $units) {
+            return $this;
+        }
+
+        $entities = [];
+        foreach ($this->entities as $entity) {
+            if ((int) $entity['offset'] === 0 && (int) $entity['length'] === $units) {
+                $entity['length'] = $line;
+            }
+            $entities[] = $entity;
         }
 
         return new self($entities);

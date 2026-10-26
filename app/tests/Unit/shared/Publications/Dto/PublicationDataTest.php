@@ -15,8 +15,9 @@ use Codeception\Test\Unit;
  * so the composition has to see that the heading already carries it and take the
  * line out of the body without naming the part twice. Where the number stands in
  * the heading, the text of the part brings no number line at all, and the heading
- * is sent as the page wrote it. A heading that wears marks of its own is sent with
- * exactly those marks, and the rule of the bold line steps back for them.
+ * is sent as the page wrote it. A heading is sent with exactly the marks it was
+ * saved with: the boxes of the heading block stamp them over its whole line before
+ * the form goes out, and a heading saved without marks goes out plain.
  */
 final class PublicationDataTest extends Unit
 {
@@ -56,10 +57,16 @@ final class PublicationDataTest extends Unit
         $this->assertSame('Браво текст.', $body);
     }
 
-    public function testWholeHeadingIsBoldOverTheBodyOfItsNumberedPart(): void
+    public function testBoldStampedOverTheWholeHeadingOfANumberedPartGoesOutFirst(): void
     {
-        $entities = $this->part("Часть 2\n\nБраво текст.", 'Часть 2. Альфа текст.')
-            ->messageEntities();
+        $stamped = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 21]]);
+
+        $entities = $this->part(
+            "Часть 2\n\nБраво текст.",
+            'Часть 2. Альфа текст.',
+            new MessageEntities(),
+            $stamped,
+        )->messageEntities();
 
         $this->assertSame(
             [['type' => 'bold', 'offset' => 0, 'length' => 21]],
@@ -94,9 +101,12 @@ final class PublicationDataTest extends Unit
         $this->assertSame("Альфа текст. Часть 1\n\nБраво текст.", $message);
     }
 
-    public function testWholeHeadingOfAPartNumberedAtItsEndIsBold(): void
+    public function testBoldStampedOverTheWholeHeadingOfAPartNumberedAtItsEndGoesOut(): void
     {
-        $entities = $this->part('Браво текст.', 'Альфа текст. Часть 1')->messageEntities();
+        $stamped = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 20]]);
+
+        $entities = $this->part('Браво текст.', 'Альфа текст. Часть 1', new MessageEntities(), $stamped)
+            ->messageEntities();
 
         $this->assertSame(
             [['type' => 'bold', 'offset' => 0, 'length' => 20]],
@@ -104,7 +114,21 @@ final class PublicationDataTest extends Unit
         );
     }
 
-    public function testMarkedHeadingOfAPartIsSentWithoutTheBoldOverItsWholeLine(): void
+    public function testHeadingWithoutMarksOfItsOwnSendsNoHeadingMarks(): void
+    {
+        // The state every box of the heading block stands off in: the heading goes
+        // out plain, and only the spans of the body move behind it.
+        $body = MessageEntities::fromArray([['type' => 'italic', 'offset' => 0, 'length' => 5]]);
+
+        $entities = $this->part('Браво текст.', 'Заголовок', $body)->messageEntities();
+
+        $this->assertSame(
+            [['type' => 'italic', 'offset' => 11, 'length' => 5]],
+            $entities->toArray(),
+        );
+    }
+
+    public function testHeadingOfAPartWearsOnlyTheMarksItWasStampedWith(): void
     {
         $marked = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 5]]);
 
@@ -115,6 +139,65 @@ final class PublicationDataTest extends Unit
             [['type' => 'bold', 'offset' => 0, 'length' => 5]],
             $entities->toArray(),
         );
+    }
+
+    public function testMarksOverTheWholeOfAHeadingCoverTheNumberItsLineGains(): void
+    {
+        // The heading of a record written before the number moved into the field of
+        // the heading: the line the channel is given is the words of the field plus
+        // the number the body hands over, and a span the reader stood over the whole
+        // of the heading is stood over that line — a mark that stops short of the
+        // number leaves the number of a marked heading the one plain word of it.
+        $stamped = MessageEntities::fromArray([
+            ['type' => 'bold', 'offset' => 0, 'length' => 9],
+            ['type' => 'italic', 'offset' => 0, 'length' => 9],
+        ]);
+
+        $entities = $this->part("Часть 1\n\nБраво текст.", 'Заголовок', new MessageEntities(), $stamped)
+            ->messageEntities();
+
+        $this->assertSame([
+            ['type' => 'bold', 'offset' => 0, 'length' => 18],
+            ['type' => 'italic', 'offset' => 0, 'length' => 18],
+        ], $entities->toArray());
+    }
+
+    public function testTheBodyOfAHeadingThatGrewItsNumberStandsWhereItStood(): void
+    {
+        // The heading gains the number out of the body, so the body loses exactly
+        // that much of the distance it travels: the widening reaches the marks of the
+        // heading and nothing behind the blank line.
+        $stamped = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 9]]);
+        $body = MessageEntities::fromArray([['type' => 'italic', 'offset' => 9, 'length' => 5]]);
+
+        $entities = $this->part("Часть 1\n\nБраво текст.", 'Заголовок', $body, $stamped)->messageEntities();
+
+        $this->assertSame([
+            ['type' => 'bold', 'offset' => 0, 'length' => 18],
+            ['type' => 'italic', 'offset' => 20, 'length' => 5],
+        ], $entities->toArray());
+    }
+
+    public function testAMarkOverPartOfAHeadingDoesNotReachItsNumber(): void
+    {
+        // A span the reader set over four of the nine letters of a heading claims
+        // those four letters, not the line: the number its line gains belongs to no
+        // part of what he marked.
+        $stamped = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 4]]);
+
+        $entities = $this->part("Часть 1\n\nБраво текст.", 'Заголовок', new MessageEntities(), $stamped)
+            ->messageEntities();
+
+        $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 4]], $entities->toArray());
+    }
+
+    public function testAMarkOverAHeadingOfNoNumberIsLeftAtTheLengthItWasSavedWith(): void
+    {
+        $stamped = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 9]]);
+
+        $entities = $this->part('Браво текст.', 'Заголовок', new MessageEntities(), $stamped)->messageEntities();
+
+        $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 9]], $entities->toArray());
     }
 
     public function testMarksOfTheHeadingAndMarksOfItsBodyStandInTheMessageTogether(): void

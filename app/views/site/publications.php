@@ -22,6 +22,7 @@ declare(strict_types=1);
 /** @var bool $distributeImages whether the albums of the form are handed out over its parts on their own */
 /** @var bool $numberParts whether the number of a part is written at all */
 /** @var string $headingNumberPlace 'before' | 'after' — which end of a part heading wears its number */
+/** @var string[] $headingFormatting the marks the block of the heading stands with: 'bold', 'italic', 'strike', 'underline' */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -508,6 +509,22 @@ $this->registerCss(
     margin-bottom: 0;
 }
 
+/* The heading is a functional of its own, and it is boxed the way the split is boxed:
+   the same line, the same room inside it, the same room under it. Its colour is info —
+   one of the five the theme leaves a border to be drawn in, and the only one of them
+   this page had not already spent: success is the split, primary is a field of the
+   album and of the file, danger is the forum, warning is the card of the publication.
+   From this revision on, a box drawn in info is a box that speaks about a heading.
+   The block is one for the whole form, not one per part: the marks it offers lay
+   themselves over the heading of every part of a cut publication, and a control whose
+   answer is the same for all of them has nothing to be repeated for. */
+.publication-heading-controls {
+    border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-info-rgb), 1);
+    padding: 1rem;
+    border-radius: .8rem;
+    margin-bottom: 1rem;
+}
+
 /* A control that works on the parts wears the green the parts are wrapped in. The switch of
    the heading cut a first line out of a fill while the text was one publication; while the
    text is cut it works on every part — the first sentence of a part whose heading field is
@@ -912,31 +929,6 @@ CSS
                             </span>
                             <h5 class="text-warning fw-semibold m-0">Новая публикация</h5>
                         </div>
-                        <?php /* A fill of the forum block brings one run of text. With this
-                               switch its first line goes to the heading field of the part it
-                               fills, so the line a topic stands in front of its own text — or
-                               the line an author opened a post with — is drawn bold over that
-                               text instead of being its first words. While the text is cut the
-                               same switch works over every part: the first sentence of a part
-                               whose heading field is still empty goes into it, since a part can
-                               open with several short sentences standing on one line. A heading
-                               the reader already wrote is left alone, and a text is never cut
-                               when nothing would be left of it. The state of the switch lives in
-                               the session, like the filters of the block above and the order of
-                               the lists, so a reload reads the form the way the reader left it
-                               and the address of the page says it too. Its toggle wears the
-                               green of the parts while the text is cut into them. */ ?>
-                        <div class="form-check form-switch mb-0"
-                             data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
-                             data-bs-custom-class="popover-info"
-                             data-bs-content="При подгрузке из блока «Форум» первую строку текста пишет в поле «Заголовок», а остальное оставляет в тексте. У тофика первой строкой стоит его название, у поста — первая набранная им строка. Пока текст разбит на части, в заголовок каждой части с пустым полем уходит первое предложение её текста: первой строкой в части может идти несколько коротких предложений. Если после заголовка ничего не остаётся, текст не режется, а уже заполненный заголовок остаётся как есть. Пока части есть, рамка переключателя зелёная — он работает с частями.">
-                            <input class="form-check-input publication-heading-switch" type="checkbox" role="switch"
-                                   id="publicationTitleFromFirstLine"
-                                   <?= $titleFromFirstLine ? 'checked' : '' ?>>
-                            <label class="form-check-label" for="publicationTitleFromFirstLine">
-                                <i class="bi bi-card-heading me-1"></i>Первая строка — в заголовок
-                            </label>
-                        </div>
                     </div>
                     <div class="card-body">
                         <form method="post" action="<?= \yii\helpers\Url::to(['site/publication-create']) ?>"
@@ -1020,8 +1012,8 @@ CSS
                                                their own, next to the marks of the text. A heading is one
                                                line — the split of a text reads it as one — so a break that
                                                reaches it is folded into a space, and Enter does nothing.
-                                               A heading that carries no marks of its own still wears the
-                                               whole line bold, as every record written before this did. */ ?>
+                                               A heading that carries no marks of its own goes out plain;
+                                               the marks of the heading block are laid on the way out. */ ?>
                                         <div class="publication-editor publication-title-editor">
                                             <textarea class="form-control publication-title-field d-none"
                                                       id="publicationTitleInput" name="publicationTitle"
@@ -1461,6 +1453,78 @@ CSS
                                 </div>
                             </div>
 
+                            <?php /* The heading of a publication is one functional, and everything
+                                       that decides what a heading is stands in this box: the switch
+                                       that cuts a first line into it, and the four marks it is laid
+                                       over with. A box that stands checked puts its mark over the
+                                       whole line of a heading that carries no marks of its own — and
+                                       over the heading of every part of a cut publication, since one
+                                       form is one publication and one heading answers for all of its
+                                       parts. A heading the reader has marked himself in its field is
+                                       his: the boxes do not touch it, and nothing is laid over what
+                                       he set. With all four boxes off a heading goes out plain, which
+                                       is exactly what a heading of an empty field is. The marks are
+                                       chosen once for the form and travel out with every heading that
+                                       needs them; the state of the four boxes lives in the session,
+                                       like the switch above them and the rest of the form. */ ?>
+                            <div class="publication-heading-controls">
+                                <?php /* A fill of the forum block brings one run of text. With this
+                                       switch its first line goes to the heading field of the part it
+                                       fills, so the line a topic stands in front of its own text — or
+                                       the line an author opened a post with — is drawn over that
+                                       text instead of being its first words. While the text is cut the
+                                       same switch works over every part: the first sentence of a part
+                                       whose heading field is still empty goes into it, since a part can
+                                       open with several short sentences standing on one line. A heading
+                                       the reader already wrote is left alone, and a text is never cut
+                                       when nothing would be left of it. The state of the switch lives in
+                                       the session, like the filters of the block above and the order of
+                                       the lists, so a reload reads the form the way the reader left it
+                                       and the address of the page says it too. Its toggle wears the
+                                       green of the parts while the text is cut into them. */ ?>
+                                <div class="form-check form-switch mb-3"
+                                     data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                     data-bs-custom-class="popover-info"
+                                     data-bs-content="При подгрузке из блока «Форум» первую строку текста пишет в поле «Заголовок», а остальное оставляет в тексте. У тофика первой строкой стоит его название, у поста — первая набранная им строка. Пока текст разбит на части, в заголовок каждой части с пустым полем уходит первое предложение её текста: первой строкой в части может идти несколько коротких предложений. Если после заголовка ничего не остаётся, текст не режется, а уже заполненный заголовок остаётся как есть. Пока части есть, рамка переключателя зелёная — он работает с частями.">
+                                    <input class="form-check-input publication-heading-switch" type="checkbox" role="switch"
+                                           id="publicationTitleFromFirstLine"
+                                           <?= $titleFromFirstLine ? 'checked' : '' ?>>
+                                    <label class="form-check-label" for="publicationTitleFromFirstLine">
+                                        <i class="bi bi-card-heading me-1"></i>Первая строка — в заголовок
+                                    </label>
+                                </div>
+                                <?php /* The four marks of a heading. Each of them lays its own span
+                                       over the whole line — a heading of a part wears them all at once,
+                                       the way the channel reads a bold italic underlined strike — and
+                                       they are asked of the form once, not of every part. The bold box
+                                       stands by default: until this revision every heading went out
+                                       bold over its whole line, and a form opened for the first time
+                                       says the same thing the page used to do without being asked. */ ?>
+                                <div class="mb-0" data-bs-toggle="popover" data-bs-trigger="hover"
+                                     data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                     data-bs-content="Ставит свою метку на всю строку заголовка — и на заголовок каждой части, пока текст разбит. Работает только там, где у заголовка своих меток нет: заголовок, отмеченный в самом поле, идёт ровно так, как его отметили, и ничего сверху ему не кладётся. Все четыре сняты — заголовок идёт без меток. Жирный включён по умолчанию: так заголовок выходил всегда.">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" id="publicationHeadingBold"
+                                               value="bold" <?= in_array('bold', $headingFormatting, true) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="publicationHeadingBold">Жирный</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" id="publicationHeadingItalic"
+                                               value="italic" <?= in_array('italic', $headingFormatting, true) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="publicationHeadingItalic">Курсив</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" id="publicationHeadingStrike"
+                                               value="strike" <?= in_array('strike', $headingFormatting, true) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="publicationHeadingStrike">Зачёркнуто</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="checkbox" id="publicationHeadingUnderline"
+                                               value="underline" <?= in_array('underline', $headingFormatting, true) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="publicationHeadingUnderline">Подчёркнуто</label>
+                                    </div>
+                                </div>
+                            </div>
 
                             <!-- Attached images -->
                             <?php /* The mark the album of the form was born by, and the block it is
@@ -2003,6 +2067,7 @@ $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save'])
 $distributeImagesSaveUrl = \yii\helpers\Url::to(['site/distribute-images-save']);
 $numberPartsSaveUrl = \yii\helpers\Url::to(['site/number-parts-save']);
 $headingNumberPlaceSaveUrl = \yii\helpers\Url::to(['site/heading-number-place-save']);
+$headingFormattingSaveUrl = \yii\helpers\Url::to(['site/heading-formatting-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
 // The three addresses a part of the form is moved by: the two the lists already post
@@ -2044,6 +2109,7 @@ var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
 var __DISTRIBUTE_IMAGES_URL = '{$distributeImagesSaveUrl}';
 var __NUMBER_PARTS_URL = '{$numberPartsSaveUrl}';
 var __HEADING_PLACE_URL = '{$headingNumberPlaceSaveUrl}';
+var __HEADING_FORMATTING_URL = '{$headingFormattingSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __PART_GROUP_URL = '{$partGroupUrl}';
 var __TO_DRAFT_URL = '{$toDraftUrl}';
@@ -2348,29 +2414,91 @@ function splitHeading(title, text) {
 
 // The same highlighting lying under a heading of its own: every span of the body
 // moves behind the heading and over the line that separates the two, less the
-// number the heading was built from. The heading itself wears the marks the reader
-// set over it, and where he set none it wears the whole line bold — which is how
-// every record written before this revision goes out, and why the two shapes share
-// the arithmetic of the body: a mark of a heading is counted from its beginning,
-// so it needs no shift of its own.
+// number the heading was built from. The heading wears the list it was handed, and
+// the composition marks a heading of its own no more: since this revision the whole
+// line of an unmarked heading is bolded by the block of the heading, whose boxes are
+// read by the hands that call this one. A heading that carries nothing therefore
+// goes out plain, and the two shapes still share the arithmetic of the body — a mark
+// of a heading is counted from its beginning, so it needs no shift of its own.
 function entitiesUnderHeading(list, heading, gap, moved, own) {
     if (heading === '') {
         return list.slice();
     }
 
-    var marks = (own || []).length === 0
-        ? [makeEntity('bold', 0, heading.length)]
-        : shiftEntities(own, 0);
-
     return sortEntities(
-        marks.concat(shiftEntities(list, heading.length + gap.length - moved))
+        shiftEntities(own || [], 0)
+            .concat(shiftEntities(list, heading.length + gap.length - moved))
     );
+}
+
+// The marks the block of the heading lays over a heading: a box standing checked
+// covers the whole line of it, and the marks come out in the order the channel lists
+// the spans of one and the same piece of text. A name the block does not carry lays
+// nothing, and so does a heading with no words in it.
+function headingBlockEntities(heading, formats) {
+    if (heading === '') {
+        return [];
+    }
+
+    var marks = [];
+
+    (formats || []).forEach(function (format) {
+        var type = ENTITY_OF_FORMAT[format];
+
+        if (type) {
+            marks.push(makeEntity(type, 0, heading.length));
+        }
+    });
+
+    return sortEntities(marks);
+}
+
+// Which marks a heading of the form goes out with: the marks the reader set over a
+// heading win, and a heading he left unmarked wears the boxes of the block. The stamp
+// is counted over the words the server takes for the heading — its own ends trimmed
+// off — so a heading of spaces, which is no heading at all, is marked by nothing.
+function titleMarksOf(title, own, formats) {
+    var marks = own || [];
+
+    if (marks.length > 0) {
+        return marks;
+    }
+
+    return headingBlockEntities(String(title || '').trim(), formats);
+}
+
+// The marks of a heading grown over the line the heading goes out as: a numbered part
+// hands the number from the head of its body up into that line, so the line is longer
+// than the words of the field by exactly that number, and a span that stood from the
+// beginning of the field to its end is stood to the end of the line. A span the reader
+// stopped short of the end claims the same piece of the line he always claimed, and a
+// heading whose line gained nothing keeps the marks it was saved with. The widening
+// belongs to the way out and never to the field: the list a record carries is measured
+// against the words of the field, and a mark over a number the field does not hold is
+// a record the server refuses.
+function widenToHeading(marks, title, heading) {
+    var units = String(title || '').trim().length;
+
+    if (heading.length <= units) {
+        return marks;
+    }
+
+    return marks.map(function (mark) {
+        if (mark.offset !== 0 || mark.length !== units) {
+            return mark;
+        }
+
+        return makeEntity(mark.type, 0, heading.length, mark.url);
+    });
 }
 
 // The message a part goes to the channel as, and its highlighting: what the
 // preview shows and the counters count is the text the server composes, so a
-// heading is never a decoration the posted message does not carry.
-function composedMessage(title, text, entities, titleEntities) {
+// heading is never a decoration the posted message does not carry. The boxes of
+// the heading come in as the last list a caller hands: the two readers of the
+// message ask for them themselves, which is what makes the preview and the counters
+// say the very thing the submitted fields will say.
+function composedMessage(title, text, entities, titleEntities, formats) {
     var cut = splitHeading(title, text);
 
     if (cut.heading === '') {
@@ -2380,7 +2508,8 @@ function composedMessage(title, text, entities, titleEntities) {
     return {
         text: cut.body === '' ? cut.heading : cut.heading + cut.gap + cut.body,
         entities: entitiesUnderHeading(
-            entities || [], cut.heading, cut.gap, cut.moved, titleEntities || [])
+            entities || [], cut.heading, cut.gap, cut.moved,
+            widenToHeading(titleMarksOf(title, titleEntities || [], formats), title, cut.heading))
     };
 }
 
@@ -3701,10 +3830,10 @@ jQuery(document).ready(function () {
         var TEXTAREA_VALUE = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
         var TOOLBAR_FORMATS = [['bold', 'italic', 'underline', 'strike', 'code'], ['link']];
         // The panel of a heading is the set the reader asked for: bold, italic,
-        // underline, link, and the emoji button this page adds to every toolbar.
-        // A strike and a `code` span stay with the body — a one-line heading takes
-        // them as well as any other, but the form offers no tool nobody requested.
-        var TITLE_TOOLBAR_FORMATS = [['bold', 'italic', 'underline'], ['link']];
+        // underline, a strike, link, and the emoji button this page adds to every
+        // toolbar. A `code` span stays with the body — the reader marks a heading
+        // in words he chose, not in a face the channel reserves for a command.
+        var TITLE_TOOLBAR_FORMATS = [['bold', 'italic', 'underline', 'strike'], ['link']];
 
         function formattingOf(field) {
             return field.__formatting || [];
@@ -3984,18 +4113,96 @@ jQuery(document).ready(function () {
             titleFields().forEach(function (field) { mountPartEditor(field, true); });
         }
 
+        // The four boxes of the block, in the order they stand in their row: every one
+        // of them is the name the mark travels under and the id the page gives it. A
+        // box the list does not carry is a box nobody clicks, so this is the only place
+        // the row of the block is written down.
+        var HEADING_BLOCK_BOXES = [
+            ['bold', 'publicationHeadingBold'],
+            ['italic', 'publicationHeadingItalic'],
+            ['strike', 'publicationHeadingStrike'],
+            ['underline', 'publicationHeadingUnderline']
+        ];
+
+        // The marks the block is standing with: the names of the boxes that are
+        // checked, in the order of the row.
+        function headingBlockFormats() {
+            var marks = [];
+
+            HEADING_BLOCK_BOXES.forEach(function (pair) {
+                var box = document.getElementById(pair[1]);
+
+                if (box && box.checked) {
+                    marks.push(pair[0]);
+                }
+            });
+
+            return marks;
+        }
+
         // The hidden field of a part carries its list to the server next to the
         // text the spans are counted over.
         function writeFormattingField(field) {
             var holder = formatFieldOf(field);
 
             if (holder) {
-                holder.value = JSON.stringify(formattingOf(field));
+                // A heading is the one field the block speaks for: its boxes are put
+                // in on the way out, over a heading that carries no marks of its own.
+                // The list of the editor itself is left alone, so nothing a rebuild, a
+                // cut, a merge or a move reads back is a stamp the page laid itself —
+                // and a box that comes off stops acting at once.
+                holder.value = JSON.stringify(field.classList.contains('publication-title-field')
+                    ? titleMarksOf(field.value, formattingOf(field), headingBlockFormats())
+                    : formattingOf(field));
             }
         }
 
         function writeFormattingFields() {
             textParts().concat(titleFields()).forEach(writeFormattingField);
+        }
+
+        // The block of the heading marks nothing of the lists and a great deal of the
+        // message, so its click has two hands to do: it restates the fields the marks
+        // ride out in, and it asks the session to remember the row — the four boxes as
+        // one list, the way every other switch of the form is remembered.
+        function watchHeadingBlock() {
+            var boxes = HEADING_BLOCK_BOXES.map(function (pair) {
+                return document.getElementById(pair[1]);
+            });
+
+            if (boxes.some(function (box) { return box === null; })) {
+                return;
+            }
+
+            // The row as the page was rendered with it: the state a request the server
+            // refused has to put the four boxes back into.
+            var shown = headingBlockFormats();
+
+            boxes.forEach(function (box) {
+                box.addEventListener('change', function () {
+                    var marks = headingBlockFormats();
+
+                    writeFormattingFields();
+                    // The marks are all a box changes, and the marks are what the
+                    // preview paints: a box that comes off has to take its line off the
+                    // screen in the same click that takes it off the channel.
+                    update();
+                    postForJson(__HEADING_FORMATTING_URL, { headingFormatting: marks.join(',') })
+                        .then(function (payload) {
+                            shown = marks;
+                            mirrorUrl(payload);
+                        })
+                        .catch(function (error) {
+                            boxes.forEach(function (other, otherIndex) {
+                                other.checked = shown.indexOf(HEADING_BLOCK_BOXES[otherIndex][0]) >= 0;
+                            });
+                            writeFormattingFields();
+                            update();
+                            showFlash('error', 'Не удалось запомнить метки заголовка: '
+                                + (error && error.message ? error.message : error));
+                        });
+                });
+            });
         }
 
         // The text and the highlighting of a part written together: the value goes
@@ -6046,9 +6253,11 @@ jQuery(document).ready(function () {
                 }
                 // The number of the message the channel gets, not of the text in
                 // the field: a heading the part carries is part of that message,
-                // and so are the marks the reader set over it.
+                // and so are the marks the reader set over it or, where he set
+                // none, the boxes the block of the heading stands with.
                 var shown = composedMessage(
-                    titles[index] || '', field.value, formattingOf(field), titleMarks[index] || []).text.length;
+                    titles[index] || '', field.value, formattingOf(field), titleMarks[index] || [],
+                    headingBlockFormats()).text.length;
                 counter.textContent = shown + ' / ' + __TEXT_PART_LIMIT;
                 counter.className = 'publication-text-count'
                     + (shown > __TEXT_PART_LIMIT ? ' text-danger' : ' text-muted');
@@ -7084,6 +7293,10 @@ jQuery(document).ready(function () {
         // request carries the fields of the form and the place of this part among them.
         // That one part reaches a row; the rest of the form waits as it waited before.
         function savePartRow(block, index) {
+            // A part saved on its own goes out over the same fields the form goes out
+            // with, so the marks of the heading block are put in here too.
+            writeFormattingFields();
+
             var fields = new FormData(block.closest('form'));
 
             fields.append('publicationPartIndex', index);
@@ -8094,10 +8307,12 @@ jQuery(document).ready(function () {
                 if (partIsShown(value, pictures)) {
                     // Every card shows the message the channel will get: the
                     // heading of the part over its text, wearing the marks the
-                    // reader set over it or, where he set none, the whole line
-                    // bold, with the number of a numbered part at its end.
+                    // reader set over it or, where he set none, the boxes the
+                    // block of the heading stands with, and the number of a
+                    // numbered part at its end.
                     var message = composedMessage(
-                        titles[index] || '', value, formattingOf(fields[index]), titleMarks[index] || []);
+                        titles[index] || '', value, formattingOf(fields[index]), titleMarks[index] || [],
+                        headingBlockFormats());
                     shown.push({
                         text: message.text,
                         pictures: pictures,
@@ -8228,6 +8443,11 @@ jQuery(document).ready(function () {
             syncHeadingPlaceSwitch();
             applyPartNumbers();
             applyHeadingNumbers();
+            // The stamp of the block is counted over the words a field holds, and the
+            // numbers above put a word into two of them: the fields have to be written
+            // again after the headings grew or lost their number, or the marks are
+            // stored short of the line the heading is saved as.
+            writeFormattingFields();
             updateCounters();
             update();
         }
@@ -8634,6 +8854,10 @@ jQuery(document).ready(function () {
                 var tzField2 = document.getElementById('schedulePublicationTz');
                 if (tzField2) tzField2.value = tz;
             }
+            // The submit is the moment the marks of the heading block are asked for, so
+            // the lists are written out again over the fields as they stand: a heading
+            // that grew since the last click is stamped to its end.
+            writeFormattingFields();
         }
 
         // Attach to forms
@@ -9257,6 +9481,10 @@ jQuery(document).ready(function () {
         // The heading switch of the form is remembered the same way, although
         // nothing of the page has to be redrawn for it.
         watchHeadingSwitch();
+
+        // The four boxes beside it are remembered as one row, and a click among them
+        // restates the fields the marks of a heading ride out in.
+        watchHeadingBlock();
 
         // So is the switch of the addresses, and it is handed the waiting of the
         // fill it owns: the two states of one turn have to agree with each other.

@@ -148,13 +148,12 @@ final class MessageEntitiesTest extends Unit
         ])->assertFitsText('Привет мир');
     }
 
-    public function testAHeadingOpensTheMessageInBoldOverTheSpansItMoves(): void
+    public function testAHeadingWithoutMarksOfItsOwnMovesTheBodyAndStaysPlain(): void
     {
         $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 4]])
             ->underHeading('Заголовок');
 
         $this->assertSame([
-            ['type' => 'bold', 'offset' => 0, 'length' => 9],
             ['type' => 'bold', 'offset' => 11, 'length' => 4],
         ], $entities->toArray());
     }
@@ -175,19 +174,21 @@ final class MessageEntitiesTest extends Unit
             ->underHeading('Заголовок. Часть 1', "\n\n", 9);
 
         $this->assertSame([
-            ['type' => 'bold', 'offset' => 0, 'length' => 18],
             ['type' => 'bold', 'offset' => 20, 'length' => 7],
         ], $entities->toArray());
     }
 
     public function testAHeadingIsCountedInUtf16UnitsToo(): void
     {
-        $entities = (new MessageEntities())->underHeading('Ищем✈️');
+        // The wing is two of the units Telegram counts, so the body of the message
+        // starts eight in, not six.
+        $entities = MessageEntities::fromArray([['type' => 'italic', 'offset' => 0, 'length' => 2]])
+            ->underHeading('Ищем✈️');
 
-        $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 6]], $entities->toArray());
+        $this->assertSame([['type' => 'italic', 'offset' => 8, 'length' => 2]], $entities->toArray());
     }
 
-    public function testAHeadingWithMarksOfItsOwnWearsThemInsteadOfTheBoldRule(): void
+    public function testAHeadingWithMarksOfItsOwnWearsThemAndNothingElse(): void
     {
         $entities = MessageEntities::fromArray([['type' => 'italic', 'offset' => 0, 'length' => 5]])
             ->underHeading(
@@ -203,12 +204,12 @@ final class MessageEntitiesTest extends Unit
         ], $entities->toArray());
     }
 
-    public function testTheBodyOfAMarkedHeadingMovesAsFarAsTheBodyOfAPlainOne(): void
+    public function testTheBodyOfAMarkedHeadingMovesAsFarAsTheBodyOfAnUnmarkedOne(): void
     {
         // The same heading that took the number line over, now wearing marks of
-        // its own: the heading loses the bold over its whole length and gains the
-        // two spans the reader set, and the stored span moves exactly where it
-        // moved before — behind the heading, over the blank line, less the number.
+        // its own: the heading gains the two spans the reader set, and the stored
+        // span moves exactly where it moved before — behind the heading, over the
+        // blank line, less the number.
         $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 9, 'length' => 7]])
             ->underHeading(
                 'Заголовок. Часть 1',
@@ -227,15 +228,68 @@ final class MessageEntitiesTest extends Unit
         ], $entities->toArray());
     }
 
-    public function testAnEmptyOwnListLeavesTheHeadingRuleAsItWas(): void
+    public function testAHeadingWearsEveryMarkTheBlockStampedOverItsWholeLine(): void
     {
+        // The four boxes of the heading block arrive as four spans over the whole
+        // line, in the order the page keeps spans in, and the body moves behind
+        // them the way it moves behind one.
+        $own = MessageEntities::fromArray([
+            ['type' => 'bold', 'offset' => 0, 'length' => 9],
+            ['type' => 'italic', 'offset' => 0, 'length' => 9],
+            ['type' => 'underline', 'offset' => 0, 'length' => 9],
+            ['type' => 'strikethrough', 'offset' => 0, 'length' => 9],
+        ]);
+
         $entities = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 4]])
-            ->underHeading('Заголовок', "\n\n", 0, new MessageEntities());
+            ->underHeading('Заголовок', "\n\n", 0, $own);
 
         $this->assertSame([
             ['type' => 'bold', 'offset' => 0, 'length' => 9],
+            ['type' => 'italic', 'offset' => 0, 'length' => 9],
+            ['type' => 'underline', 'offset' => 0, 'length' => 9],
+            ['type' => 'strikethrough', 'offset' => 0, 'length' => 9],
             ['type' => 'bold', 'offset' => 11, 'length' => 4],
         ], $entities->toArray());
+    }
+
+    public function testAWholeHeadingMarkGrowsOverTheNumberItsLineGains(): void
+    {
+        // The list of a heading is measured over the words of the field it was saved
+        // from, while the line the channel is given also carries the number the body
+        // hands over. A span that stood from the beginning of the heading to its end
+        // is moved to the end of that line; a span of part of the heading, and a link
+        // of the whole of it, keep the address they were saved with.
+        $widened = MessageEntities::fromArray([
+            ['type' => 'bold', 'offset' => 0, 'length' => 9],
+            ['type' => 'text_link', 'offset' => 0, 'length' => 9, 'url' => 'https://example.com/a'],
+            ['type' => 'italic', 'offset' => 2, 'length' => 7],
+        ])->widenedToHeading('Заголовок', 'Заголовок. Часть 1');
+
+        $this->assertSame([
+            ['type' => 'bold', 'offset' => 0, 'length' => 18],
+            ['type' => 'text_link', 'offset' => 0, 'length' => 18, 'url' => 'https://example.com/a'],
+            ['type' => 'italic', 'offset' => 2, 'length' => 7],
+        ], $widened->toArray());
+    }
+
+    public function testAHeadingWhoseLineGainedNothingKeepsItsMarksAsTheyWereSaved(): void
+    {
+        $saved = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 9]]);
+
+        $widened = $saved->widenedToHeading('Заголовок', 'Заголовок');
+
+        $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 9]], $widened->toArray());
+    }
+
+    public function testTheLineAGrowingMarkReachesIsCountedInUtf16Units(): void
+    {
+        // The wing is two of the units Telegram counts, so the heading of the field
+        // is six of them wide, and the line it grows into — the same heading, the
+        // join, and «Часть 1» — is fifteen of them, not thirteen of the letters.
+        $widened = MessageEntities::fromArray([['type' => 'bold', 'offset' => 0, 'length' => 6]])
+            ->widenedToHeading('Ищем✈️', 'Ищем✈️. Часть 1');
+
+        $this->assertSame([['type' => 'bold', 'offset' => 0, 'length' => 15]], $widened->toArray());
     }
 
     public function testMarksOfAnEmptyHeadingGoWhereTheHeadingWent(): void
