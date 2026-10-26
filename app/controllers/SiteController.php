@@ -161,7 +161,7 @@ class SiteController extends Controller
                     'parts-publication-save' => ['post'],
                     'distribute-images-save' => ['post'],
                     'number-parts-save' => ['post'],
-                    'heading-number-place-save' => ['post'],
+                    'heading-number-template-save' => ['post'],
                     'heading-formatting-save' => ['post'],
                     'publication-part-schedule' => ['post'],
                     'publication-part-group' => ['post'],
@@ -328,7 +328,8 @@ class SiteController extends Controller
         $this->syncPartsPublication();
         $this->syncDistributeImages();
         $this->syncNumberParts();
-        $this->syncHeadingNumberPlace();
+        $this->syncHeadingNumberTemplate();
+        $this->syncHeadingNumberCustom();
         $this->syncHeadingFormatting();
         if ($this->viewStateDisagreesWithSession($this->request->get())) {
             return $this->redirect($this->publicationsUrl());
@@ -355,7 +356,8 @@ class SiteController extends Controller
             || $this->partsPublicationFromQuery($query) !== $this->partsPublication()
             || $this->distributeImagesFromQuery($query) !== $this->distributeImages()
             || $this->numberPartsFromQuery($query) !== $this->numberParts()
-            || $this->headingNumberPlaceFromQuery($query) !== $this->headingNumberPlace()
+            || $this->headingNumberTemplateFromQuery($query) !== $this->headingNumberTemplate()
+            || $this->headingNumberCustomFromQuery($query) !== $this->headingNumberCustom()
             || $this->headingFormattingFromQuery($query) !== $this->headingFormatting();
     }
 
@@ -488,11 +490,18 @@ class SiteController extends Controller
             $url['numberParts'] = '1';
         }
 
-        // The head is the place a page was written with before the pair of radios
-        // existed, so mirroring it would hang a parameter over every address of the
-        // form for nothing.
-        if ($this->headingNumberPlace() === 'after') {
-            $url['headingNumberPlace'] = 'after';
+        // The head with a dot behind the number is the shape a page was written with
+        // before either row existed, so mirroring it would hang a parameter over every
+        // address of the form for nothing. The field of the reader is the one state that
+        // has no shape of its own without a word in it, so the whole string travels.
+        if ($this->headingNumberTemplate() !== PublicationSettingsService::HEADING_NUMBER_DEFAULT) {
+            $url['headingNumberTemplate'] = $this->headingNumberTemplate();
+        }
+
+        // A gate standing off is the shape every form was drawn with: the two rows answer
+        // the number on their own.
+        if ($this->headingNumberCustom()) {
+            $url['headingNumberCustom'] = '1';
         }
 
         // The bold mark is the shape every heading was written with before the
@@ -857,7 +866,8 @@ class SiteController extends Controller
             'partsPublication' => $this->partsPublication(),
             'distributeImages' => $this->distributeImages(),
             'numberParts' => $this->numberParts(),
-            'headingNumberPlace' => $this->headingNumberPlace(),
+            'headingNumberTemplate' => $this->headingNumberTemplate(),
+            'headingNumberCustom' => $this->headingNumberCustom(),
             'headingFormatting' => $this->headingFormatting(),
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
@@ -1218,55 +1228,94 @@ class SiteController extends Controller
     }
 
     /**
-     * Which end of the heading of a part wears its number — 'before' writes
-     * «Часть 2. Альфа», 'after' writes «Альфа. Часть 2». The state of the pair of
-     * radios under the switch of the numbering, kept in the session like the
-     * switch itself. The head is the shape the page wrote before the pair existed,
-     * so a session that has never been asked answers with it.
+     * The shape a part heading wears its number in — one string of the two tokens the
+     * field of the form holds, whether it is a preset the two rows stand on or the words
+     * of the reader. The state of the whole shape, kept in the session like the switch of
+     * the numbering under it. The preset of the head and the dot is the shape the page
+     * wrote before the rows existed, so a session that has never been asked answers with
+     * it, and so does a state that is not a shape at all.
      */
-    private function headingNumberPlace(): string
+    private function headingNumberTemplate(): string
     {
-        return $this->normalizeHeadingNumberPlace(Yii::$app->session->get('headingNumberPlace'));
+        return PublicationSettingsService::normalizeHeadingNumberTemplate(
+            Yii::$app->session->get('headingNumberTemplate'),
+        );
     }
 
     /**
-     * The place the address of the page asks for: `?headingNumberPlace=after`.
+     * The shape the address of the page asks for:
+     * `?headingNumberTemplate=Текст%20-%20Часть%201`.
      *
      * @param array<string, mixed> $query
      */
-    private function headingNumberPlaceFromQuery(array $query): string
+    private function headingNumberTemplateFromQuery(array $query): string
     {
-        return $this->normalizeHeadingNumberPlace($query['headingNumberPlace'] ?? null);
+        return PublicationSettingsService::normalizeHeadingNumberTemplate(
+            $query['headingNumberTemplate'] ?? null,
+        );
     }
 
     /**
-     * Resolves the pair of radios the way the switch of the numbering does: it is a
-     * session that has never held a place which adopts the parameter of the request,
-     * so reloading cannot change what the reader left.
+     * Resolves the shape of the number the way the switch of the numbering does: it is a
+     * session that has never held a shape which adopts the parameter of the request, so
+     * reloading cannot change what the reader left.
      */
-    private function syncHeadingNumberPlace(): void
+    private function syncHeadingNumberTemplate(): void
     {
         $session = Yii::$app->session;
 
-        if ($session->has('headingNumberPlace')) {
+        if ($session->has('headingNumberTemplate')) {
             return;
         }
 
-        $session->set('headingNumberPlace', $this->headingNumberPlaceFromQuery($this->request->get()));
+        $session->set('headingNumberTemplate', $this->headingNumberTemplateFromQuery($this->request->get()));
     }
 
     /**
-     * The two radios carry the two words of the place, and nothing else is one of
-     * them: a parameter left out, a parameter of another name and a value spelled
-     * any other way all answer the head. The session is read through the same
-     * predicate as the request and the post, so no state can reach the form that
-     * the form has no radio for.
+     * Whether the field of the shape owns it — the state of the checkbox that hands the
+     * two rows over to the words of the reader, kept in the session beside the shape it
+     * belongs to. A gate standing off leaves the rows to answer the number, and the field
+     * only mirrors what they stand on.
+     */
+    private function headingNumberCustom(): bool
+    {
+        return $this->normalizeHeadingNumberCustom(Yii::$app->session->get('headingNumberCustom'));
+    }
+
+    /**
+     * The gate the address of the page asks for: `?headingNumberCustom=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function headingNumberCustomFromQuery(array $query): bool
+    {
+        return $this->normalizeHeadingNumberCustom($query['headingNumberCustom'] ?? null);
+    }
+
+    /**
+     * Resolves the gate the way the shape it hands over is resolved: a session that has
+     * never held one adopts the parameter of the request.
+     */
+    private function syncHeadingNumberCustom(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('headingNumberCustom')) {
+            return;
+        }
+
+        $session->set('headingNumberCustom', $this->headingNumberCustomFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a switch carries
+     * is the '1' of its parameter — and nothing else is a gate standing on.
      *
      * @param mixed $state
      */
-    private function normalizeHeadingNumberPlace(mixed $state): string
+    private function normalizeHeadingNumberCustom(mixed $state): bool
     {
-        return $state === 'after' ? 'after' : 'before';
+        return $state === true || $state === '1';
     }
 
     /**
@@ -1423,20 +1472,26 @@ class SiteController extends Controller
     }
 
     /**
-     * Stores the place a part heading wears its number with and answers with the
-     * address that mirrors it, exactly like the switch of the numbering does. Only
-     * the two words of the pair of radios reach the session, and the radios
-     * themselves answer nothing while the numbering stands off — the state is kept
-     * all the same, so the choice the reader made is there when the numbering comes
-     * back on.
+     * Stores the shape a part heading wears its number with and answers with the address
+     * that mirrors it, exactly like the switch of the numbering does. Both of the states
+     * travel in the one post: the checkbox changes the gate and leaves the field to mirror
+     * the two rows, so a post of one of them alone would leave the session holding a shape
+     * the form does not show. It redraws nothing — the numbers are written into the fields
+     * by the script that reads the seven controls, and a state is kept even while the
+     * numbering stands off, so the choice the reader made is there when it comes back on.
      *
      * @return Response
      */
-    public function actionHeadingNumberPlaceSave(): Response
+    public function actionHeadingNumberTemplateSave(): Response
     {
-        Yii::$app->session->set(
-            'headingNumberPlace',
-            $this->normalizeHeadingNumberPlace($this->request->post('headingNumberPlace')),
+        $session = Yii::$app->session;
+        $session->set(
+            'headingNumberCustom',
+            $this->normalizeHeadingNumberCustom($this->request->post('headingNumberCustom')),
+        );
+        $session->set(
+            'headingNumberTemplate',
+            PublicationSettingsService::normalizeHeadingNumberTemplate($this->request->post('headingNumberTemplate')),
         );
 
         return $this->asJson([
@@ -1447,7 +1502,7 @@ class SiteController extends Controller
 
     /**
      * Stores the marks the block of the heading stands with and answers with the
-     * address that mirrors them, exactly like the place of a number does. It
+     * address that mirrors them, exactly like the switch of the numbering does. It
      * redraws nothing: a mark is laid over a heading by the script of the form at
      * the moment that heading leaves it, so the boxes only ever say what the next
      * heading is to be wears.

@@ -35,6 +35,40 @@ final class PublicationSettingsService
         'Y-m-d H:i' => 'YYYY-MM-DD HH:mm',
     ];
 
+    /**
+     * The six shapes a part heading wears its number in, drawn by the two rows of
+     * radios under the switch of the numbering: which end of the heading carries it,
+     * and what joins it to the words. This is the one table those words are written
+     * in — the view draws both rows and the mirror of the field from it, and the page
+     * rebuilds a heading through its copy, so a shape spelled here a second time would
+     * be a shape the two halves of the form disagree about.
+     */
+    public const HEADING_NUMBER_PRESETS = [
+        'before' => [
+            'dot' => 'Часть #NUMBER#. #TITLE_TEXT#',
+            'dash' => 'Часть #NUMBER# - #TITLE_TEXT#',
+            'bracket' => '(Часть #NUMBER#) #TITLE_TEXT#',
+        ],
+        'after' => [
+            'dot' => '#TITLE_TEXT#. Часть #NUMBER#',
+            'dash' => '#TITLE_TEXT# - Часть #NUMBER#',
+            'bracket' => '#TITLE_TEXT# (Часть #NUMBER#)',
+        ],
+    ];
+
+    /**
+     * The shape the form stands with, and the answer for a state that was never given:
+     * the head of the heading with a dot behind the number is the shape the page wrote
+     * before either row existed.
+     */
+    public const HEADING_NUMBER_DEFAULT = self::HEADING_NUMBER_PRESETS['before']['dot'];
+
+    /** The number of the part, the one token a shape of the reader has to promise. */
+    public const HEADING_NUMBER_TOKEN_NUMBER = '#NUMBER#';
+
+    /** The words of the heading, the other token a shape of the reader has to promise. */
+    public const HEADING_NUMBER_TOKEN_TEXT = '#TITLE_TEXT#';
+
     private const ORDERS = [
         'newest' => 'Свежие сверху',
         'oldest' => 'Старые сверху',
@@ -289,6 +323,83 @@ final class PublicationSettingsService
     public static function orderOptions(): array
     {
         return self::ORDERS;
+    }
+
+    /**
+     * One preset of the table: the shape the two rows stand on, and the default of the
+     * field for a place or a separator the rows were never told about. A caller cannot
+     * reach a preset that is not in the table, so nothing here is invented.
+     */
+    public static function headingNumberPreset(string $place, string $style): string
+    {
+        if (!isset(self::HEADING_NUMBER_PRESETS[$place][$style])) {
+            return self::HEADING_NUMBER_DEFAULT;
+        }
+
+        return (string)self::HEADING_NUMBER_PRESETS[$place][$style];
+    }
+
+    /**
+     * Which end of the heading a shape writes its number at, read back out of the words
+     * of the table so the row of the place is drawn standing where the string says it
+     * stands. A shape of the reader is none of the six, and the row answers the head:
+     * the row is greyed while the field owns the shape, so the answer only has to be
+     * one the table knows.
+     */
+    public static function headingNumberPlaceOf(string $template): string
+    {
+        foreach (array_keys(self::HEADING_NUMBER_PRESETS['after']) as $style) {
+            if ($template === self::headingNumberPreset('after', (string)$style)) {
+                return 'after';
+            }
+        }
+
+        return 'before';
+    }
+
+    /**
+     * What a shape joins its number to the words with, read back the same way, and the
+     * dot for a shape the three marks of the table do not describe.
+     */
+    public static function headingNumberStyleOf(string $template): string
+    {
+        foreach (['dot', 'dash', 'bracket'] as $style) {
+            foreach (['before', 'after'] as $place) {
+                if ($template === self::headingNumberPreset($place, $style)) {
+                    return $style;
+                }
+            }
+        }
+
+        return 'dot';
+    }
+
+    /**
+     * The shape the session, the address or the post holds, brought back to something the
+     * form can write a heading with: a string that holds both of its tokens is kept as it
+     * was given, and everything else — nothing at all, a shape that forgot where the words
+     * of a heading go, a shape that forgot its number — answers the default. A page would
+     * otherwise be handed a string the field shows and the headings ignore, and the two
+     * halves of the form would answer one question differently.
+     *
+     * @param mixed $state
+     */
+    public static function normalizeHeadingNumberTemplate(mixed $state): string
+    {
+        if (!is_string($state)) {
+            return self::HEADING_NUMBER_DEFAULT;
+        }
+
+        $template = trim($state);
+
+        if ($template === ''
+            || !str_contains($template, self::HEADING_NUMBER_TOKEN_NUMBER)
+            || !str_contains($template, self::HEADING_NUMBER_TOKEN_TEXT)
+        ) {
+            return self::HEADING_NUMBER_DEFAULT;
+        }
+
+        return $template;
     }
 
     /**

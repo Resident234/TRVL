@@ -21,7 +21,8 @@ declare(strict_types=1);
 /** @var bool $partsPublication whether every part gets its own time and its own button */
 /** @var bool $distributeImages whether the albums of the form are handed out over its parts on their own */
 /** @var bool $numberParts whether the number of a part is written at all */
-/** @var string $headingNumberPlace 'before' | 'after' — which end of a part heading wears its number */
+/** @var string $headingNumberTemplate the shape a part heading wears its number in: two tokens the reader may put words around */
+/** @var bool $headingNumberCustom whether that shape is the reader's own string rather than the preset of the two rows */
 /** @var string[] $headingFormatting the marks the block of the heading stands with: 'bold', 'italic', 'strike', 'underline' */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
@@ -50,6 +51,12 @@ $buttonLabelBytes = LinkButton::TEXT_MAX_LENGTH;
 // into rows the way the sender does, or it shows a keyboard the channel never
 // draws — so it takes the bound of the rows out of LinkButtons.
 $keyboardMaxRows = LinkButtons::MAX_ROWS;
+// The shape of the number is one string, and the two rows of radios under the switch of
+// the numbering are drawn back out of it: a session that holds ««Текст» - Часть 1» shows
+// the row of the tail standing and the row of the dash standing, and the field of the
+// reader holds the same words the two rows would have written.
+$headingNumberPlace = PublicationSettingsService::headingNumberPlaceOf($headingNumberTemplate);
+$headingNumberStyle = PublicationSettingsService::headingNumberStyleOf($headingNumberTemplate);
 
 $this->registerCss(
     <<<CSS
@@ -1392,37 +1399,87 @@ CSS
                                     </div>
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Дописывает «Часть 1», «Часть 2» … к каждой части разбитой публикации: в начало её заголовка, а пока «Первая строка — в заголовок» выключен — в начало самого текста">
+                                         data-bs-content="Дописывает «Часть 1», «Часть 2» … в заголовок каждой части разбитой публикации: форму номера задают два ряда ниже, а пока «Первая строка — в заголовок» выключен — номер встаёт в начало самого текста">
                                         <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts"
                                             <?= $numberParts ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationNumberParts">
                                             <i class="bi bi-list-ol me-1"></i>Нумерация частей
                                         </label>
                                     </div>
-                                    <?php /* The pair of radios under that switch answers WHICH end of the heading
-                                                wears the number. Both of them travel to the server, together with
-                                                the switch itself: the page keeps the three states in the session,
-                                                so the numbering and the place the reader left stand there when
-                                                the form opens again. While the numbering is off the two radios
-                                                have nothing to decide, and they are greyed out rather than taken
-                                                away — the choice the reader made stays visible and stays kept. */ ?>
+                                    <?php /* The first of the two rows of radios under that switch answers WHICH end
+                                                of the heading wears the number, the second answers with WHAT that
+                                                number is joined to the words, and the checkbox under both hands the
+                                                whole shape over to the field of the reader. All of it travels to the
+                                                server as one string of the two tokens, together with the switch
+                                                itself: the page keeps the shape in the session, so the numbering and
+                                                the shape the reader left stand there when the form opens again.
+                                                While the numbering is off the five radios have nothing to decide,
+                                                and once the checkbox is on the two rows have nothing to decide
+                                                either — they are greyed out rather than taken away, and the words
+                                                the reader chose stay visible and stay kept. */ ?>
                                     <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
                                          data-bs-placement="top-start" data-bs-custom-class="popover-info"
                                          data-bs-content="Где в заголовке части стоит её номер: в начале, как «Часть 1. Текст», или в конце, как «Текст. Часть 1». Пока включена «Нумерация частей»; с выключенной выбирать нечего.">
+                                        <div class="form-label mb-1">Расположение</div>
                                         <div class="form-check form-check-inline">
                                             <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
                                                    id="publicationHeadingNumberBefore" value="before"
-                                                   <?= $numberParts ? '' : 'disabled' ?>
+                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
                                                    <?= $headingNumberPlace === 'after' ? '' : 'checked' ?>>
                                             <label class="form-check-label" for="publicationHeadingNumberBefore">В начале заголовка</label>
                                         </div>
                                         <div class="form-check form-check-inline">
                                             <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
                                                    id="publicationHeadingNumberAfter" value="after"
-                                                   <?= $numberParts ? '' : 'disabled' ?>
+                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
                                                    <?= $headingNumberPlace === 'after' ? 'checked' : '' ?>>
                                             <label class="form-check-label" for="publicationHeadingNumberAfter">В конце заголовка</label>
                                         </div>
+                                    </div>
+                                    <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Чем номер части соединяется со словами заголовка: точка, дефис или скобки. Получается «Текст. Часть 1», «Текст - Часть 1» и «Текст (Часть 1)». Пока включена «Нумерация частей» и выключен «Свой шаблон».">
+                                        <div class="form-label mb-1">Разделитель</div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
+                                                   id="publicationHeadingNumberDot" value="dot"
+                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                   <?= $headingNumberStyle === 'dot' ? 'checked' : '' ?>>
+                                            <label class="form-check-label" for="publicationHeadingNumberDot">Точка</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
+                                                   id="publicationHeadingNumberDash" value="dash"
+                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                   <?= $headingNumberStyle === 'dash' ? 'checked' : '' ?>>
+                                            <label class="form-check-label" for="publicationHeadingNumberDash">Дефис</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
+                                                   id="publicationHeadingNumberBracket" value="bracket"
+                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                   <?= $headingNumberStyle === 'bracket' ? 'checked' : '' ?>>
+                                            <label class="form-check-label" for="publicationHeadingNumberBracket">Скобки</label>
+                                        </div>
+                                    </div>
+                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Отдаёт форму номера полю под рядами: пока включён, «Расположение» и «Разделитель» гаснут, а строку пишет сам читатель. Пока включена «Нумерация частей»; с выключенной отдавать нечего.">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationHeadingNumberCustom"
+                                               <?= $headingNumberCustom ? 'checked' : '' ?>
+                                               <?= $numberParts ? '' : 'disabled' ?>>
+                                        <label class="form-check-label" for="publicationHeadingNumberCustom">
+                                            <i class="bi bi-pencil me-1"></i>Свой шаблон
+                                        </label>
+                                    </div>
+                                    <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                         data-bs-content="Строка, где #NUMBER# — число части, а #TITLE_TEXT# — её слова. Пока «Свой шаблон» выключен, поле только зеркалит то, на чём стоят два ряда выше.">
+                                        <label class="form-label" for="publicationHeadingNumberTemplate">Шаблон</label>
+                                        <input class="form-control" type="text" id="publicationHeadingNumberTemplate"
+                                               value="<?= Html::encode($headingNumberTemplate) ?>"
+                                               maxlength="120"
+                                               <?= ($numberParts && $headingNumberCustom) ? '' : 'disabled' ?>>
                                     </div>
 
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
@@ -2066,7 +2123,7 @@ $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
 $distributeImagesSaveUrl = \yii\helpers\Url::to(['site/distribute-images-save']);
 $numberPartsSaveUrl = \yii\helpers\Url::to(['site/number-parts-save']);
-$headingNumberPlaceSaveUrl = \yii\helpers\Url::to(['site/heading-number-place-save']);
+$headingNumberTemplateSaveUrl = \yii\helpers\Url::to(['site/heading-number-template-save']);
 $headingFormattingSaveUrl = \yii\helpers\Url::to(['site/heading-formatting-save']);
 $textOrderSaveUrl = \yii\helpers\Url::to(['site/forum-text-order-save']);
 $partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
@@ -2076,6 +2133,12 @@ $toDraftUrl = \yii\helpers\Url::to(['site/publication-to-draft']);
 $deleteUrl = \yii\helpers\Url::to(['site/publication-delete']);
 $partDraftUrl = \yii\helpers\Url::to(['site/publication-part-draft']);
 $blockTotals = json_encode($totals);
+// The six shapes of a numbered heading reach the page the same way the totals of the block
+// do: held once by the service, encoded once, interpolated once. The page mirrors the
+// preset of the two rows into the field, and both rows are drawn back out of the shape the
+// session holds — none of that asks the server again.
+$headingNumberPresets = PublicationSettingsService::HEADING_NUMBER_PRESETS;
+$headingNumberPresetsJson = json_encode($headingNumberPresets, JSON_UNESCAPED_UNICODE);
 // The page tunes its own behaviour through the settings storage: what the
 // scroll waits for, how long a picture may think, which step the minutes of
 // the picker take, how far the parts of one publication stand from each other,
@@ -2108,7 +2171,7 @@ var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
 var __DISTRIBUTE_IMAGES_URL = '{$distributeImagesSaveUrl}';
 var __NUMBER_PARTS_URL = '{$numberPartsSaveUrl}';
-var __HEADING_PLACE_URL = '{$headingNumberPlaceSaveUrl}';
+var __HEADING_TEMPLATE_URL = '{$headingNumberTemplateSaveUrl}';
 var __HEADING_FORMATTING_URL = '{$headingFormattingSaveUrl}';
 var __TEXT_ORDER_URL = '{$textOrderSaveUrl}';
 var __PART_GROUP_URL = '{$partGroupUrl}';
@@ -2116,6 +2179,7 @@ var __TO_DRAFT_URL = '{$toDraftUrl}';
 var __DELETE_URL = '{$deleteUrl}';
 var __PART_DRAFT_URL = '{$partDraftUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
+var __NUMBER_PRESETS = {$headingNumberPresetsJson};
 var __CSRF_PARAM = '{$csrfParam}';
 var __CSRF_TOKEN = '{$csrfToken}';
 var __TEXT_PART_LIMIT = {$textLimit};
@@ -2325,41 +2389,183 @@ function partNumberPrefix(text) {
 // ends with stands as the separator, and that dot is what tells a number the page wrote
 // there from words a person typed themselves: «Текст Часть 2» holds no separator and is
 // left to the person who wrote it.
+// The number a heading of a part wears is written by one string of two tokens, and both of
+// the rows of radios under the switch of the numbering are drawn from that one string: the
+// six shapes of the table the server hands are words of the same shape as the words a
+// reader writes into the field under them. One hand writes every shape and one hand reads
+// it back, so a rebuild over a field numbered by another shape takes that shape off first.
 var HEADING_NUMBER = /^Часть \d+[.:]?\s*/;
 var HEADING_NUMBER_END = /\.\s*Часть \d+\s*$/;
+var NUMBER_TEMPLATE_NUMBER = '#NUMBER#';
+var NUMBER_TEMPLATE_TEXT = '#TITLE_TEXT#';
 
-// The two radios of the place are looked for once, when the form stands in the DOM, and
-// are kept here: the pass over the headings asks the place for every one of them, and a
+// The seven controls of the numbering are looked for once, when the form stands in the DOM,
+// and are kept here: the pass over the headings asks the shape for every one of them, and a
 // helper of this scope cannot reach into the scope of the form.
 var headingNumberBeforeInput = null;
 var headingNumberAfterInput = null;
-
-function headingNumberPrefix(index) {
-    return 'Часть ' + (index + 1) + '. ';
-}
-
-// The same number without the dot behind it and without its blanks: a heading that
-// ends with one already holds the separator the number stands on, and a form that
-// shows its own heading twice in a row has no business growing a second dot.
-function headingNumberSuffix(index) {
-    return 'Часть ' + (index + 1);
-}
+var headingNumberDotInput = null;
+var headingNumberDashInput = null;
+var headingNumberBracketInput = null;
+var headingNumberCustomInput = null;
+var headingNumberTemplateInput = null;
 
 function headingNumberAtEnd() {
     return !!(headingNumberAfterInput && headingNumberAfterInput.checked);
 }
 
+// The row of the separator answers with its own radio, and a form that holds none of the
+// three says the dot: that is the shape the page wrote before the row grew, and it is what
+// a page which was told nothing keeps writing.
+function headingNumberStyle() {
+    if (headingNumberDashInput && headingNumberDashInput.checked) {
+        return 'dash';
+    }
+
+    if (headingNumberBracketInput && headingNumberBracketInput.checked) {
+        return 'bracket';
+    }
+
+    return 'dot';
+}
+
+// The checkbox is what makes the words of the field a template at all. With it off the
+// field only mirrors the preset of the two rows, and the words a reader left in it answer
+// nothing.
+function headingNumberCustomOn() {
+    return !!(headingNumberCustomInput && headingNumberCustomInput.checked);
+}
+
+// One preset of the table the server hands, and the preset of the head and the dot for a
+// place or a separator the rows were never told to stand on.
+function numberTemplateFor(place, style) {
+    var row = __NUMBER_PRESETS[place];
+
+    return (row && row[style]) || __NUMBER_PRESETS.before.dot;
+}
+
+// The shape the form stands on: the words of the field while the checkbox is on and holds
+// both of its tokens, and the preset of the two rows in every other case — a field that
+// forgot where the words of a heading go is no template of a number, and the rows answer
+// nothing once the field owns the shape.
+function activeNumberTemplate() {
+    var held = headingNumberTemplateInput ? String(headingNumberTemplateInput.value || '') : '';
+
+    if (headingNumberCustomOn()
+        && held.indexOf(NUMBER_TEMPLATE_NUMBER) >= 0
+        && held.indexOf(NUMBER_TEMPLATE_TEXT) >= 0) {
+        return held;
+    }
+
+    return numberTemplateFor(headingNumberAtEnd() ? 'after' : 'before', headingNumberStyle());
+}
+
+// Every shape a number is read out of: the shape of the reader before the six, because a
+// heading the field wrote wears the field's own shape, and the six in the order of the
+// table. With the checkbox off the field mirrors one of the six, and with a field that
+// forgot a token the rows answer one of them too — a shape is never read twice.
+function headingNumberTemplates() {
+    var list = [__NUMBER_PRESETS.before.dot, __NUMBER_PRESETS.before.dash,
+        __NUMBER_PRESETS.before.bracket, __NUMBER_PRESETS.after.dot,
+        __NUMBER_PRESETS.after.dash, __NUMBER_PRESETS.after.bracket];
+    var own = activeNumberTemplate();
+
+    if (!headingNumberCustomOn()) {
+        return list;
+    }
+
+    return [own].concat(list.filter(function (shape) {
+        return shape !== own;
+    }));
+}
+
+// One template turned back into the words it writes: the number of the part stands for
+// digits, the words of the heading stand for the whole of the field, and the blanks of the
+// shape are optional, because a heading that holds nothing but its number is written
+// without the blank that joined the words. Every other character is the character it is —
+// a bracket is a bracket and the mark that joins the number to the words is what tells a
+// number the page wrote there from words a person typed themselves. A string that holds
+// only one of the two tokens reads nothing.
+function numberTemplateMatcher(template) {
+    var shape = String(template || '');
+
+    if (shape.indexOf(NUMBER_TEMPLATE_NUMBER) < 0 || shape.indexOf(NUMBER_TEMPLATE_TEXT) < 0) {
+        return null;
+    }
+
+    var body = shape.split(NUMBER_TEMPLATE_TEXT).map(function (chunk) {
+        return chunk.split(NUMBER_TEMPLATE_NUMBER).map(function (piece) {
+            return piece.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+        }).join('(?:\\d+)');
+    }).join('([\\s\\S]*)');
+
+    return new RegExp('^' + body + '$');
+}
+
+// The words a heading holds under its number, read through that matcher: nothing for a
+// heading of another shape, and the empty string for a heading of nothing but a number.
+// The blank that joined the words to the number is the shape's, not the reader's, so it
+// comes off with the number — a heading stripped to a trailing space would be written
+// again with that space standing between the words and the mark of the new shape.
+function numberTemplateCaptures(title, template) {
+    var matcher = numberTemplateMatcher(template);
+    var match = matcher ? String(title || '').match(matcher) : null;
+
+    return match === null ? null : match[1].replace(/^\s+|\s+$/g, '');
+}
+
+// The hand every shape is written by, the six presets and the words of the reader alike.
+// The dot a heading of the parts is stored with is the mark that joins it to its number, so
+// a shape that puts a mark behind the words takes that dot in its place, and a shape that
+// puts a word behind them, or nothing at all, leaves it alone. Where the words are not
+// there, the marks at the edges of the shape go with them: a dot that CLOSES the number of
+// a head shape stays, because it never joined the words to anything.
+function renderNumberTemplate(template, index, text) {
+    var shape = String(template || '');
+    var words = String(text || '');
+    var at = shape.indexOf(NUMBER_TEMPLATE_TEXT);
+    var next = at < 0 ? '' : shape.slice(at + NUMBER_TEMPLATE_TEXT.length).replace(/^\s+/, '').charAt(0);
+    var joined = next !== '' && !/[0-9A-Za-zА-Яа-яЁё#]/.test(next);
+    var written = words === ''
+        ? words
+        : (joined ? words.replace(/\.\s*$/, '') : words);
+    var out = shape.split(NUMBER_TEMPLATE_NUMBER).join(String(index + 1))
+        .split(NUMBER_TEMPLATE_TEXT).join(written);
+
+    if (words !== '') {
+        return out;
+    }
+
+    out = out.replace(/^\s+|\s+$/g, '').replace(/^[-–:.]\s*/, '').replace(/\s*[-–:]$/, '');
+
+    return out.replace(/^\s+|\s+$/g, '');
+}
+
+// What a heading of a numbered part held, without its number: the shape the form stands on
+// first, because that is the shape the page wrote the field with, and the two matches the
+// page made before the rows grew behind it — so a heading numbered before they existed
+// loses that number too.
 function stripHeadingNumber(title) {
-    return String(title || '')
+    var bare = String(title || '');
+    var shapes = headingNumberTemplates();
+
+    for (var i = 0; i < shapes.length; i += 1) {
+        var words = numberTemplateCaptures(bare, shapes[i]);
+        if (words !== null) {
+            return words;
+        }
+    }
+
+    return bare
         .replace(HEADING_NUMBER, '')
         .replace(HEADING_NUMBER_END, '');
 }
 
-// The heading of a part with the number of its place at the end the form was chosen to
-// wear it with, or with no number at all: the number is written from the place of the
-// part over whatever the field held, so a rebuild never piles a second copy of it on,
-// and the click that takes the numbers off takes them off the very fields they were
-// written into. A heading of nothing else is its number in either of the two shapes.
+// The heading of a part with the number of its place in the shape the form stands on, or
+// with no number at all: the number is written from the place of the part over whatever the
+// field held, so a rebuild never piles a second copy of it on, and the click that takes the
+// numbers off takes them off the very fields they were written into. A heading of nothing
+// else is its number in either of the two shapes.
 function numberHeading(title, index, on) {
     var bare = stripHeadingNumber(title);
 
@@ -2367,15 +2573,7 @@ function numberHeading(title, index, on) {
         return bare;
     }
 
-    if (headingNumberAtEnd()) {
-        var words = bare.replace(/\s+$/, '');
-
-        return words === ''
-            ? headingNumberSuffix(index) + '.'
-            : words.replace(/\.$/, '') + '. ' + headingNumberSuffix(index);
-    }
-
-    return (headingNumberPrefix(index) + bare).replace(/\s+$/, '');
+    return renderNumberTemplate(activeNumberTemplate(), index, bare).replace(/\s+$/, '');
 }
 
 function numberHeadings(titles, on) {
@@ -3513,31 +3711,54 @@ jQuery(document).ready(function () {
         });
     }
 
-    // The pair of radios under that switch carries a word rather than a flag, and both
-    // of its radios are bound by one hand: a click on either of them posts the place the
-    // group stands on now. `held` is the place the session holds, so a refused save puts
-    // back the radio the reader reached rather than the one the page was first drawn
-    // with, and renumbers the headings back over it.
-    function watchHeadingPlaceSwitch(renumberParts) {
-        if (!headingNumberBeforeInput || !headingNumberAfterInput) {
+    // The shape of a number is one string the session holds, and seven controls answer it:
+    // the two radios of the place, the three of the separator, the checkbox that hands the
+    // shape to the field and the field itself. Every one of them posts both of the states —
+    // the flag of the checkbox and the words of the field — because either half alone would
+    // leave the session holding a shape the form does not show. The click renumbers the
+    // parts first, so the gate has already written the preset of the new rows into the field
+    // by the time the watcher reads it, and a refusal puts the whole of the shape back over
+    // the words the click moved: which radio of each row stood is part of what the session
+    // agreed to, and the headings have to follow it back.
+    function watchHeadingTemplateSwitch(renumberParts) {
+        var inputs = [headingNumberBeforeInput, headingNumberAfterInput, headingNumberDotInput, headingNumberDashInput, headingNumberBracketInput, headingNumberCustomInput, headingNumberTemplateInput];
+        if (!inputs.every(function (input) { return !!input; })) {
             return;
         }
-        var held = headingNumberAfterInput.checked;
-        var inputs = [headingNumberBeforeInput, headingNumberAfterInput];
+
+        // The shape the session holds: the gate and the words on one side, and which radio of
+        // each of the two rows stood when the shape was drawn on the other. A refusal puts all
+        // of it back, because the click that moved a radio moved the words the field mirrors.
+        function snapshot() {
+            return {
+                custom: headingNumberCustomInput.checked,
+                template: headingNumberTemplateInput.value,
+                after: headingNumberAfterInput.checked,
+                dash: headingNumberDashInput.checked,
+                bracket: headingNumberBracketInput.checked,
+            };
+        }
+
+        var held = snapshot();
         inputs.forEach(function (input) {
             input.addEventListener('change', function () {
-                var state = headingNumberAfterInput.checked;
                 renumberParts();
-                postForJson(__HEADING_PLACE_URL, { headingNumberPlace: state ? 'after' : 'before' })
+                var custom = headingNumberCustomInput.checked;
+                var template = headingNumberTemplateInput.value;
+                postForJson(__HEADING_TEMPLATE_URL, { headingNumberCustom: custom ? '1' : '0', headingNumberTemplate: template })
                     .then(function (payload) {
-                        held = state;
+                        held = snapshot();
                         mirrorUrl(payload);
                     })
                     .catch(function (error) {
-                        if (state !== held) {
-                            (held ? headingNumberAfterInput : headingNumberBeforeInput).checked = true;
-                            renumberParts();
-                        }
+                        headingNumberBeforeInput.checked = !held.after;
+                        headingNumberAfterInput.checked = held.after;
+                        headingNumberDotInput.checked = !(held.dash || held.bracket);
+                        headingNumberDashInput.checked = held.dash;
+                        headingNumberBracketInput.checked = held.bracket;
+                        headingNumberCustomInput.checked = held.custom;
+                        headingNumberTemplateInput.value = held.template;
+                        renumberParts();
                         showFlash('error', 'Не удалось запомнить переключатель: '
                             + (error && error.message ? error.message : error));
                     });
@@ -3785,11 +4006,16 @@ jQuery(document).ready(function () {
         // draws it blank, and a clone of it is what adding appends to a box.
         var buttonRowTemplate = buttonRowsOf(sharedButtonBox)[0].cloneNode(true);
         var numberPartsInput = document.getElementById('publicationNumberParts');
-        // The pair of radios under that switch is remembered where the number of a
-        // heading is written: the pass over the headings asks it which end to write at,
-        // for every one of the parts.
+        // The seven controls of the numbering are remembered where the number of a heading
+        // is written: the pass over the headings asks the shape which end wears it and with
+        // what the number is joined, for every one of the parts.
         headingNumberBeforeInput = document.getElementById('publicationHeadingNumberBefore');
         headingNumberAfterInput = document.getElementById('publicationHeadingNumberAfter');
+        headingNumberDotInput = document.getElementById('publicationHeadingNumberDot');
+        headingNumberDashInput = document.getElementById('publicationHeadingNumberDash');
+        headingNumberBracketInput = document.getElementById('publicationHeadingNumberBracket');
+        headingNumberCustomInput = document.getElementById('publicationHeadingNumberCustom');
+        headingNumberTemplateInput = document.getElementById('publicationHeadingNumberTemplate');
         var partsIndividualInput = document.getElementById('publicationPartsIndividually');
         var partGroupIdInput = document.getElementById('publicationPartGroupId');
         var saveInPlaceButton = document.getElementById('publicationSaveInPlaceBtn');
@@ -6129,17 +6355,41 @@ jQuery(document).ready(function () {
             return !!(numberPartsInput && numberPartsInput.checked);
         }
 
-        // The pair of radios under the switch of the numbering decides nothing while that
+        // The five radios under the switch of the numbering decide nothing while that
         // switch stands off: the number of a part goes into the head of its text, where
-        // the end of a heading has no say. Both radios are greyed out rather than taken
-        // away, so the choice the reader made stays visible and stays kept for the moment
-        // the numbering comes back on.
-        function syncHeadingPlaceSwitch() {
+        // the shape of a heading has no say. And once the checkbox has handed the shape to
+        // the field they decide nothing either — the field is the shape then. Both of those
+        // cases grey them out rather than take them away, so the choice the reader made
+        // stays visible and stays kept for the moment the numbering comes back on. The
+        // field itself is the mirror of the two rows while the checkbox stands off and the
+        // reader's own string while it stands on, so this hand writes the preset of the
+        // rows into it and says nothing about which radio stands.
+        function syncHeadingTemplateSwitch() {
             if (headingNumberBeforeInput) {
-                headingNumberBeforeInput.disabled = !isNumbered();
+                headingNumberBeforeInput.disabled = !isNumbered() || headingNumberCustomOn();
             }
             if (headingNumberAfterInput) {
-                headingNumberAfterInput.disabled = !isNumbered();
+                headingNumberAfterInput.disabled = !isNumbered() || headingNumberCustomOn();
+            }
+            if (headingNumberDotInput) {
+                headingNumberDotInput.disabled = !isNumbered() || headingNumberCustomOn();
+            }
+            if (headingNumberDashInput) {
+                headingNumberDashInput.disabled = !isNumbered() || headingNumberCustomOn();
+            }
+            if (headingNumberBracketInput) {
+                headingNumberBracketInput.disabled = !isNumbered() || headingNumberCustomOn();
+            }
+            if (headingNumberCustomInput) {
+                headingNumberCustomInput.disabled = !isNumbered();
+            }
+            if (headingNumberTemplateInput) {
+                headingNumberTemplateInput.disabled = !isNumbered() || !headingNumberCustomOn();
+
+                if (!headingNumberCustomOn()) {
+                    headingNumberTemplateInput.value = numberTemplateFor(
+                        headingNumberAtEnd() ? 'after' : 'before', headingNumberStyle());
+                }
             }
         }
 
@@ -8440,7 +8690,7 @@ jQuery(document).ready(function () {
         // greyed, and a form whose numbering was thrown off greys them before its fields
         // are written bare again.
         function renumberParts() {
-            syncHeadingPlaceSwitch();
+            syncHeadingTemplateSwitch();
             applyPartNumbers();
             applyHeadingNumbers();
             // The stamp of the block is counted over the words a field holds, and the
@@ -9512,7 +9762,7 @@ jQuery(document).ready(function () {
         // the reader already sees changes its place with the answer — and the radios
         // change their grey with the switch.
         watchNumberPartsSwitch(renumberParts);
-        watchHeadingPlaceSwitch(renumberParts);
+        watchHeadingTemplateSwitch(renumberParts);
 
         // The row of the first part is the one the markup drew and the rebuild of the parts
         // never replaces, so the picker the rows below it are given in their clone has to be

@@ -46,7 +46,8 @@ final class SiteControllerHeadingBlockStateTest extends Unit
         'partsPublication',
         'distributeImages',
         'numberParts',
-        'headingNumberPlace',
+        'headingNumberTemplate',
+        'headingNumberCustom',
         'headingFormatting',
     ];
 
