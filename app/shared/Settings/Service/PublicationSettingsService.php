@@ -392,7 +392,8 @@ final class PublicationSettingsService
 
         $template = trim($state);
 
-        if ($template === ''
+        if (
+            $template === ''
             || !str_contains($template, self::HEADING_NUMBER_TOKEN_NUMBER)
             || !str_contains($template, self::HEADING_NUMBER_TOKEN_TEXT)
         ) {
