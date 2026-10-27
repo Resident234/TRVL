@@ -516,6 +516,25 @@ $this->registerCss(
     margin-bottom: 0;
 }
 
+/* The third green box, and the one that never stops drawing. The options of the number
+   stand inside the box of the controls of the split, and they are a functional the
+   reader counts apart from the cut itself: where the number of a part stands, what joins
+   it to the words, and the string that writes both. So the box says «these five rows are
+   one question», which the line above it does not say about them.
+   It is drawn with the very tokens the two boxes above are drawn with, for the same
+   reason the ui-kit card is quoted there: a green line retyped is a green line that can
+   drift. Only the point of stopping is left out — the controls of the split give up their
+   line where the group of parts already carries one, because a box in a box says nothing
+   a box has not said already. This box has no box of its own to be said by, so nothing
+   clears it, and the room under it is the room the form keeps between any two of its
+   blocks. */
+.publication-numbering-controls {
+    border: var(--bs-border-width) var(--bs-border-style) rgba(var(--bs-success-rgb), 1);
+    padding: 1rem;
+    border-radius: .8rem;
+    margin-bottom: 1rem;
+}
+
 /* The heading is a functional of its own, and it is boxed the way the split is boxed:
    the same line, the same room inside it, the same room under it. Its colour is info —
    one of the five the theme leaves a border to be drawn in, and the only one of them
@@ -530,6 +549,23 @@ $this->registerCss(
     padding: 1rem;
     border-radius: .8rem;
     margin-bottom: 1rem;
+}
+
+/* Every control of the heading wears the info the heading is boxed in: the
+   switch of the first line, the four marks and the gate that gives the shape of
+   the number to the field below the rows. The ring is drawn on both states, the
+   way the switch of the images is drawn on its own — a control that is off keeps
+   the white ground of the sheet and names its colour with the line around it, so
+   turning it is a change of the fill alone. The sheet paints a control that is on
+   in primary, and primary is the colour of a field of the album and of the file. */
+.publication-heading-controls .form-check-input,
+#publicationHeadingNumberCustom {
+    border-color: rgba(var(--bs-info-rgb), 1);
+}
+
+.publication-heading-controls .form-check-input:checked,
+#publicationHeadingNumberCustom:checked {
+    background-color: rgba(var(--bs-info-rgb), 1);
 }
 
 /* A control that works on the parts wears the green the parts are wrapped in. The switch of
@@ -1397,89 +1433,102 @@ CSS
                                             <i class="bi bi-chat-left-text me-1"></i>По предложениям
                                         </button>
                                     </div>
-                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Дописывает «Часть 1», «Часть 2» … в заголовок каждой части разбитой публикации: форму номера задают два ряда ниже, а пока «Первая строка — в заголовок» выключен — номер встаёт в начало самого текста">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts"
-                                            <?= $numberParts ? 'checked' : '' ?>>
-                                        <label class="form-check-label" for="publicationNumberParts">
-                                            <i class="bi bi-list-ol me-1"></i>Нумерация частей
-                                        </label>
-                                    </div>
-                                    <?php /* The first of the two rows of radios under that switch answers WHICH end
-                                                of the heading wears the number, the second answers with WHAT that
-                                                number is joined to the words, and the checkbox under both hands the
-                                                whole shape over to the field of the reader. All of it travels to the
-                                                server as one string of the two tokens, together with the switch
-                                                itself: the page keeps the shape in the session, so the numbering and
-                                                the shape the reader left stand there when the form opens again.
-                                                While the numbering is off the five radios have nothing to decide,
-                                                and once the checkbox is on the two rows have nothing to decide
-                                                either — they are greyed out rather than taken away, and the words
-                                                the reader chose stay visible and stay kept. */ ?>
-                                    <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Где в заголовке части стоит её номер: в начале, как «Часть 1. Текст», или в конце, как «Текст. Часть 1». Пока включена «Нумерация частей»; с выключенной выбирать нечего.">
-                                        <div class="form-label mb-1">Расположение</div>
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
-                                                   id="publicationHeadingNumberBefore" value="before"
-                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
-                                                   <?= $headingNumberPlace === 'after' ? '' : 'checked' ?>>
-                                            <label class="form-check-label" for="publicationHeadingNumberBefore">В начале заголовка</label>
+                                    <?php /* The options of the number are one functional of their own, and the reader
+                                            asked them boxed the way the split is boxed: the same green line, the same
+                                            room, the same corners. The box of the controls of the split stops drawing
+                                            where the parts already draw one; this one has no box of its own to be said
+                                            by, so it draws always. */ ?>
+                                    <div class="publication-numbering-controls">
+                                        <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                             data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                             data-bs-content="Дописывает «Часть 1», «Часть 2» … в заголовок каждой части разбитой публикации: форму номера задают два ряда ниже, а пока «Первая строка — в заголовок» выключен — номер встаёт в начало самого текста">
+                                            <input class="form-check-input" type="checkbox" role="switch" id="publicationNumberParts"
+                                                <?= $numberParts ? 'checked' : '' ?>>
+                                            <label class="form-check-label" for="publicationNumberParts">
+                                                <i class="bi bi-list-ol me-1"></i>Нумерация частей
+                                            </label>
                                         </div>
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
-                                                   id="publicationHeadingNumberAfter" value="after"
-                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
-                                                   <?= $headingNumberPlace === 'after' ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="publicationHeadingNumberAfter">В конце заголовка</label>
+                                        <?php /* The first of the two rows of radios under that switch answers WHICH end
+                                                    of the heading wears the number, the second answers with WHAT that
+                                                    number is joined to the words, and the checkbox under both hands the
+                                                    whole shape over to the field of the reader. All of it travels to the
+                                                    server as one string of the two tokens, together with the switch
+                                                    itself: the page keeps the shape in the session, so the numbering and
+                                                    the shape the reader left stand there when the form opens again.
+                                                    While the numbering is off the five radios have nothing to decide,
+                                                    and once the checkbox is on the two rows have nothing to decide
+                                                    either — they are greyed out rather than taken away, and the words
+                                                    the reader chose stay visible and stay kept. */ ?>
+                                        <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                             data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                             data-bs-content="Где в заголовке части стоит её номер: в начале, как «Часть 1. Текст», или в конце, как «Текст. Часть 1». Пока включена «Нумерация частей»; с выключенной выбирать нечего.">
+                                            <div class="form-label mb-1">Расположение</div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
+                                                       id="publicationHeadingNumberBefore" value="before"
+                                                       <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                       <?= $headingNumberPlace === 'after' ? '' : 'checked' ?>>
+                                                <label class="form-check-label" for="publicationHeadingNumberBefore">В начале заголовка</label>
+                                            </div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="publicationHeadingNumberPlace"
+                                                       id="publicationHeadingNumberAfter" value="after"
+                                                       <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                       <?= $headingNumberPlace === 'after' ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="publicationHeadingNumberAfter">В конце заголовка</label>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Чем номер части соединяется со словами заголовка: точка, дефис или скобки. Получается «Текст. Часть 1», «Текст - Часть 1» и «Текст (Часть 1)». Пока включена «Нумерация частей» и выключен «Свой шаблон».">
-                                        <div class="form-label mb-1">Разделитель</div>
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
-                                                   id="publicationHeadingNumberDot" value="dot"
-                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
-                                                   <?= $headingNumberStyle === 'dot' ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="publicationHeadingNumberDot">Точка</label>
+                                        <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                             data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                             data-bs-content="Чем номер части соединяется со словами заголовка: точка, дефис или скобки. Получается «Текст. Часть 1», «Текст - Часть 1» и «Текст (Часть 1)». Пока включена «Нумерация частей» и выключен «Свой шаблон».">
+                                            <div class="form-label mb-1">Разделитель</div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
+                                                       id="publicationHeadingNumberDot" value="dot"
+                                                       <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                       <?= $headingNumberStyle === 'dot' ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="publicationHeadingNumberDot">Точка</label>
+                                            </div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
+                                                       id="publicationHeadingNumberDash" value="dash"
+                                                       <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                       <?= $headingNumberStyle === 'dash' ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="publicationHeadingNumberDash">Дефис</label>
+                                            </div>
+                                            <div class="form-check form-check-inline">
+                                                <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
+                                                       id="publicationHeadingNumberBracket" value="bracket"
+                                                       <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
+                                                       <?= $headingNumberStyle === 'bracket' ? 'checked' : '' ?>>
+                                                <label class="form-check-label" for="publicationHeadingNumberBracket">Скобки</label>
+                                            </div>
                                         </div>
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
-                                                   id="publicationHeadingNumberDash" value="dash"
-                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
-                                                   <?= $headingNumberStyle === 'dash' ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="publicationHeadingNumberDash">Дефис</label>
+                                        <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
+                                             data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                             data-bs-content="Отдаёт форму номера полю под рядами: пока включён, «Расположение» и «Разделитель» гаснут, а строку пишет сам читатель. Пока включена «Нумерация частей»; с выключенной отдавать нечего.">
+                                            <input class="form-check-input" type="checkbox" role="switch" id="publicationHeadingNumberCustom"
+                                                   <?= $headingNumberCustom ? 'checked' : '' ?>
+                                                   <?= $numberParts ? '' : 'disabled' ?>>
+                                            <label class="form-check-label" for="publicationHeadingNumberCustom">
+                                                <i class="bi bi-pencil me-1"></i>Свой шаблон
+                                            </label>
                                         </div>
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input" type="radio" name="publicationHeadingNumberStyle"
-                                                   id="publicationHeadingNumberBracket" value="bracket"
-                                                   <?= ($numberParts && !$headingNumberCustom) ? '' : 'disabled' ?>
-                                                   <?= $headingNumberStyle === 'bracket' ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="publicationHeadingNumberBracket">Скобки</label>
+                                        <?php /* The row of the field is the field. The hint of a switch shrinks its row
+                                                        to the switch, because the empty right half of a row of a switch
+                                                        is not a control and must not drag the card to the middle of it;
+                                                        the same rule held this field at the twenty characters an input
+                                                        reports, so the boxed field drew narrower than the box. The
+                                                        theme's own auto width lifts this row alone. */ ?>
+                                        <div class="mb-3 w-auto" data-bs-toggle="popover" data-bs-trigger="hover"
+                                             data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                             data-bs-content="Строка, где #NUMBER# — число части, а #TITLE_TEXT# — её слова. Пока «Свой шаблон» выключен, поле только зеркалит то, на чём стоят два ряда выше.">
+                                            <label class="form-label" for="publicationHeadingNumberTemplate">Шаблон</label>
+                                            <input class="form-control" type="text" id="publicationHeadingNumberTemplate"
+                                                   value="<?= Html::encode($headingNumberTemplate) ?>"
+                                                   maxlength="120"
+                                                   <?= ($numberParts && $headingNumberCustom) ? '' : 'disabled' ?>>
                                         </div>
-                                    </div>
-                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Отдаёт форму номера полю под рядами: пока включён, «Расположение» и «Разделитель» гаснут, а строку пишет сам читатель. Пока включена «Нумерация частей»; с выключенной отдавать нечего.">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationHeadingNumberCustom"
-                                               <?= $headingNumberCustom ? 'checked' : '' ?>
-                                               <?= $numberParts ? '' : 'disabled' ?>>
-                                        <label class="form-check-label" for="publicationHeadingNumberCustom">
-                                            <i class="bi bi-pencil me-1"></i>Свой шаблон
-                                        </label>
-                                    </div>
-                                    <div class="mb-3" data-bs-toggle="popover" data-bs-trigger="hover"
-                                         data-bs-placement="top-start" data-bs-custom-class="popover-info"
-                                         data-bs-content="Строка, где #NUMBER# — число части, а #TITLE_TEXT# — её слова. Пока «Свой шаблон» выключен, поле только зеркалит то, на чём стоят два ряда выше.">
-                                        <label class="form-label" for="publicationHeadingNumberTemplate">Шаблон</label>
-                                        <input class="form-control" type="text" id="publicationHeadingNumberTemplate"
-                                               value="<?= Html::encode($headingNumberTemplate) ?>"
-                                               maxlength="120"
-                                               <?= ($numberParts && $headingNumberCustom) ? '' : 'disabled' ?>>
                                     </div>
 
                                     <div class="form-check form-switch mb-3" data-bs-toggle="popover" data-bs-trigger="hover"

@@ -27,7 +27,9 @@
     font-size: inherit;
     height: auto;
     line-height: 1.5;
-    min-height: 60px;
+    /* Three lines of its own text, not a box of 60px: the editor is border-box,
+       so the floor adds the 12px padding the vendor puts above and below. */
+    min-height: calc(4.5em + 24px);
     max-height: 80vh;
     overflow-y: auto;
 }
@@ -62,6 +64,20 @@
     min-height: 0;
     padding-top: 0.375rem;
     padding-bottom: 0.375rem;
+}
+
+/* A heading is boxed in info, the same line its block of controls is drawn
+   with, and the panel of formats above the field wears that colour as its
+   ground: the field and the panel are one control, so one colour speaks for
+   both. Only the heading editor is drawn this way — the text of a part keeps
+   the plain border and the light panel. */
+.publication-title-editor .ql-toolbar {
+    border-color: rgba(var(--bs-info-rgb), 1);
+    background-color: rgba(var(--bs-info-rgb), 1);
+}
+
+.publication-title-editor .ql-container {
+    border-color: rgba(var(--bs-info-rgb), 1);
 }
 
 /* The same spans the channel shows: the preview of a part is built out of the
