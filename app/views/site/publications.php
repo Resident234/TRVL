@@ -1281,10 +1281,14 @@ CSS
                                                  data-url="publicationPartButtonUrl0">
                                                 <div class="row gx-2 gy-2 align-items-center publication-button-row">
                                                     <div class="col-sm-4">
-                                                        <input type="text" class="form-control publication-button-text"
-                                                               id="publicationPartButtonText0-0"
-                                                               name="publicationPartButtonText0[]" disabled
-                                                               placeholder="Надпись кнопки">
+                                                        <div class="publication-editor publication-button-label-editor">
+                                                            <textarea class="form-control publication-button-text d-none"
+                                                                      id="publicationPartButtonText0-0"
+                                                                      name="publicationPartButtonText0[]"
+                                                                      tabindex="-1" aria-hidden="true" disabled
+                                                                      placeholder="Надпись кнопки"></textarea>
+                                                            <div class="publication-editor-field"></div>
+                                                        </div>
                                                     </div>
                                                     <div class="col-sm">
                                                         <input type="text" class="form-control publication-button-url"
@@ -1867,9 +1871,22 @@ CSS
                                              data-url="publicationButtonUrl">
                                             <div class="row gx-2 gy-2 align-items-center publication-button-row">
                                                 <div class="col-sm-4">
-                                                    <input type="text" class="form-control publication-button-text"
-                                                           id="publicationButtonText-0" name="publicationButtonText[]"
-                                                           placeholder="Надпись кнопки">
+                                                    <?php /* The label of a button is an editor of its own: the
+                                                            panel above the box it paints into, the box over a
+                                                            field the form submits. The panel of a label carries
+                                                            no formats — the channel takes the text of a button
+                                                            as it stands — so the one control of it is the button
+                                                            of an emoji, and an emoji is a character the label
+                                                            keeps. A label is one line: Enter does nothing in it,
+                                                            as in a heading. */ ?>
+                                                    <div class="publication-editor publication-button-label-editor">
+                                                        <textarea class="form-control publication-button-text d-none"
+                                                                  id="publicationButtonText-0"
+                                                                  name="publicationButtonText[]"
+                                                                  tabindex="-1" aria-hidden="true"
+                                                                  placeholder="Надпись кнопки"></textarea>
+                                                        <div class="publication-editor-field"></div>
+                                                    </div>
                                                 </div>
                                                 <div class="col-sm">
                                                     <input type="text" class="form-control publication-button-url"
@@ -4125,6 +4142,13 @@ jQuery(document).ready(function () {
         // toolbar. A `code` span stays with the body — the reader marks a heading
         // in words he chose, not in a face the channel reserves for a command.
         var TITLE_TOOLBAR_FORMATS = [['bold', 'italic', 'underline', 'strike'], ['link']];
+        // The panel of a label of a link button holds no formats at all. The channel
+        // takes the text of a button as it stands — `NutgramChannelClient` sends the
+        // label and the address of it and no list of marks — so nothing the reader
+        // could set here travels with the button. The panel is drawn for the one
+        // control this page adds to every toolbar: the button of an emoji, which puts
+        // a character into the label rather than a mark over it.
+        var BUTTON_TOOLBAR_FORMATS = [];
 
         function formattingOf(field) {
             return field.__formatting || [];
@@ -4136,6 +4160,21 @@ jQuery(document).ready(function () {
 
         function formatFieldOf(field) {
             return field.parentNode ? field.parentNode.querySelector('.publication-format-field') : null;
+        }
+
+        // The labels of the rows of a box — given the document, of the whole form. A
+        // label is the mirror an editor paints over and the field the form submits the
+        // text of a button under.
+        function buttonLabelFields(box) {
+            return Array.prototype.slice.call(box.querySelectorAll('.publication-button-text'));
+        }
+
+        // A label of a button is the one field of one line that carries no marks: the
+        // panel over it holds the button of an emoji and nothing else, and an address
+        // pasted into it stays the text of it instead of becoming a link the channel
+        // has no way to show.
+        function isButtonLabel(field) {
+            return field.classList.contains('publication-button-text');
         }
 
         // The editor's own reading of the list: painting clamps a span that fell
@@ -4210,7 +4249,9 @@ jQuery(document).ready(function () {
                 placeholder: field.placeholder || '',
                 modules: {
                     toolbar: {
-                        container: singleLine ? TITLE_TOOLBAR_FORMATS : TOOLBAR_FORMATS,
+                        container: isButtonLabel(field)
+                            ? BUTTON_TOOLBAR_FORMATS
+                            : (singleLine ? TITLE_TOOLBAR_FORMATS : TOOLBAR_FORMATS),
                         handlers: { link: function () { openLinkDialog(field); } },
                     },
                 },
@@ -4386,8 +4427,11 @@ jQuery(document).ready(function () {
 
                 // An address that came in with the text is an address the user
                 // meant to keep, so it is read as one here too; the caret follows
-                // the text back to where the paste left it.
-                var removed = linkifyEditor(field);
+                // the text back to where the paste left it. A label of a button is
+                // the one field this does not happen to: the mark would stand over
+                // text the channel sends plain, and the address read out of the
+                // label would be a word the reader pasted and lost.
+                var removed = isButtonLabel(field) ? 0 : linkifyEditor(field);
                 if (removed > 0) {
                     var caret = Math.min(range.index + pasted.length - removed, field.value.length);
                     editor.setSelection(caret, 0, 'api');
@@ -4402,6 +4446,10 @@ jQuery(document).ready(function () {
         function mountPartEditors() {
             textParts().forEach(function (field) { mountPartEditor(field, false); });
             titleFields().forEach(function (field) { mountPartEditor(field, true); });
+            // The labels are mounted over the whole form: the box of the first part
+            // stands outside the parts, and a box of a part is drawn disabled and out
+            // of sight until the switch of the parts opens it.
+            mountButtonLabelEditors(document);
         }
 
         // The four boxes of the block, in the order they stand in their row: every one
@@ -5060,8 +5108,8 @@ jQuery(document).ready(function () {
 
             // The write of the mirror can cut the part anew and replace every field
             // of it but the first: the caret only goes back where a field of the page
-            // still stands — a heading of a part included.
-            if (textParts().concat(titleFields()).indexOf(field) !== -1) {
+            // still stands — a heading of a part and a label of a button included.
+            if (textParts().concat(titleFields(), buttonLabelFields(document)).indexOf(field) !== -1) {
                 var caret = Math.min(at + item.emoji.length, field.value.length);
 
                 editor.focus();
@@ -6178,6 +6226,24 @@ jQuery(document).ready(function () {
             box.querySelector('label').setAttribute('for', bases[0] + '-0');
         }
 
+        // A row the box grew by is a copy of the template, and the template stands
+        // outside the form: the label of it carries no editor yet. The labels are
+        // mounted before the values are written, so that a write of a button goes
+        // through the mirror of an editor and not over the text of a bare field —
+        // a field the page has just mounted paints the mirror it was handed.
+        function mountButtonLabelEditors(box) {
+            buttonLabelFields(box).forEach(function (field) {
+                mountPartEditor(field, true);
+                // A box of a part is drawn out of sight and with its fields disabled,
+                // and the load of a form never asks the switch about it: an editor
+                // born over a mirror the form does not submit has to start where the
+                // mirror of its own row already stands.
+                if (field.__editor) {
+                    field.__editor.enable(!field.disabled);
+                }
+            });
+        }
+
         // A box holds one row per button and always at least one row: the blank
         // field the form starts with is how a part goes without a button.
         function writeButtons(box, buttons) {
@@ -6191,6 +6257,7 @@ jQuery(document).ready(function () {
             for (var added = rows.length; added < count; added++) {
                 rowsBox.appendChild(buttonRowTemplate.cloneNode(true));
             }
+            mountButtonLabelEditors(box);
 
             buttonRowsOf(box).forEach(function (row, index) {
                 var fields = buttonFieldsOf(row);
@@ -6207,6 +6274,7 @@ jQuery(document).ready(function () {
             }
             rowsBoxOf(box).appendChild(buttonRowTemplate.cloneNode(true));
             nameButtonRows(box);
+            mountButtonLabelEditors(box);
         }
 
         function removeButtonRow(button) {
@@ -6302,6 +6370,13 @@ jQuery(document).ready(function () {
                 buttonRowsOf(box).forEach(function (row) {
                     buttonFieldsOf(row).forEach(function (field) {
                         field.disabled = !shown;
+                        // The panel of a label is a control of the same row, so a box
+                        // that goes out of the form puts the panel away with the field
+                        // it stands over: an editor left editable would take text the
+                        // form does not submit.
+                        if (field.__editor) {
+                            field.__editor.enable(shown);
+                        }
                     });
                 });
                 updateButtonRows(box, shown);
