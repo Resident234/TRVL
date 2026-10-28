@@ -345,10 +345,11 @@ $this->registerCss(
     cursor: auto;
 }
 
-/* The line of a frame is one of two colours, and which one is answered by what
-   stands inside it: the grey the board gives every card of its column, or the blue
-   of the theme for the frames a file picker stands in — which is exactly the
-   difference between the album of a publication and the addresses of its buttons.
+/* The line of a frame is one of three colours, and which one is answered by what
+   stands inside it: the grey the board gives every card of its column, the blue of the
+   theme for the frames a file picker stands in, and the purple of the palette for the frame
+   the buttons of the post stand in — which is the difference between the album of a
+   publication and the addresses that go out under it.
    `:has()` asks the frame about its own descendants, so the album of every part
    carries the colour with it when the template is cloned and no script has to keep
    a class in step with the markup. */
@@ -358,6 +359,21 @@ $this->registerCss(
 
 .publication-field-frame:has(input[type=file]) {
     --publication-frame-border: rgba(var(--bs-primary-rgb), 1);
+}
+
+/* The third key, and the one that speaks about the addresses. This frame holds no image and
+   no file: it holds the label and the URL of every button that goes out under the post, and
+   from this revision it says so with a line of its own instead of the grey an unframed block
+   wears. The colour is the purple the ui-kit ships in its palette and draws nothing with —
+   the only colour of that palette this page had not spent, and the one a reader's own browser
+   keeps for a link he has followed. It is read off the token rather than typed, because the
+   line of a frame and its hover both read that token: a frame that turns purple must not
+   flash the grey of the board back the moment a pointer crosses it. The key is the box the
+   rows of buttons stand in, which is the same reading the rule above gives a picker, and the
+   two keys never fall on one block at once: the box a part is cloned with stands outside
+   every frame of the form, and no frame that holds a picker holds a button. */
+.publication-field-frame:has(.publication-button-box) {
+    --publication-frame-border: var(--bs-purple);
 }
 
 /* The switch that hands the images of the first part out to the parts, and the switch that
