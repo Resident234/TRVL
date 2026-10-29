@@ -20,6 +20,7 @@ declare(strict_types=1);
 /** @var bool $albumRows whether the album of the form shows its pictures as rows */
 /** @var bool $partsPublication whether every part gets its own time and its own button */
 /** @var bool $distributeImages whether the albums of the form are handed out over its parts on their own */
+/** @var bool $buttonsPerPart whether every part wears a block of link buttons of its own */
 /** @var bool $numberParts whether the number of a part is written at all */
 /** @var string $headingNumberTemplate the shape a part heading wears its number in: two tokens the reader may put words around */
 /** @var bool $headingNumberCustom whether that shape is the reader's own string rather than the preset of the two rows */
@@ -370,8 +371,9 @@ $this->registerCss(
    line of a frame and its hover both read that token: a frame that turns purple must not
    flash the grey of the board back the moment a pointer crosses it. The key is the box the
    rows of buttons stand in, which is the same reading the rule above gives a picker, and the
-   two keys never fall on one block at once: the box a part is cloned with stands outside
-   every frame of the form, and no frame that holds a picker holds a button. */
+   two keys never fall on one block at once: no frame of this form holds both a picker and the
+   rows of a button — the album of a part and the buttons of a part are two frames that stand one
+   under another in the same block. */
 .publication-field-frame:has(.publication-button-box) {
     --publication-frame-border: var(--bs-purple);
 }
@@ -1259,71 +1261,90 @@ CSS
                                                 </div>
                                         </div>
 
-                                        <?php /* The buttons of a part. They come out of the switch
-                                                under the shared «Кнопки-ссылки» field and start
-                                                with the buttons of that field; the first block
-                                                never shows its own, its buttons are the shared
-                                                ones. A hidden box is disabled, so it submits
-                                                nothing and the part goes without a keyboard.
-                                                Every row is one button with the same two fields;
-                                                the rows of a box share one name, so the form
-                                                submits them as the list of buttons of that part.
-                                                The two attributes below are the bases of those
-                                                names: a row gains its name from a base and its own
-                                                id from the row number, both rewritten when the box
-                                                moves to another part. */ ?>
-                                        <div class="publication-part-button publication-button-box d-none mt-2">
-                                            <label class="form-label mb-1" for="publicationPartButtonText0-0">
-                                                <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки этой части
-                                            </label>
-                                            <div class="d-flex flex-column gap-2 publication-button-rows"
-                                                 data-text="publicationPartButtonText0"
-                                                 data-url="publicationPartButtonUrl0">
-                                                <div class="row gx-2 gy-2 align-items-center publication-button-row">
-                                                    <div class="col-sm-4">
-                                                        <div class="publication-editor publication-button-label-editor">
-                                                            <textarea class="form-control publication-button-text d-none"
-                                                                      id="publicationPartButtonText0-0"
-                                                                      name="publicationPartButtonText0[]"
-                                                                      tabindex="-1" aria-hidden="true" disabled
-                                                                      placeholder="Надпись кнопки"></textarea>
-                                                            <div class="publication-editor-field"></div>
+                                        <?php /* The block of the buttons of a part. It is a frame of
+                                                the ui-kit, and the purple line the sheet gives the block
+                                                of the form covers it too: the frame colours by the box
+                                                of rows it holds, and that box stands inside the frame.
+                                                The first part wears this block only while the switch of
+                                                the green box stands; the parts below it wear it when
+                                                that switch or the old «Кнопки-ссылки в каждой части»
+                                                is thrown. A block out of sight is disabled, so it
+                                                submits nothing and the part goes without a keyboard.
+                                                Every row is one button with the same two fields; the
+                                                rows of a box share one name, so the form submits them
+                                                as the list of buttons of that part. The two attributes
+                                                below are the bases of those names: a row gains its name
+                                                from a base and its own id from the row number, both
+                                                rewritten when the box moves to another part — and when
+                                                the mode hands the first part its own block, for then
+                                                that block submits under the name of the shared field.
+                                                The switch at the top of the frame belongs to this part
+                                                alone: the page renames it with the place of the part,
+                                                and the fill reads it for every part on its own. */ ?>
+                                        <div class="kanban-item publication-field-frame publication-part-button p-3 rounded-2 bg-white d-none mt-2">
+                                            <div class="form-check form-switch mb-2" data-bs-toggle="popover"
+                                                 data-bs-trigger="hover" data-bs-placement="top-start"
+                                                 data-bs-custom-class="popover-info"
+                                                 data-bs-content="Через 10 секунд после того, как текст этой части перестали править, дописывает в её кнопки адреса этого текста, кроме ссылок на изображения. Набранные вручную кнопки оставляет, адрес, который в кнопках этой части уже есть, не повторяет. Действует, пока включён блок кнопок этой части; на другие части не влияет.">
+                                                <input class="form-check-input publication-part-links-switch"
+                                                       type="checkbox" role="switch" id="publicationPartLinksToButtons1">
+                                                <label class="form-check-label" for="publicationPartLinksToButtons1">
+                                                    <i class="bi bi-link-45deg me-1"></i>Ссылки из текста в кнопки-ссылки
+                                                </label>
+                                            </div>
+                                            <div class="publication-button-box">
+                                                <label class="form-label mb-1 publication-buttons-label" for="publicationPartButtonText0-0">
+                                                    <i class="bi bi-link-45deg me-1"></i>Кнопки-ссылки этой части
+                                                </label>
+                                                <div class="d-flex flex-column gap-2 publication-button-rows"
+                                                     data-text="publicationPartButtonText0"
+                                                     data-url="publicationPartButtonUrl0">
+                                                    <div class="row gx-2 gy-2 align-items-center publication-button-row">
+                                                        <div class="col-sm-4">
+                                                            <div class="publication-editor publication-button-label-editor">
+                                                                <textarea class="form-control publication-button-text d-none"
+                                                                          id="publicationPartButtonText0-0"
+                                                                          name="publicationPartButtonText0[]"
+                                                                          tabindex="-1" aria-hidden="true" disabled
+                                                                          placeholder="Надпись кнопки"></textarea>
+                                                                <div class="publication-editor-field"></div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-sm">
+                                                            <input type="text" class="form-control publication-button-url"
+                                                                   id="publicationPartButtonUrl0-0"
+                                                                   name="publicationPartButtonUrl0[]" maxlength="2048" disabled
+                                                                   placeholder="https://example.com/poll">
+                                                        </div>
+                                                        <div class="col-sm-auto d-none">
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-icon publication-button-up"
+                                                                    aria-label="Поднять кнопку-ссылку выше" disabled
+                                                                    title="Поднять эту кнопку на строку выше">
+                                                                <i class="bi bi-arrow-up-short"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-outline-secondary btn-icon publication-button-down"
+                                                                    aria-label="Опустить кнопку-ссылку ниже" disabled
+                                                                    title="Опустить эту кнопку на строку ниже">
+                                                                <i class="bi bi-arrow-down-short"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="btn btn-danger btn-icon publication-button-remove"
+                                                                    aria-label="Убрать кнопку-ссылку" disabled
+                                                                    title="Убрать эту кнопку">
+                                                                <i class="bi bi-x-lg"></i>
+                                                            </button>
                                                         </div>
                                                     </div>
-                                                    <div class="col-sm">
-                                                        <input type="text" class="form-control publication-button-url"
-                                                               id="publicationPartButtonUrl0-0"
-                                                               name="publicationPartButtonUrl0[]" maxlength="2048" disabled
-                                                               placeholder="https://example.com/poll">
-                                                    </div>
-                                                    <div class="col-sm-auto d-none">
-                                                        <button type="button"
-                                                                class="btn btn-outline-secondary btn-icon publication-button-up"
-                                                                aria-label="Поднять кнопку-ссылку выше" disabled
-                                                                title="Поднять эту кнопку на строку выше">
-                                                            <i class="bi bi-arrow-up-short"></i>
-                                                        </button>
-                                                        <button type="button"
-                                                                class="btn btn-outline-secondary btn-icon publication-button-down"
-                                                                aria-label="Опустить кнопку-ссылку ниже" disabled
-                                                                title="Опустить эту кнопку на строку ниже">
-                                                            <i class="bi bi-arrow-down-short"></i>
-                                                        </button>
-                                                        <button type="button"
-                                                                class="btn btn-danger btn-icon publication-button-remove"
-                                                                aria-label="Убрать кнопку-ссылку" disabled
-                                                                title="Убрать эту кнопку">
-                                                            <i class="bi bi-x-lg"></i>
-                                                        </button>
-                                                    </div>
                                                 </div>
+                                                <button type="button"
+                                                        class="btn btn-primary btn-icon mt-2 float-end ms-3 publication-button-add"
+                                                        aria-label="Добавить кнопку-ссылку" disabled
+                                                        title="Добавить ещё одну кнопку под это сообщение">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
                                             </div>
-                                            <button type="button"
-                                                    class="btn btn-primary btn-icon mt-2 float-end ms-3 publication-button-add"
-                                                    aria-label="Добавить кнопку-ссылку" disabled
-                                                    title="Добавить ещё одну кнопку под это сообщение">
-                                                <i class="bi bi-plus-lg"></i>
-                                            </button>
                                         </div>
                                         <?php /* The three handles of one part. «Сохранить»
                                                 carries the part into the drafts block, «Удалить»
@@ -1558,6 +1579,23 @@ CSS
                                             <?= $partsPublication ? 'checked' : '' ?>>
                                         <label class="form-check-label" for="publicationPartsIndividually">
                                             <i class="bi bi-box-seam me-1"></i>Работать с частями по отдельности
+                                        </label>
+                                    </div>
+
+                                    <?php /* This one travels to the server too, and what it carries is
+                                                its own state only: the mode the reader left stands in the
+                                                session when the form opens again. The block it hands to
+                                                every part is a node the page draws, and the switch of
+                                                that block is the state of the page — a part carries it,
+                                                not the record, and nothing of it goes over the server. */ ?>
+                                    <div class="form-check form-switch mb-3" data-bs-toggle="popover"
+                                         data-bs-trigger="hover" data-bs-placement="top-start"
+                                         data-bs-custom-class="popover-info"
+                                         data-bs-content="Даёт каждой части — и первой тоже — свой блок кнопок-ссылок: свой переключатель «Ссылки из текста в кнопки-ссылки» и свои ряды с кнопкой «Добавить кнопку». Общий блок при этом гаснет и остаётся на месте: части берут кнопки только из своих блоков. Набранные в общем блоке кнопки переходят в блок первой части.">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationButtonsPerPart"
+                                            <?= $buttonsPerPart ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="publicationButtonsPerPart">
+                                            <i class="bi bi-link-45deg me-1"></i>Свои кнопки-ссылки у каждой части
                                         </label>
                                     </div>
 
@@ -1853,9 +1891,12 @@ CSS
                                     </div>
 
                                     <?php /* The box of the buttons of the first part: the same shape the box of
-                                            any later part has, so one rule names its rows and one icon adds them. */ ?>
+                                            any later part has, so one rule names its rows and one icon adds them.
+                                            The class of the label tells it apart from the label of the switch
+                                            that stands over the box of a part — the two are in one frame, and
+                                            only the label of the box points at the rows. */ ?>
                                     <div class="publication-button-box" id="publicationButtonBox">
-                                        <label class="form-label mb-1" for="publicationButtonText-0"
+                                        <label class="form-label mb-1 publication-buttons-label" for="publicationButtonText-0"
                                                data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
                                                data-bs-custom-class="popover-info"
                                                data-bs-content="Кнопки встают под сообщением в канале не больше чем в <?= $keyboardMaxRows ?> ряда, причём нижний ряд шире верхнего: две кнопки встают одна под другой, три — одна сверху и две снизу. Каждая ведёт по своему адресу, надпись длиной до 64 байт, адрес — с http://, https:// или tg://. Под одним сообщением не больше <?= $buttonLimit ?> кнопок. Пустые поля означают публикацию без кнопок; у разбитой публикации это кнопки её первой части.">
@@ -2203,6 +2244,7 @@ $titleSwitchSaveUrl = \yii\helpers\Url::to(['site/title-from-first-line-save']);
 $linksSwitchSaveUrl = \yii\helpers\Url::to(['site/links-to-buttons-save']);
 $albumSwitchSaveUrl = \yii\helpers\Url::to(['site/album-rows-save']);
 $partsPublicationSaveUrl = \yii\helpers\Url::to(['site/parts-publication-save']);
+$buttonsPerPartSaveUrl = \yii\helpers\Url::to(['site/buttons-per-part-save']);
 $distributeImagesSaveUrl = \yii\helpers\Url::to(['site/distribute-images-save']);
 $numberPartsSaveUrl = \yii\helpers\Url::to(['site/number-parts-save']);
 $headingNumberTemplateSaveUrl = \yii\helpers\Url::to(['site/heading-number-template-save']);
@@ -2251,6 +2293,7 @@ var __TITLE_SWITCH_URL = '{$titleSwitchSaveUrl}';
 var __LINKS_SWITCH_URL = '{$linksSwitchSaveUrl}';
 var __ALBUM_SWITCH_URL = '{$albumSwitchSaveUrl}';
 var __PARTS_PUBLICATION_SAVE_URL = '{$partsPublicationSaveUrl}';
+var __BUTTONS_PER_PART_SAVE_URL = '{$buttonsPerPartSaveUrl}';
 var __DISTRIBUTE_IMAGES_URL = '{$distributeImagesSaveUrl}';
 var __NUMBER_PARTS_URL = '{$numberPartsSaveUrl}';
 var __HEADING_TEMPLATE_URL = '{$headingNumberTemplateSaveUrl}';
@@ -3969,6 +4012,33 @@ jQuery(document).ready(function () {
         });
     }
 
+    // The switch that gives every part its own block of link buttons keeps its state
+    // the way the switches around it do: the server stores it and answers with the
+    // address that mirrors it. Which block answers for which part is the page's own
+    // doing, and `sync` is that drawing.
+    function watchButtonsPerPartSwitch(sync) {
+        var input = document.getElementById('publicationButtonsPerPart');
+        if (!input) {
+            return;
+        }
+        input.addEventListener('change', function () {
+            var state = input.checked;
+            sync();
+            postForJson(__BUTTONS_PER_PART_SAVE_URL, { buttonsPerPart: state ? '1' : '0' })
+                .then(function (payload) {
+                    mirrorUrl(payload);
+                })
+                .catch(function (error) {
+                    // The session kept the state it was asked with, so the switch goes
+                    // back — and the blocks of the parts go back with it.
+                    input.checked = !state;
+                    sync();
+                    showFlash('error', 'Не удалось запомнить переключатель: '
+                        + (error && error.message ? error.message : error));
+                });
+        });
+    }
+
     // The height the block of the forum topics is written in depends on the
     // header of the layout, and CSS reads no neighbour: that header takes the
     // height of whatever its breakpoint leaves standing in it — the 46px brand
@@ -4111,6 +4181,7 @@ jQuery(document).ready(function () {
         var splitModesBox = document.getElementById('publicationSplitModes');
         var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
         var buttonEveryPartRow = document.getElementById('publicationButtonEveryPartRow');
+        var buttonsPerPartInput = document.getElementById('publicationButtonsPerPart');
         var linkModal = document.getElementById('publicationLinkModal');
         var linkAddressInput = document.getElementById('publicationLinkAddress');
         var linkApplyButton = document.getElementById('publicationLinkApply');
@@ -6161,10 +6232,37 @@ jQuery(document).ready(function () {
         // A box holds one row per button: the two fields of it and the icon that
         // takes the row out of the form again.
 
+        // The blocks the parts are cloned with, in the order of the parts: the first of
+        // them answers for the first part only while the mode of a block per part stands.
+        function partButtonBoxes() {
+            return Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-button'));
+        }
+
+        // The mode is a field of a split publication only: with one part there is
+        // nothing to separate, and the block of the form answers for the whole of it.
+        function buttonsPerPartOn() {
+            return !!(buttonsPerPartInput && buttonsPerPartInput.checked) && textParts().length > 1;
+        }
+
+        // The boxes the parts are read through. While the mode sleeps the first part is
+        // answered for by the field of the form, so the list of the blocks starts one
+        // block behind the parts; the mode hands the block of the first part to that part.
         function buttonBoxes() {
-            return Array.prototype.slice
-                .call(partsBox.querySelectorAll('.publication-part-button'))
-                .slice(1);
+            return partButtonBoxes().slice(buttonsPerPartOn() ? 0 : 1);
+        }
+
+        function buttonBoxForPart(index) {
+            if (index === 0 && !buttonsPerPartOn()) {
+                return sharedButtonBox;
+            }
+
+            return partButtonBoxes()[index];
+        }
+
+        // The switch of the addresses a block of a part carries, and nothing for the box
+        // of the form — that one has its switch beside the frame, not inside it.
+        function partLinksSwitchOf(box) {
+            return box.querySelector('.publication-part-links-switch');
         }
 
         function rowsBoxOf(box) {
@@ -6210,7 +6308,9 @@ jQuery(document).ready(function () {
 
         // Every row of a box carries the name of that box, so the form submits the
         // rows of one part as one list, and an id of its own, so the label of the
-        // box points at one field. The bases of the names move with the box.
+        // box points at one field. The bases of the names move with the box. The
+        // label is named by its own class: the frame of a part holds a second label,
+        // the one of the switch of its addresses, and that one points at the switch.
         function nameButtonRows(box) {
             var bases = [
                 rowsBoxOf(box).getAttribute('data-text'),
@@ -6223,7 +6323,7 @@ jQuery(document).ready(function () {
                     field.id = bases[column] + '-' + index;
                 });
             });
-            box.querySelector('label').setAttribute('for', bases[0] + '-0');
+            box.querySelector('.publication-buttons-label').setAttribute('for', bases[0] + '-0');
         }
 
         // A row the box grew by is a copy of the template, and the template stands
@@ -6331,12 +6431,10 @@ jQuery(document).ready(function () {
             addButtonOf(box).disabled = !enabled || rows.length >= __BUTTON_LIMIT;
         }
 
-        // The buttons of every part, the shared field taking the first of them.
+        // The buttons of every part, each read through the box that answers for it.
         function readButtonGroups() {
-            var boxes = buttonBoxes();
-
             return textParts().map(function (field, index) {
-                return buttonsOf(index === 0 ? sharedButtonBox : boxes[index - 1]);
+                return buttonsOf(buttonBoxForPart(index));
             });
         }
 
@@ -6345,43 +6443,133 @@ jQuery(document).ready(function () {
                 && textParts().length > 1;
         }
 
-        // The boxes hold the buttons of the shared field while the switch is on and
+        // The boxes hold the buttons of the shared field while the old switch is on and
         // stand empty while it is off: what a hidden box keeps must not reach the
-        // form or the preview. A rebuild of the parts puts the buttons in again.
-        function syncPartButtons() {
+        // form or the preview. `carried` is the list every part held before the parts
+        // were rebuilt, and only the mode of a block per part keeps a part to its own
+        // list — the old switch hands one list out, so a rebuild restates it.
+        function syncPartButtons(carried) {
+            var first = buttonsPerPartOn() ? 0 : 1;
             var buttons = isEveryPartButton() ? buttonsOf(sharedButtonBox) : [];
 
-            buttonBoxes().forEach(function (box) {
-                writeButtons(box, buttons);
+            buttonBoxes().forEach(function (box, offset) {
+                var index = first + offset;
+                var own = carried !== undefined && buttonsPerPartOn() ? carried[index] : undefined;
+
+                writeButtons(box, own === undefined ? buttons : own);
             });
+        }
+
+        // The two boxes that can answer for the first part trade the name their rows are
+        // submitted under. The server reads the buttons of the first part out of the
+        // shared field, so while the mode stands that name belongs to the block of the
+        // part, and the sleeping block of the form takes the name of a part that has
+        // another block of its own: a disabled field is not submitted, so the trade
+        // leaves exactly one list for the first part.
+        function applyButtonNames() {
+            var first = partButtonBoxes()[0];
+            // The two bases the markup draws: the field of the form is the list of the
+            // first part, and the block a part is cloned with stands for the second of
+            // them until the mode puts it over the first.
+            var shared = ['publicationButtonText', 'publicationButtonUrl'];
+            var part = ['publicationPartButtonText0', 'publicationPartButtonUrl0'];
+
+            if (first) {
+                var awake = buttonsPerPartOn() ? shared : part;
+                var asleep = buttonsPerPartOn() ? part : shared;
+
+                rowsBoxOf(first).setAttribute('data-text', awake[0]);
+                rowsBoxOf(first).setAttribute('data-url', awake[1]);
+                rowsBoxOf(sharedButtonBox).setAttribute('data-text', asleep[0]);
+                rowsBoxOf(sharedButtonBox).setAttribute('data-url', asleep[1]);
+            }
+            partButtonBoxes().forEach(nameButtonRows);
+            nameButtonRows(sharedButtonBox);
+        }
+
+        // The rows of the first part move with the box that answers for it, so that
+        // throwing the switch loses nothing of what the reader has already set. The
+        // box left without them keeps the one blank row every box always holds.
+        function handOverFirstPart() {
+            var first = partButtonBoxes()[0];
+
+            if (!first) {
+                return;
+            }
+            if (buttonsPerPartOn()) {
+                writeButtons(first, buttonsOf(sharedButtonBox));
+                writeButtons(sharedButtonBox, []);
+
+                return;
+            }
+            writeButtons(sharedButtonBox, buttonsOf(first));
+            writeButtons(first, []);
+        }
+
+        // A box goes into the form and out of it whole: its fields, the panel of every
+        // label of it, the icons of its rows and the switch of the addresses it carries.
+        // A box that stays in the form while its fields leave it is a box the reader
+        // sees and cannot reach, and that is what the mode does to the block of the form.
+        function liveButtonBox(box, live) {
+            buttonRowsOf(box).forEach(function (row) {
+                buttonFieldsOf(row).forEach(function (field) {
+                    field.disabled = !live;
+                    // The panel of a label is a control of the same row, so a box
+                    // that goes out of the form puts the panel away with the field
+                    // it stands over: an editor left editable would take text the
+                    // form does not submit.
+                    if (field.__editor) {
+                        field.__editor.enable(live);
+                    }
+                });
+            });
+            updateButtonRows(box, live);
+            if (box !== sharedButtonBox) {
+                box.classList.toggle('d-none', !live);
+            }
+            var own = partLinksSwitchOf(box);
+
+            if (own) {
+                own.disabled = !live;
+            }
         }
 
         // The switch of the parts is a field of a split publication only, and a
         // box answers for the form just while it shows: a disabled field is not
         // submitted, so a part with no box goes to the channel with no buttons.
         function updateButtonBoxes() {
-            var shown = isEveryPartButton();
+            var separated = buttonsPerPartOn();
 
+            if (buttonsPerPartInput) {
+                buttonsPerPartInput.disabled = textParts().length < 2;
+            }
             if (buttonEveryPartRow) {
                 buttonEveryPartRow.classList.toggle('d-none', textParts().length < 2);
             }
-            buttonBoxes().forEach(function (box) {
-                box.classList.toggle('d-none', !shown);
-                buttonRowsOf(box).forEach(function (row) {
-                    buttonFieldsOf(row).forEach(function (field) {
-                        field.disabled = !shown;
-                        // The panel of a label is a control of the same row, so a box
-                        // that goes out of the form puts the panel away with the field
-                        // it stands over: an editor left editable would take text the
-                        // form does not submit.
-                        if (field.__editor) {
-                            field.__editor.enable(shown);
-                        }
-                    });
-                });
-                updateButtonRows(box, shown);
+            partButtonBoxes().forEach(function (box, index) {
+                liveButtonBox(box, separated || (index > 0 && isEveryPartButton()));
             });
-            updateButtonRows(sharedButtonBox, true);
+            liveButtonBox(sharedButtonBox, !separated);
+            // The two switches of the block of the form answer for the rows that sleep
+            // with it, so they leave the reach of the reader with them.
+            if (linksToButtonsInput) {
+                linksToButtonsInput.disabled = separated;
+            }
+            if (buttonEveryPartInput) {
+                buttonEveryPartInput.disabled = separated;
+            }
+        }
+
+        // The mode is thrown: the rows of the first part go to the block that starts
+        // answering for it, the two boxes take the name they are submitted under, every
+        // block wakes or sleeps, and the waiting for the addresses moves to the switches
+        // that now own it. The preview reads the same boxes, so it is drawn again too.
+        function redrawButtonBoxes() {
+            handOverFirstPart();
+            applyButtonNames();
+            updateButtonBoxes();
+            armLinksToButtons();
+            update();
         }
 
         // The addresses of the text handed to the buttons of the same part. This
@@ -6389,10 +6577,10 @@ jQuery(document).ready(function () {
         // and an address a box already carries is not added a second time.
         function fillButtonsFromText() {
             var fields = textParts();
-            var boxes = buttonBoxes();
+            var separated = buttonsPerPartOn();
             var changed = false;
 
-            if (fields.length > 1 && buttonEveryPartInput && !buttonEveryPartInput.checked) {
+            if (!separated && fields.length > 1 && buttonEveryPartInput && !buttonEveryPartInput.checked) {
                 // A part submits buttons only while its own box shows, so the parts
                 // take their own fields along with the addresses of their own text.
                 buttonEveryPartInput.checked = true;
@@ -6400,7 +6588,16 @@ jQuery(document).ready(function () {
             }
 
             fields.forEach(function (field, index) {
-                var box = index === 0 ? sharedButtonBox : boxes[index - 1];
+                var box = buttonBoxForPart(index);
+                var own = separated ? partLinksSwitchOf(box) : null;
+
+                // The mode reads the switch of every part on its own: a part whose own
+                // switch sleeps keeps no rows, and a block that wears no switch at all
+                // is no block of a part.
+                if (separated && (own === null || own.checked !== true)) {
+                    return;
+                }
+
                 var buttons = buttonsOf(box);
                 var known = buttons.map(function (button) {
                     return linkAddressOf(button.url);
@@ -6436,6 +6633,22 @@ jQuery(document).ready(function () {
         var __LINKS_TO_BUTTONS_IDLE = 10000;
         var linksToButtonsTimer = null;
 
+        // The waiting belongs to the switch that stands over the rows the fill writes:
+        // the switch of the block of the form while the mode sleeps, and the switch of
+        // a part once the mode has handed that part a block of its own — the block of
+        // the form is asleep by then, and its switch arms nothing.
+        function linksArmed() {
+            if (buttonsPerPartOn()) {
+                return partButtonBoxes().some(function (box) {
+                    var own = partLinksSwitchOf(box);
+
+                    return own !== null && own.checked === true;
+                });
+            }
+
+            return !!(linksToButtonsInput && linksToButtonsInput.checked);
+        }
+
         // The fill comes after the last keystroke, not with every one of them, so
         // each change of a text field puts the waiting off again.
         function armLinksToButtons() {
@@ -6443,7 +6656,7 @@ jQuery(document).ready(function () {
                 clearTimeout(linksToButtonsTimer);
                 linksToButtonsTimer = null;
             }
-            if (!linksToButtonsInput || !linksToButtonsInput.checked) {
+            if (!linksArmed()) {
                 return;
             }
             linksToButtonsTimer = setTimeout(function () {
@@ -6809,14 +7022,21 @@ jQuery(document).ready(function () {
         // a part that appears carries none, because nothing of it was saved.
         function setTextParts(values, groups, files, formats, titles, titleFormats, slots) {
             // The blocks that are about to be replaced carry the pickers, the
-            // headings, the marks of those headings and the slot of the parts, so
-            // all four are read while the fields still exist.
+            // headings, the marks of those headings, the slot, the time and the own
+            // switch of every part, so all of them are read while the fields exist.
             var carriedFiles = files === undefined ? readFileGroups() : files;
             var carriedTitles = titles === undefined ? readTitles() : titles;
             var carriedTitleFormats = titleFormats === undefined ? readTitleFormats() : titleFormats;
             var carriedSlots = slots === undefined ? readSlots() : slots;
             var carriedTimes = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-at'))
                 .map(function (input) { return { value: input.value, changed: input.dataset.userChanged || '' }; });
+            // The buttons of every part and the switch of the addresses each part wears
+            // are read off the same blocks that are about to go: the mode hands a part a
+            // list and a switch of its own, and neither of them is a thing the parts are
+            // rebuilt to lose.
+            var carriedButtons = readButtonGroups();
+            var carriedLinks = Array.prototype.slice.call(partsBox.querySelectorAll('.publication-part-links-switch'))
+                .map(function (input) { return input.checked === true; });
 
             // The fields are replaced, and with them the selection the popup points at.
             hideSelectionActions();
@@ -6885,6 +7105,15 @@ jQuery(document).ready(function () {
                 groupBoxes.setAttribute('data-url', 'publicationPartButtonUrl' + (index - 1));
                 nameButtonRows(block.querySelector('.publication-part-button'));
 
+                // The switch of the addresses is one per part and named after its
+                // place, so that its label points at the toggle of the same frame —
+                // and it comes back with the state the part was left with.
+                var linksSwitch = block.querySelector('.publication-part-links-switch');
+                linksSwitch.id = 'publicationPartLinksToButtons' + (index + 1);
+                block.querySelector('.publication-part-button .form-check-label')
+                    .setAttribute('for', linksSwitch.id);
+                linksSwitch.checked = carriedLinks[index] === true;
+
                 var mergeRow = mergeRowTemplate.cloneNode(true);
                 mergeRow.classList.remove('d-none');
                 partsBox.appendChild(mergeRow);
@@ -6924,7 +7153,11 @@ jQuery(document).ready(function () {
             albumBlankRows = [];
             updateAlbumBoxes();
             syncAlbumRows();
-            syncPartButtons();
+            // A rebuild rewrites the name every clone submits its rows under, so the
+            // trade between the block of the form and the block of the first part is
+            // restated here — and the rows of a box are named by the base it now holds.
+            applyButtonNames();
+            syncPartButtons(carriedButtons);
             updateButtonBoxes();
             clearNotices();
 
@@ -7170,9 +7403,11 @@ jQuery(document).ready(function () {
 
         // The record is one part, and its buttons are the shared field of the form.
         // A long text fills several parts from it, so the boxes of those parts
-        // come back to the buttons the record really holds.
+        // come back to the buttons the record really holds — and a form that wears a
+        // block per part holds them in the block of the first part, where the field of
+        // the form sleeps.
         function fillButtons(raw) {
-            writeButtons(sharedButtonBox, parseButtons(raw));
+            writeButtons(buttonBoxForPart(0), parseButtons(raw));
             syncPartButtons();
             updateButtonBoxes();
             update();
@@ -8940,6 +9175,15 @@ jQuery(document).ready(function () {
                 update();
             });
         }
+        // The switch of the addresses a part wears in its own frame owns the waiting of
+        // that part: thrown on, it starts the count over the next text change; thrown
+        // off, it leaves the rows of that part alone. Nothing of the part is redrawn for
+        // it, because the rows of a frame stand in it whether the fill is armed or not.
+        partsBox.addEventListener('change', function (event) {
+            if (event.target.classList.contains('publication-part-links-switch')) {
+                armLinksToButtons();
+            }
+        });
         // The boxes of the parts, the cloned ones included.
         partsBox.addEventListener('input', function (event) {
             if (event.target.closest('.publication-part-button')) {
@@ -9294,12 +9538,16 @@ jQuery(document).ready(function () {
             setTextParts(headed.values, asTexts(groups), emptyFileGroups(parts.length),
                 headed.formats, headed.titles, headed.titleFormats, slots);
 
-            if (keyboards.some(function (list) { return list.length > 0; }) && buttonEveryPartInput) {
+            // A keyboard belongs to the part that was saved with it, and the part takes
+            // it into the box that answers for it: the block of the form while the mode
+            // sleeps, the frame of that part as soon as the mode stands. The old switch
+            // has nothing to hand out in that mode — every part already has its own.
+            if (!buttonsPerPartOn() && keyboards.some(function (list) { return list.length > 0; })
+                    && buttonEveryPartInput) {
                 buttonEveryPartInput.checked = true;
             }
-            writeButtons(sharedButtonBox, keyboards[0] || []);
-            buttonBoxes().forEach(function (box, index) {
-                writeButtons(box, keyboards[index + 1] || []);
+            keyboards.forEach(function (list, index) {
+                writeButtons(buttonBoxForPart(index), list);
             });
             updateButtonBoxes();
 
@@ -9505,9 +9753,9 @@ jQuery(document).ready(function () {
         // The reset a save runs is offered by hand too. Asking for it is asking for the
         // blank form the page opens in, so the record taken over goes with the fields:
         // keeping its id would let the next submit write over a record nobody meant to
-        // change. The states that live in the session — six switches and the pair of radios
-        // under the numbering — keep their state, as they do after a save: the reader left
-        // the page with them on purpose.
+        // change. The states that live in the session — eight switches, the two groups of
+        // radios under the numbering and the template field beside them — keep their state,
+        // as they do after a save: the reader left the page with them on purpose.
         var clearFormButton = document.getElementById('publicationClearBtn');
         if (clearFormButton) {
             clearFormButton.addEventListener('click', function () {
@@ -9889,6 +10137,11 @@ jQuery(document).ready(function () {
         // own times and buttons: a save the server refused has to leave the form
         // with the rows it was rendered with.
         watchPartsPublicationSwitch(updatePartSchedules);
+
+        // And so is the switch of the mode that gives every part its own block of the
+        // buttons: a save the server refused has to leave the blocks of the parts, and
+        // the block of the form, in the state the page was drawn with.
+        watchButtonsPerPartSwitch(redrawButtonBoxes);
 
         // And so is the switch of the distribution, whose state is a mode rather than a
         // click: thrown on, it hands the albums out at once and goes on cutting over the

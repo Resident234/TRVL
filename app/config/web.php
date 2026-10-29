@@ -157,6 +157,7 @@ $config = [
                 'album-rows-save' => 'site/album-rows-save',
                 'parts-publication-save' => 'site/parts-publication-save',
                 'distribute-images-save' => 'site/distribute-images-save',
+                'buttons-per-part-save' => 'site/buttons-per-part-save',
                 'number-parts-save' => 'site/number-parts-save',
                 'heading-number-template-save' => 'site/heading-number-template-save',
                 'heading-formatting-save' => 'site/heading-formatting-save',

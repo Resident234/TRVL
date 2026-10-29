@@ -160,6 +160,7 @@ class SiteController extends Controller
                     'album-rows-save' => ['post'],
                     'parts-publication-save' => ['post'],
                     'distribute-images-save' => ['post'],
+                    'buttons-per-part-save' => ['post'],
                     'number-parts-save' => ['post'],
                     'heading-number-template-save' => ['post'],
                     'heading-formatting-save' => ['post'],
@@ -327,6 +328,7 @@ class SiteController extends Controller
         $this->syncAlbumRows();
         $this->syncPartsPublication();
         $this->syncDistributeImages();
+        $this->syncButtonsPerPart();
         $this->syncNumberParts();
         $this->syncHeadingNumberTemplate();
         $this->syncHeadingNumberCustom();
@@ -355,6 +357,7 @@ class SiteController extends Controller
             || $this->albumRowsFromQuery($query) !== $this->albumRows()
             || $this->partsPublicationFromQuery($query) !== $this->partsPublication()
             || $this->distributeImagesFromQuery($query) !== $this->distributeImages()
+            || $this->buttonsPerPartFromQuery($query) !== $this->buttonsPerPart()
             || $this->numberPartsFromQuery($query) !== $this->numberParts()
             || $this->headingNumberTemplateFromQuery($query) !== $this->headingNumberTemplate()
             || $this->headingNumberCustomFromQuery($query) !== $this->headingNumberCustom()
@@ -484,6 +487,10 @@ class SiteController extends Controller
 
         if ($this->distributeImages()) {
             $url['distributeImages'] = '1';
+        }
+
+        if ($this->buttonsPerPart()) {
+            $url['buttonsPerPart'] = '1';
         }
 
         if ($this->numberParts()) {
@@ -865,6 +872,7 @@ class SiteController extends Controller
             'albumRows' => $this->albumRows(),
             'partsPublication' => $this->partsPublication(),
             'distributeImages' => $this->distributeImages(),
+            'buttonsPerPart' => $this->buttonsPerPart(),
             'numberParts' => $this->numberParts(),
             'headingNumberTemplate' => $this->headingNumberTemplate(),
             'headingNumberCustom' => $this->headingNumberCustom(),
@@ -1177,6 +1185,56 @@ class SiteController extends Controller
     }
 
     /**
+     * Whether every part of a split publication gets its own block of the link
+     * buttons — the state of the switch of the green block, kept in the session so
+     * a reload opens the form in the mode the reader left. Only the mode travels:
+     * which part has its own switch thrown is a state of the page, and it rides
+     * with the node of the part rather than with the record.
+     */
+    private function buttonsPerPart(): bool
+    {
+        return $this->normalizeButtonsPerPart(Yii::$app->session->get('buttonsPerPart'));
+    }
+
+    /**
+     * The state of the switch of the per-part buttons the address of the page asks
+     * for: `?buttonsPerPart=1`.
+     *
+     * @param array<string, mixed> $query
+     */
+    private function buttonsPerPartFromQuery(array $query): bool
+    {
+        return $this->normalizeButtonsPerPart($query['buttonsPerPart'] ?? null);
+    }
+
+    /**
+     * Resolves the switch of the per-part buttons the way the switch of the
+     * distribution does: it is a session that has never held a state which adopts
+     * the parameter of the request, so reloading cannot change what the reader left.
+     */
+    private function syncButtonsPerPart(): void
+    {
+        $session = Yii::$app->session;
+
+        if ($session->has('buttonsPerPart')) {
+            return;
+        }
+
+        $session->set('buttonsPerPart', $this->buttonsPerPartFromQuery($this->request->get()));
+    }
+
+    /**
+     * A state the session keeps is a real boolean, a state a request or a
+     * switch carries is the '1' of its parameter.
+     *
+     * @param mixed $state
+     */
+    private function normalizeButtonsPerPart(mixed $state): bool
+    {
+        return $state === true || $state === '1';
+    }
+
+    /**
      * Whether the number of a part is written at all — the state of the switch of
      * the numbering, kept in the session so a reload opens the form with the
      * numbering the reader left. The switch used to live only in the browser, and
@@ -1442,6 +1500,27 @@ class SiteController extends Controller
         Yii::$app->session->set(
             'distributeImages',
             $this->normalizeDistributeImages($this->request->post('distributeImages')),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'url' => Url::to($this->publicationsUrl()),
+        ]);
+    }
+
+    /**
+     * Stores the state of the mode of the buttons and answers with the address that
+     * mirrors it, exactly like the switch of the distribution does. It redraws
+     * nothing: the blocks it separates are built by the script that reads the
+     * switch, and which part has its own switch thrown stays on the page.
+     *
+     * @return Response
+     */
+    public function actionButtonsPerPartSave(): Response
+    {
+        Yii::$app->session->set(
+            'buttonsPerPart',
+            $this->normalizeButtonsPerPart($this->request->post('buttonsPerPart')),
         );
 
         return $this->asJson([
