@@ -81,13 +81,59 @@
 }
 
 /* The label of a link button is one line, so its box stands as short as the
-   field it replaced, and the panel over it carries one control: the button of
+   field it replaced, and the panel beside it carries one control: the button of
    an emoji this page adds. The vendor builds a group for the empty list of
-   formats it was handed, and the margin of that group would push the button
-   off the left edge of the panel, so a group holding nothing leaves the
-   layout. The panel of a label stays plain: the frame of the box of buttons
-   already names it, and a colour over the field would say the label carries
-   marks the channel cannot take. */
+   formats it was handed, and the margin of that group would push the button out
+   of the column, so a group holding nothing leaves the layout and the group that
+   stays keeps no margin of its own.
+   The panel stands at the left of its field instead of over it, and the two are
+   one control: the box lays its parts in a row, the panel takes the room of the
+   one button it holds and nothing more, and the field takes the rest of the row
+   and may fall below its own content when the panel asks for the room. One line
+   divides the two halves, so the rule of the vendor that takes the top line off a
+   container under a toolbar is answered back on the side the panel now faces, and
+   only the corners of the outer edge are rounded: the pair reads as the one field
+   it is.
+   Both halves wear the purple of the frame they stand in for the reason the panel
+   of a heading wears the colour of its own block: the field and the panel are one
+   control, so one colour speaks for both. */
+.publication-button-label-editor {
+    display: flex;
+}
+
+.publication-button-label-editor .ql-toolbar {
+    align-items: center;
+    background-color: var(--bs-purple);
+    border-bottom: 1px solid var(--bs-purple);
+    border-color: var(--bs-purple);
+    border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius);
+    display: flex;
+    flex: 0 0 auto;
+    padding: 1px;
+}
+
+.publication-button-label-editor .ql-toolbar .ql-formats {
+    margin-right: 0;
+}
+
+.publication-button-label-editor .ql-container {
+    border-color: var(--bs-purple);
+    border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* `.ql-snow` is repeated in this selector because the rule of the vendor that
+   takes the top line off a container under a toolbar is written at four classes:
+   a rule that means to answer it has to out-specify it, not only be read after
+   it. The line is read off the same purple the panel is filled with, and the left
+   edge of the field gives its own to the panel it meets, so the pair keeps one
+   dividing line and not two. */
+.publication-button-label-editor .ql-toolbar.ql-snow + .ql-container.ql-snow {
+    border-left: 0;
+    border-top: 1px solid var(--bs-purple);
+}
+
 .publication-button-label-editor .ql-editor {
     min-height: 0;
     padding-top: 0.375rem;
