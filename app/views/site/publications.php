@@ -1672,6 +1672,22 @@ CSS
                                         </label>
                                     </div>
 
+                                    <?php /* The switch that hands the buttons of the block of
+                                                the form to every part of a split publication. It
+                                                stood inside that block until the ask of 2026-10-30
+                                                gave it this box and asked that it show whatever the
+                                                form holds: the reader throws it before the text is
+                                                cut, so the row may not wait for the cut. */ ?>
+                                    <div class="form-check form-switch mb-3" id="publicationButtonEveryPartRow"
+                                         data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
+                                         data-bs-custom-class="popover-info"
+                                         data-bs-content="Показывает поля кнопок у каждой части и заполняет их этими же кнопками; надпись и адрес одной части можно поправить после этого.">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationButtonEveryPart">
+                                        <label class="form-check-label" for="publicationButtonEveryPart">
+                                            Кнопки-ссылки в каждой части
+                                        </label>
+                                    </div>
+
                                     <?php /* This one does travel to the server, and what it carries is only its
                                                 own state: the page keeps it in the session, so the mode the
                                                 reader left stands there when the form opens again. The albums
@@ -2035,21 +2051,6 @@ CSS
                                                 title="Добавить ещё одну кнопку под это сообщение">
                                             <i class="bi bi-plus-lg"></i>
                                         </button>
-                                    </div>
-
-                                    <?php /* The switch of the buttons to every part of a split
-                                            publication: it stands in the form only while the
-                                            publication really has parts. The popover of the box
-                                            above it says what a button is; this one says what
-                                            the switch does to the boxes of the parts. */ ?>
-                                    <div class="form-check form-switch mt-2 d-none" id="publicationButtonEveryPartRow"
-                                         data-bs-toggle="popover" data-bs-trigger="hover" data-bs-placement="top-start"
-                                         data-bs-custom-class="popover-info"
-                                         data-bs-content="Показывает поля кнопок у каждой части и заполняет их этими же кнопками; надпись и адрес одной части можно поправить после этого.">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="publicationButtonEveryPart">
-                                        <label class="form-check-label" for="publicationButtonEveryPart">
-                                            Кнопки-ссылки в каждой части
-                                        </label>
                                     </div>
                                 </div>
                             </div>
@@ -4253,7 +4254,6 @@ jQuery(document).ready(function () {
         var splitButton = document.getElementById('publicationSplitPart');
         var splitModesBox = document.getElementById('publicationSplitModes');
         var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
-        var buttonEveryPartRow = document.getElementById('publicationButtonEveryPartRow');
         var buttonsPerPartInput = document.getElementById('publicationButtonsPerPart');
         var linkModal = document.getElementById('publicationLinkModal');
         var linkAddressInput = document.getElementById('publicationLinkAddress');
@@ -6511,6 +6511,9 @@ jQuery(document).ready(function () {
             });
         }
 
+        // The row of this switch shows whatever the form holds, so the number of parts is
+        // answered here and not by a row put away: one part has no other part to hand its
+        // buttons to.
         function isEveryPartButton() {
             return !!(buttonEveryPartInput && buttonEveryPartInput.checked)
                 && textParts().length > 1;
@@ -6615,9 +6618,6 @@ jQuery(document).ready(function () {
 
             if (buttonsPerPartInput) {
                 buttonsPerPartInput.disabled = textParts().length < 2;
-            }
-            if (buttonEveryPartRow) {
-                buttonEveryPartRow.classList.toggle('d-none', textParts().length < 2);
             }
             partButtonBoxes().forEach(function (box, index) {
                 liveButtonBox(box, separated || (index > 0 && isEveryPartButton()));
