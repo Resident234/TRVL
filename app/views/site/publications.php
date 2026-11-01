@@ -457,6 +457,39 @@ $this->registerCss(
     border-color: rgba(var(--bs-primary-rgb), 1);
 }
 
+/* The two handles that hand the album of a part to its neighbour work on the images themselves
+   — they move the links and the files of that field into the part before it or after it — so
+   they wear the blue the images of this form already answer with, and not the grey the theme
+   gives every outline handle. The colour is read off the same token the line of a picker and
+   the ring of a switch are read off, and the markup keeps the family it was written with: the
+   sheet answers the states of a portal button through the variables those states read, so a
+   rule that painted only the still handle would hand it back the grey of the theme the moment
+   a pointer crossed it. Ten names are answered: the eight the theme spells as grey — the ink
+   and the line of the handle, its ground and its line when it is crossed and when it is
+   pressed, and the ink and the line of a handle that sleeps at the edge of the form — and the
+   two inks of the filled states, which the palette gives as light ink over a painted ground,
+   the pairing the block of the addresses chose for its own arrows. What is left alone is left
+   on purpose: the ground a handle rests on before a pointer comes, its thickness, its corner
+   and its room, the opacity a sleeping handle greys by, and the halo it takes under the
+   keyboard, which is the page saying a control is focused and not a colour of the block. The
+   key is the row the two handles stand in, and the row is a class of the markup rather than a
+   question about it, because a part is cloned from the template that row stands in and every
+   clone arrives coloured with it; two classes deep, the key out-specifies the single class of
+   the theme by itself and carries no importance. Nothing past that row is repainted: the
+   arrows that order the rows of an album stand in another block and keep their grey. */
+.publication-album-move .btn {
+    --bs-btn-color: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-border-color: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-hover-bg: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-hover-border-color: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-hover-color: var(--bs-white);
+    --bs-btn-active-bg: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-active-border-color: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-active-color: var(--bs-white);
+    --bs-btn-disabled-color: rgba(var(--bs-primary-rgb), 1);
+    --bs-btn-disabled-border-color: rgba(var(--bs-primary-rgb), 1);
+}
+
 /* The block one part of the form holds is framed the way a card of the board is,
    and framed all the time: the parts are read one under another, and where one
    ended and the next began was only guessable from the «Часть N» line, while the
