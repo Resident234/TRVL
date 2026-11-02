@@ -2099,6 +2099,60 @@ CSS
                                            class="form-control publication-datepicker-time"
                                            autocomplete="off">
                                 </div>
+                                <?php /* A checked box takes the field out of the submit: the time of the
+                                       record is drawn by the server inside the range the options under it
+                                       name, at the moment the row lands in the table. The options live in
+                                       the shared block even when the text is split — a part of a
+                                       publication gets no range of its own, only its own throw of the dice,
+                                       and the throws are dealt in the order of the parts so no part ever
+                                       goes out before the one above it. */ ?>
+                                <div class="form-check mt-2" data-bs-toggle="popover" data-bs-trigger="hover"
+                                     data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                                     data-bs-content="Случайное время внутри выбранного диапазона назначается в момент сохранения публикации. Каждая часть разбитой публикации получает своё случайное время, но порядок частей сохраняется: следующая выходит не раньше предыдущей.">
+                                    <input class="form-check-input" type="checkbox" id="publicationRandomTime"
+                                           name="publicationRandomTime" value="1">
+                                    <label class="form-check-label" for="publicationRandomTime">Рандомное время</label>
+                                </div>
+                                <?php /* Two ways to name the range, and a radio between them: the fields of
+                                       the way that is not chosen are left disabled, so the server reads
+                                       exactly the range the reader meant. */ ?>
+                                <div class="publication-random-time-options ms-4 mt-2 d-none"
+                                     id="publicationRandomOptions">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio"
+                                               name="publicationRandomMode" id="publicationRandomRelative"
+                                               value="relative" checked>
+                                        <label class="form-check-label" for="publicationRandomRelative">от текущего момента до</label>
+                                        <div class="d-flex align-items-center gap-2 ms-4 mt-1">
+                                            <input type="number" class="form-control" style="max-width: 6rem;"
+                                                   id="publicationRandomAmount" name="publicationRandomAmount"
+                                                   min="1" step="1" value="2">
+                                            <select class="form-select" style="max-width: 9rem;"
+                                                    id="publicationRandomUnit" name="publicationRandomUnit">
+                                                <option value="minutes">минут</option>
+                                                <option value="hours">часов</option>
+                                                <option value="days">дней</option>
+                                                <option value="weeks" selected>недель</option>
+                                                <option value="months">месяцев</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="radio"
+                                               name="publicationRandomMode" id="publicationRandomRange"
+                                               value="range">
+                                        <label class="form-check-label" for="publicationRandomRange">диапазон даты и времени</label>
+                                        <div class="d-flex align-items-center gap-2 ms-4 mt-1">
+                                            <input type="text" class="form-control publication-datepicker-time"
+                                                   id="publicationRandomFrom" name="publicationRandomFrom"
+                                                   autocomplete="off" placeholder="от">
+                                            <span class="text-muted">—</span>
+                                            <input type="text" class="form-control publication-datepicker-time"
+                                                   id="publicationRandomTo" name="publicationRandomTo"
+                                                   autocomplete="off" placeholder="до">
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="d-flex gap-2">
@@ -4169,8 +4223,31 @@ jQuery(document).ready(function () {
         runOnce = true;
         var publicationAtJq = jQuery('#publicationAt');
         var scheduleAtJq = jQuery('#scheduleAt');
+        var randomFromJq = jQuery('#publicationRandomFrom');
+        var randomToJq = jQuery('#publicationRandomTo');
         setupDateTimePicker(publicationAtJq);
         setupDateTimePicker(scheduleAtJq);
+        setupDateTimePicker(randomFromJq);
+        setupDateTimePicker(randomToJq);
+        // The two ends of the explicit range open a day apart from now, so the
+        // option is usable the moment it is switched to; either end still takes
+        // any moment its calendar offers.
+        if (randomFromJq.length && randomToJq.length) {
+            var randomFromStart = moment();
+            var randomToStart = randomFromStart.clone().add(1, 'day');
+            randomFromJq.val(randomFromStart.format(pickerFormat));
+            randomToJq.val(randomToStart.format(pickerFormat));
+            var randomFromPicker = randomFromJq.data('daterangepicker');
+            var randomToPicker = randomToJq.data('daterangepicker');
+            if (randomFromPicker) {
+                randomFromPicker.setStartDate(randomFromStart);
+                randomFromPicker.setEndDate(randomFromStart.clone().add(__HORIZON_HOURS, 'hour'));
+            }
+            if (randomToPicker) {
+                randomToPicker.setStartDate(randomToStart);
+                randomToPicker.setEndDate(randomToStart.clone().add(__HORIZON_HOURS, 'hour'));
+            }
+        }
 
         // What a control does is written in the popover of that control — of its
         // group for a checkbox, of its label for a field — rather than in a line
@@ -4288,6 +4365,14 @@ jQuery(document).ready(function () {
         var splitModesBox = document.getElementById('publicationSplitModes');
         var buttonEveryPartInput = document.getElementById('publicationButtonEveryPart');
         var buttonsPerPartInput = document.getElementById('publicationButtonsPerPart');
+        var randomTimeInput = document.getElementById('publicationRandomTime');
+        var randomOptionsBox = document.getElementById('publicationRandomOptions');
+        var randomModeInputs = Array.prototype.slice.call(
+            document.querySelectorAll('input[name="publicationRandomMode"]'));
+        var randomAmountInput = document.getElementById('publicationRandomAmount');
+        var randomUnitInput = document.getElementById('publicationRandomUnit');
+        var randomFromInput = document.getElementById('publicationRandomFrom');
+        var randomToInput = document.getElementById('publicationRandomTo');
         var linkModal = document.getElementById('publicationLinkModal');
         var linkAddressInput = document.getElementById('publicationLinkAddress');
         var linkApplyButton = document.getElementById('publicationLinkApply');
@@ -7005,6 +7090,35 @@ jQuery(document).ready(function () {
         // is what names the action.
         var partTimesEnforced = true;
 
+        // The «Рандомное время» box hands the choice of the moment to the server:
+        // while it stands, the field of the whole form and the field of every
+        // part are out of the submit, and the range the options name is what the
+        // record is timed by.
+        function randomTimeOn() {
+            return randomTimeInput !== null && randomTimeInput.checked;
+        }
+
+        function syncRandomTimeControls() {
+            var on = randomTimeOn();
+            mainPublicationAt.disabled = on;
+
+            if (randomOptionsBox) {
+                randomOptionsBox.classList.toggle('d-none', !on);
+                var mode = '';
+                randomModeInputs.forEach(function (radio) {
+                    if (radio.checked) {
+                        mode = radio.value;
+                    }
+                });
+                randomAmountInput.disabled = !on || mode !== 'relative';
+                randomUnitInput.disabled = !on || mode !== 'relative';
+                randomFromInput.disabled = !on || mode !== 'range';
+                randomToInput.disabled = !on || mode !== 'range';
+            }
+
+            updatePartSchedules();
+        }
+
         // The rows of the parts' own publication times appear with the switch of
         // the parts: the first of them carries the time the whole form was given,
         // every part below it one interval of the settings more than the part
@@ -7033,7 +7147,9 @@ jQuery(document).ready(function () {
                 var hint = row.querySelector('.publication-part-schedule-hint');
 
                 row.classList.toggle('d-none', !enabled);
-                input.disabled = !enabled;
+                // A random time is dealt to a part by the server inside the range
+                // of the whole form, so under the box its own field asks nothing.
+                input.disabled = !enabled || randomTimeOn();
                 input.id = 'publicationPartAt' + (index + 1);
                 row.querySelector('.publication-part-at-label').setAttribute('for', input.id);
 
@@ -7043,7 +7159,8 @@ jQuery(document).ready(function () {
                 }
 
                 var time = moment(input.value, pickerFormat, true);
-                var invalid = partTimesEnforced && enabled && index > 0 && (!time.isValid()
+                var invalid = partTimesEnforced && enabled && !randomTimeOn() && index > 0
+                    && (!time.isValid()
                     || (previous !== null && previous.isValid() && !time.isAfter(previous)));
                 input.setCustomValidity(invalid ? 'Время части должно быть позже времени предыдущей части.' : '');
                 input.classList.toggle('is-invalid', invalid);
@@ -9065,7 +9182,9 @@ jQuery(document).ready(function () {
                 });
             }
 
-            var slotValue = publicationAtInput ? publicationAtInput.value : '';
+            // A card cannot show the hour a throw of the dice will deal, so under
+            // «Рандомное время» the corner of every part stays empty.
+            var slotValue = publicationAtInput && !randomTimeOn() ? publicationAtInput.value : '';
 
             preview.textContent = '';
             shown.forEach(function (one) {
@@ -9203,6 +9322,13 @@ jQuery(document).ready(function () {
             });
         }
         mainPublicationAt.addEventListener('change', updatePartSchedules);
+        if (randomTimeInput) {
+            randomTimeInput.addEventListener('change', syncRandomTimeControls);
+            randomModeInputs.forEach(function (radio) {
+                radio.addEventListener('change', syncRandomTimeControls);
+            });
+            syncRandomTimeControls();
+        }
         partsBox.addEventListener('input', function (event) {
             if (event.target.classList.contains('publication-part-at')) {
                 event.target.dataset.userChanged = '1';
@@ -9853,6 +9979,12 @@ jQuery(document).ready(function () {
             if (forumIdInput) forumIdInput.value = '';
             if (publishedAtInput) {
                 applyPublicationSlot(computeNextPublicationSlot().format(pickerFormat));
+            }
+            // The blank form keeps a named moment again: the box of the random
+            // time is form state, not one of the switches the session holds.
+            if (randomTimeInput) {
+                randomTimeInput.checked = false;
+                syncRandomTimeControls();
             }
         };
 

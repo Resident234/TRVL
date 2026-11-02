@@ -336,6 +336,7 @@ final class PublicationsService
         bool $individualParts = false,
         array $partTimes = [],
         string $partGroupId = '',
+        ?array $randomTimes = null,
     ): void {
         $parts = [];
         $formatting = [];
@@ -374,6 +375,25 @@ final class PublicationsService
                     $headingMarks[0],
                     $forumRef,
                 );
+
+                return;
+            }
+
+            if ($randomTimes !== null) {
+                // A random throw is already the UTC moment the row is written
+                // with — normalizeDate() inside schedulePost() would read it as
+                // wall-clock time once more.
+                $id = $this->publications->createPost(
+                    $parts[0],
+                    $albums[0] ?? [],
+                    $randomTimes[0],
+                    $this->now(),
+                    $formatting[0],
+                    $keyboard[0],
+                    $headings[0],
+                    $headingMarks[0],
+                );
+                $this->bindForumRef($id, $forumRef);
 
                 return;
             }
@@ -422,13 +442,17 @@ final class PublicationsService
             return;
         }
 
-        $firstAt = $this->normalizeDate($publishedAt, $userTimezone);
+        $firstAt = $randomTimes[0] ?? $this->normalizeDate($publishedAt, $userTimezone);
         $rows = [];
         foreach ($parts as $index => $text) {
-            $partAt = $individualParts && isset($partTimes[$index]) && trim((string)$partTimes[$index]) !== ''
-                ? $this->normalizeDate((string)$partTimes[$index], $userTimezone)
-                : $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes());
-            if ($index > 0 && $partAt <= $rows[$index - 1]['publishedAt']) {
+            // A thrown list comes in already lined up behind the first part, so
+            // the order the reader is otherwise held to is kept by the dealing
+            // itself and a shared throw of two parts is allowed.
+            $partAt = $randomTimes[$index]
+                ?? ($individualParts && isset($partTimes[$index]) && trim((string)$partTimes[$index]) !== ''
+                    ? $this->normalizeDate((string)$partTimes[$index], $userTimezone)
+                    : $this->shiftDate($firstAt, $index * $this->partsOffsetMinutes()));
+            if ($randomTimes === null && $index > 0 && $partAt <= $rows[$index - 1]['publishedAt']) {
                 throw new InvalidArgumentException('Время каждой следующей части должно быть позже предыдущей.');
             }
             $rows[] = [
@@ -1033,12 +1057,17 @@ final class PublicationsService
         ?int $sourceId,
         string $action,
         ?string $userTimezone = null,
+        ?array $randomTimes = null,
     ): void {
         $titleFormatting = self::trimFormatting($title, $titleFormatting);
         $title = trim($title);
         $this->assertPartValid($title, $titleFormatting, $text, $formatting, $imageUrls);
         $buttons->assertValid();
         $now = $this->now();
+        // Asked of only where a planned row is written: a throw of the dice is
+        // already UTC, and the field of the form stays empty under the box, so
+        // neither is read before a button that really plans the record.
+        $plannedAt = fn (): string => $randomTimes[0] ?? $this->normalizeDate($publishedAt, $userTimezone);
 
         if ($source === 'deleted') {
             $this->assertDeletedExists($sourceId);
@@ -1070,7 +1099,7 @@ final class PublicationsService
                     $text,
                     $imageUrls,
                     null,
-                    $this->normalizeDate($publishedAt, $userTimezone),
+                    $plannedAt(),
                     $formatting,
                     $buttons,
                     $title,
@@ -1108,7 +1137,7 @@ final class PublicationsService
                     $text,
                     $imageUrls,
                     null,
-                    $this->normalizeDate($publishedAt, $userTimezone),
+                    $plannedAt(),
                     $formatting,
                     $buttons,
                     $title,
@@ -1190,7 +1219,7 @@ final class PublicationsService
                 $sourceId,
                 $text,
                 $imageUrls,
-                $this->normalizeDate($publishedAt, $userTimezone),
+                $plannedAt(),
                 $now,
                 $formatting,
                 $buttons,
@@ -1282,6 +1311,7 @@ final class PublicationsService
         string $action,
         string $groupId,
         ?string $userTimezone = null,
+        ?array $randomTimes = null,
     ): void {
         $parts = [];
         $formatting = [];
@@ -1323,7 +1353,7 @@ final class PublicationsService
         }
 
         $now = $this->now();
-        $firstAt = $this->normalizeDate($publishedAt, $userTimezone);
+        $firstAt = $randomTimes[0] ?? $this->normalizeDate($publishedAt, $userTimezone);
         $offset = $this->partsOffsetMinutes();
         $claimed = [];
         $queueOpen = true;
@@ -1331,9 +1361,12 @@ final class PublicationsService
         foreach ($parts as $index => $text) {
             $place = $index + 1;
             $album = $albums[$index] ?? [];
-            $time = isset($partTimes[$index]) && trim((string)$partTimes[$index]) !== ''
-                ? $this->normalizeDate((string)$partTimes[$index], $userTimezone)
-                : $this->shiftDate($firstAt, $index * $offset);
+            // A dealt list stands in the place of the queue rows the same way
+            // for every habitat: it already follows the order of the parts.
+            $time = $randomTimes[$index]
+                ?? (isset($partTimes[$index]) && trim((string)$partTimes[$index]) !== ''
+                    ? $this->normalizeDate((string)$partTimes[$index], $userTimezone)
+                    : $this->shiftDate($firstAt, $index * $offset));
             $slot = $places[$index];
 
             if ($slot['id'] === null) {
@@ -1838,6 +1871,79 @@ final class PublicationsService
             LinkButtons::empty(),
             $title,
         ))->messageText();
+    }
+
+    /**
+     * The times a publication is dealt under «Рандомное время»: one throw per
+     * part, all of them inside the range the two options name, and in the order
+     * of the parts — a part may never go out before the one above it, so the
+     * throws are simply lined up after they are cast. The ends of the range are
+     * read as wall-clock time the way the field of the form is, and the answer
+     * comes back as the UTC stamps the tables are written in.
+     *
+     * @return string[] one UTC timestamp per part, never going backwards
+     * @throws InvalidArgumentException when an end cannot be parsed or the
+     * range ends before it starts
+     */
+    public function randomTimes(int $count, string $fromAt, string $toAt, ?string $userTimezone = null): array
+    {
+        $from = strtotime($this->normalizeDate($fromAt, $userTimezone));
+        $to = strtotime($this->normalizeDate($toAt, $userTimezone));
+        if ($to <= $from) {
+            throw new InvalidArgumentException(
+                'Конец диапазона случайного времени должен быть позже его начала.',
+            );
+        }
+
+        return $this->randomSortedTimes($count, $from, $to);
+    }
+
+    /**
+     * The «от текущего момента до» way of naming the range: the throws land
+     * between now and the moment the chosen count of minutes, hours, days,
+     * weeks or months ends at.
+     *
+     * @return string[] one UTC timestamp per part, never going backwards
+     * @throws InvalidArgumentException when the count or the unit cannot name a range
+     */
+    public function randomRelativeTimes(int $count, int $amount, string $unit): array
+    {
+        $units = ['minutes', 'hours', 'days', 'weeks', 'months'];
+        if ($amount < 1 || !in_array($unit, $units, true)) {
+            throw new InvalidArgumentException(
+                'Задайте диапазон случайного времени числом и единицей: минуты, часы, дни, недели или месяцы.',
+            );
+        }
+
+        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+
+        return $this->randomSortedTimes(
+            $count,
+            $now->getTimestamp(),
+            $now->modify('+' . $amount . ' ' . $unit)->getTimestamp(),
+        );
+    }
+
+    /**
+     * The throws themselves: one per part, then put in order, which is what
+     * lets every part draw a random moment inside the range while the sequence
+     * of the publication is never shuffled — an equal throw of two neighbours
+     * is allowed, since the rule is «не раньше», not «позже».
+     *
+     * @return string[] UTC timestamps in ascending order
+     */
+    private function randomSortedTimes(int $count, int $fromStamp, int $toStamp): array
+    {
+        $times = [];
+        for ($index = 0; $index < max(1, $count); $index++) {
+            $times[] = random_int($fromStamp, $toStamp);
+        }
+        sort($times);
+
+        return array_map(
+            static fn (int $stamp): string => gmdate('Y-m-d H:i:s', $stamp),
+            $times,
+        );
     }
 
     /**
