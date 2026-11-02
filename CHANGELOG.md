@@ -83,6 +83,19 @@ docker compose exec app php yii member-parser/scan [--from=...] [--to=...] [--li
 
 ## [Unreleased]
 
+### Планируется
+
+- Ревизия чисел, которые до сих пор держит код, а не настройки. Шаги постраничной читки в этот разбор уже переехали (`publicationPageSize`, `forumTopicsPageSize`, `forumPostsPageSize` в `PublicationSettingsService::SCHEMA`), а границы канала и служебные паузы — нет: `ChannelService::TEXT_MAX_LENGTH` (4096) и `CAPTION_MAX_LENGTH` (1024), `LinkButtons::MAX_BUTTONS` (10) и `MAX_ROWS` (2), `LinkButton::TEXT_MAX_LENGTH` (64) и `URL_MAX_LENGTH` (2048), `TempImageCleanup::MAX_AGE_SECONDS` (3600), `ForumHttpClient::MAX_REDIRECTS` (5), `ForumPostScanService::MAX_PAGES_PER_TOPIC` и `GalleryScanService::MAX_PAGES_PER_ALBUM` (10 000) и три числа `docker/php/php.ini` (`upload_max_filesize=30M`, `post_max_size=32M`, `max_file_uploads=60`). Переносимы в таблицу настроек только собственные числа проекта — возрастной лимит зачистки, ожидания HTTP и лимиты веб-сервера; числа Bot API остаются проверкой на записи, потому что переезд в настройки сделал бы из них обещание, которое канал не выполнит
+- Две страницы настроек сворачиваются в одну «Настройки»: сегодня у каждой свой пункт меню (`app/views/layouts/dashboard.php` — «Настройки публикаций» на `site/settings` и «Настройки парсера» на `site/parser-settings`), хотя правят они один и тот же портал
+- Поле «Дата и время публикации» двигается вперёд только после «Опубликовать» или «Сохранить»: сейчас его не трогает ни успешная отправка, ни очистка формы (`clearEditingState()`), поэтому вторая публикация подряд стартует с того же слота, который человек выставил для первой
+- У строки альбома есть переезд картинки в соседнюю часть (`data-move-album="-1|1"`), но нет стрелок порядка внутри своего альбома: очередь картинок задаётся только тем, в каком порядке строки заполнены
+
+## [1.0.0] - 2026-11-01
+
+Первая версия, где весь путь публикации собран в одном портале. Парсер держит топик и посты forum.awd.ru, блок «Форум» фильтрует их по картинкам, ссылкам, постам и статусу публикации, читает постранично прокруткой и одним нажатием кладёт тред в форму — целиком или по частям. Форма «Новая публикация» собрала то, чего ей не хватало, чтобы заменить канал руками: разбивку длинного текста на последовательные части (автоматом, по абзацам, строкам, предложениям, по каретке, слиянием и переносом выделения), альбом каждой части со своим порядком и своими файлами с компьютера, заголовок, который канал рисует жирным, метки редактора от поля текста до сообщения, кнопки-ссылки под сообщением и панель emoji с русским поиском. Очередь `telegram` уносит это в канал тремя задачами по cron'у — публикация, периодическая правка, периодическое удаление с soft-delete архивом — и зачисткой своего temp-каталога, а числовые границы всей этой машины читаются из двух страниц настроек, которые пришли на смену `.env` для чисел формы. Сами списки, блок «Форума» и состояние всякого переключателя страницы живут в сессии и зеркалятся в адрес, блоки обновляются по AJAX и не дёргаются, пока человек печатает, а портал назван TRVL и публикуется GitHub Actions по git-тегам. Между `v0.2.0` и этим релизом — 237 коммитов; подробный журнал этих ревизий лежит ниже и читается сверху вниз, от самых свежих записей.
+
+Подробных записей этого релиза — 151: они стоят в «Добавлено», «Изменено» и «Исправлено», и каждая называет миграцию, класс или метод, функцию страницы и маршрут, которыми то же самое делает код.
+
 ### Добавлено
 
 #### Две ручки переезда альбома взяли синий изображений, и весь серый набор — восемь имён outline-ручки — отвечает ему, а два заливаемых состояния держат белые чернила: ключ ряд, который клонируется вместе с частью, и скрипт о цвете не узнаёт ничего
@@ -1397,6 +1410,354 @@ docker compose exec app php yii member-parser/scan [--from=...] [--to=...] [--li
 - Ловушка, в которую проба наступила сама: первый скриншот не показал штриховки вовсе, а скан картинки через canvas насчитал ноль акцентных пикселей. Причина — не в правиле: `mutants.js` оставляет после себя `page.html`, собранный из мутированного вида, а `shot.html` был вырезан именно из него. Скан по картинке (canvas, фильтр `r > 200, 80 < g < 180, b < 140`, чтобы жёлтая рамка карточки `#ffc107` не сошлась за акцент) на чистой развёртке даёт 7714 пикселей с bounding box `x 33…429.5` — ровно border-box блока, — а драйвер теперь пересобирает чистый лист в конце своего прогона
 - Гейты: `php -l` по view чист; phpcs по `phpcs.xml.dist` на `views/site/publications.php` — ни одной находки; phpstan — те же четыре записи базового шума; JS правка не тронута, поэтому `node --check` по извлечённому nowdoc и весь набор `pubjs` прошли без изменений: 181 проверка `test.js`, 29 `previewtime`, 53 `paging`, 11 `heading`, 14 `albumswitch`, 16 `linksswitch`, 12 `session`, 23 `textorder`, плюс зелёные `preview`, `buttons`, `emoji`
 - Доки: README — пункт о рамке части в «Разбивка длинного текста на части» (с тем, что рамка стоит только блокам, которых в ящике несколько); PUBLICATIONS.md — предложение о рамке в «Usage from the Web UI» и абзац о пробе с её двумя ящиками и двенадцатью мутантами в «Testing»
+
+### Добавлено
+
+#### Блок «Форум»: последние топики с их постами и картинками легли на страницу публикаций
+
+- Топики и посты forum.awd.ru читаются из разобранных таблиц `{{%topic}}` и `{{%post}}` (миграции `m260828_000001_create_forum_parser_tables.php` и `m260906_000003_create_post_table.php`) методами `ForumRepository::latestTopicsWithPosts()`, `countTopics()` и `topicPosts()`; блок отдаётся парциалом `app/views/site/_block_forum.php` в контейнер `#pub-forum-list`, отдельный пост — `_item_reply.php`, топик — `_item_topic.php`
+- Ссылки на картинки вытаскивает `ForumPageDomParser::collectImageUrls()` — `data-src` у форума важнее `src`, — они ложатся в `post.image_urls` (`jsonb`, миграция `m260913_000014_add_image_urls_to_post.php`) и рисуются стопкой через `PublicationsUi::stackedImages()`
+- Весь блок отдаёт `SiteController::actionPublications()`, которому репозиторий форума приходит внедрением (`ForumRepositoryInterface`)
+
+#### Фильтры блока «Форум»: только с изображениями и только с привязанными постами
+
+- Параметры `withImages` и `withPosts` приходят в `site/publication-filter-save` (`SiteController::actionForumFilterSave()`), нормализуются в `SiteController::normalizeForumFilters()` и живут в сессии под ключом `forumFilters`
+- На стороне базы за них отвечают `ForumRepository::postImageFilterSql()` и ветки `$withImagesOnly`/`$withPostsOnly` в `topicFilterSql()` и `unprocessedPostFilterSql()`; присутствие поста проверяется `EXISTS (SELECT 1 FROM {{%post}} pp WHERE pp.topic_id = t.id)`
+- Контролы — тумблеры `forumFilterWithImages` («С изображениями») и `forumFilterWithPosts` («С привязанными постами») в блоке «Фильтры» той же страницы
+
+#### Фильтр по точному числу изображений и его ползунок
+
+- Параметр `imagesCount` (0 значит «не фильтровать») сравнивается в `postImageFilterSql()`/`topicFilterSql()` как `jsonb_array_length(image_urls) = n`
+- Контрол — `input type="range" class="form-range"` `forumFilterImagesCount` с числом-отсчётом `forumFilterImagesCountValue` (`∞` при нуле); пара ползунков заведена в наборе `countSliders`, значение уходит на сервер по `change` и `input`
+- Потолок ползунка и потолок, который принимает сервер, — один и тот же параметр настройки `imagesCountFilterMax` (100) из `PublicationSettingsService::SCHEMA`; `normalizeForumFilters()` отсекает всё, что выше, `min()`-ом
+
+#### Отметка «Просмотрено» у топика и поста
+
+- Отдельной колонки «просмотрено» нет: состояние держат таблицы соответствий `{{%publications_topic_map}}` и `{{%publications_post_map}}` — строка с пустым `telegram_id` и есть просмотренное, но ещё не опубликованное
+- Методы `ForumRepository::markTopicViewed()` и `markPostViewed()` вставляют строку соответствия, если её нет (`insertMapRowIfMissing()`), и убирают её, если галочку сняли
+- Маршрут `site/forum-viewed` (POST, параметры `forumEntityId` и `forumEntityType`), контрол — форма `PublicationsUi::viewedForm()` в `_item_topic.php` и `_item_reply.php`
+
+#### Статус публикации и telegram id у топика и поста, фильтр по ним
+
+- Те же таблицы соответствий (миграция `m260913_000013_create_publications_link_tables.php`) держат `telegram_id`, который в выборке отдаётся под именем `publication_telegram_id`; колонки с таким именем в базе нет
+- Статус считается `ForumRepository::publicationStatus()`: пустой или нулевой `telegram_id` — `viewed`, есть id — `published`; пишут id `storeTopicMapTelegramId()` и `storePostMapTelegramId()`, а дублик топика и его первого поста разносят `mirrorFirstPost()` и `mirrorTopicOfFirstPost()`
+- Фильтр «не обработанных» — ветка `ptm.topic_id IS NULL OR EXISTS (… NOT EXISTS publications_post_map …)` в `topicFilterSql()` и `unprocessedPostFilterSql()`; пилюли «Опубликовано»/«Просмотрено» и `TG: <id>` рисуют `_item_topic.php` и `_item_reply.php`
+
+#### Запись портала знает, какому посту форума она принадлежит
+
+- `ForumPublicationRef` — пара (тип сущности, её id), `PublicationForumLinkStoreInterface` с реализацией `CachePublicationForumLinkStore` держит связь публикации с постом или топиком; привязки стоят в `app/config/web.php`, `app/config/console.php` и конфигурации тестов
+- `PublicationsService::bindForumRef()` заводит связь при отправке, `moveForumLink()` переносит её вместе с записью между блоками, `dropForumLink()` снимает
+
+#### Фильтр «Форума» по числу ссылок
+
+- Колонки `topic.links_count` и `post.links_count` (миграция `m260930_000001_add_links_count_to_forum_tables.php`) заполнены на месте `regexp_count(content_text, 'https?://')`, а при разборе их считает `ForumRepository::linksCountOf()`
+- Параметры `withLinks` и `linksCount` читаются в `normalizeForumFilters()`, на базе отвечают `postLinkFilterSql()` и соответствующие ветки `topicFilterSql()`
+- Контролы — `forumFilterWithLinks` и ползунок `forumFilterLinksCount` с отсчётом `forumFilterLinksCountValue`; потолок — настройка `linksCountFilterMax`
+
+#### Пост с картинками уходит в канал альбомом
+
+- `PublicationsService::publishToTelegram()` отдаёт список ссылок `ChannelService::publishPhotos()`, одна картинка сворачивается в `publishPhoto()`, а группа уходит `NutgramChannelClient::sendPhotoGroupMessage()` через `sendMediaGroup` Bot API
+- Ссылки читаются из `image_urls` (`jsonb`) таблицы записи, а форме их передаёт `PublicationsUi::publishButton(...)` атрибутом `data-image-urls`, чтобы предпросмотр собирался из того же списка
+
+#### Картинки форума, которых нет на диске портала, скачиваются и уходят в канал локальным файлом
+
+- `PublicationsService::prepareImageUrlsForTelegram()` качает то, что не отдаётся с самого портала, `downloadImage()` пишет файл в `sys_get_temp_dir()` под именем `TempImageCleanup::PREFIX` + случайный хекс + расширение, которое угадывает `guessImageExtension()`
+- `NutgramChannelClient::isLocalFile()` оборачивает локальный путь в `InputFile`, поэтому Bot API получает файл, а не ссылку, которую канал мог не успеть взять
+- `TempImageCleanup` (`app/shared/Publications/Infrastructure/`) — тот же класс, что и зачистка `telegram/clean-temp`; её возраст — `MAX_AGE_SECONDS` 3600
+
+#### Очередь публикации: запланированное уходит в канал по cron'у
+
+- Точка входа — консольная команда `telegram/publish-due` (`TelegramController::actionPublishDue()`), зарегистрированная в `app/config/console.php`; она зовёт `PublicationsService::publishDue()`
+- Выборка `PublicationRepository::findDueForPublishing()` берёт `telegram_id IS NULL AND part_released = TRUE AND published_at <= :now ORDER BY id ASC`; колонку `part_released` принесли позже (`m261010_000001_add_publication_part_sequence.php`)
+- Расписание берётся из `TELEGRAM_PUBLISH_CRON_SCHEDULE` (по умолчанию `*/5 * * * *`) и в `docker-compose.yml`, и в `docker/php-cli/entrypoint.sh`, и в конструктор `PublicationSettingsService`
+- Полученный id пишет `PublicationRepository::storeTelegramId()`, а соответствия форуму — `PublicationsService::stampForumMapTelegramId()`
+
+#### Публикацию можно переоткрыть на редактирование, а старое её содержание остаётся в архиве
+
+- `site/publication-create` (`SiteController::actionPublicationCreate()`) принимает источник `new|post|draft|deleted` и действие `publish|draft` и отдаёт их `PublicationsService::saveFromForm()`
+- Архив правок — таблица `publications_edited` (миграция `m260911_000010_create_publications_edited.php`, `edited_at` nullable, индекс `idx_publications_edited_edited_at`), куда пишет `PublicationRepository::archiveEdited()`; переходы между черновиком, постом и архивом держат `insertPostWithHistory()`, `insertDraftWithHistory()`, `deletePost()`, `deleteDraft()`
+- Режим правки держит не форма, а ряд журнала: `setEditing()` (9724) снимает `.editing-badge` с прежнего ряда и вешает на новый, берёт из `data-*` этого ряда текст, заголовок, их метки, картинки и кнопки (`loadText()`, `fillImages()`, `fillButtons()`), ставит ряд в середину окна (`scrollToMiddle()`) и переносит в поля источник (`publicationSource`/`publicationSourceId`); `clearEditingState()` (9817) гасит его при очистке формы
+
+#### Черновику задают время публикации из модалки
+
+- Модаль `#scheduleModal` с формой `#scheduleForm`, полем `#scheduleAt` (`name="publicationAt"`) и скрытым источником уходит на `site/publication-schedule`
+- `PublicationsService::scheduleDraft()` снимает строку из `publications_draft` и ставит её в `publications_post` (`insertPostWithHistory()`), предварительно прогнав время через `normalizeDate()`; отдельной колонки планирования у черновика нет — время живёт в `published_at` поста
+
+#### Ручка «В черновики» у всякой записи списка
+
+- `site/publication-to-draft` (`SiteController::actionPublicationToDraft()`, 2605–2630) читает `publicationId` и `publicationSource`: `deleted` ведёт на `PublicationsService::moveDeletedToDraft()`, всё остальное — на `movePostToDraft()` (1584–1596); флеш отвечает словом «перемещена», а не «удалена», потому что строка не пропадает, а меняет таблицу
+- `movePostToDraft()` убирает ряд из `publications_post` (`PublicationRepository::deletePost()`), ставит его в `publications_draft` (`insertDraftWithHistory()`), переносит привязку к форуму (`moveForumLink()`) и у записи с `telegram_id` заводит квитанцию на удаление сообщения (`insertChannelDeletionTicket()`, 490) — из канала её выносит очередь `telegram/delete-due`, а не нажатие ручки
+- Ответом идёт `partId` с новым id строки: переехавшая запись занимает другой ряд, и следующая ручка части не должна спрашивать тот, которого уже нет
+- Тот же путь у удалённой записи: `publishDeleted()` (1611) ставит её в посты немедленно с сохранённым `created_at` и со снятым `telegram_id` — новое сообщение канала получит свой id, `scheduleDeleted()` (1641) — с временем из модалки
+
+#### Удалённая запись возвращается вперёд своими ручками
+
+- Список удалённых — четвёртый блок страницы (`_block_deleted.php`, ряды `_item_deleted.php`); его читает `PublicationsService::deleted($limit, $offset, $oldestFirst)` (86), который отдаёт `PublicationRepository::allDeleted()` (413), а общее число рядов для счётчика прокрутки — `countDeleted()` через `listTotals()` (95), где сразу три ответа: `posts`, `drafts`, `deleted`
+- «Опубликовать» у удалённой записи (`publishDeleted()`, 1611) берёт её `deleteDeleted()` (440) — метод репозитория, который достаёт ряд и убирает его из архива одним движением, — и кладёт в посты через `insertPostWithHistory()` с `telegram_id = null`; «Запланировать» (`scheduleDeleted()`, 1641) делает то же с временем из модалки, а «В черновики» (`moveDeletedToDraft()`, 1674) — с `published_at`, оставленным пустым
+- Во всех трёх переходах привязка к форуму едет вместе с записью (`moveForumLink($from, $to)`), иначе ряд «Форума» потерял бы свою публикацию на переезде
+- Чего эти ручки не делают: не возвращают прежнему сообщению канала его id — он остаётся у архива, и запись, вернувшаяся вперёд, уходит в канал заново
+
+#### Время портала пишется и читается в UTC, а на экран выходит по поясу читателя
+
+- Всё, что пишет время, берёт `gmdate('Y-m-d H:i:s')`: `$now` в `SiteController` (881 — в ряды списков, 1649 — в страницу прокрутки), `PublicationSettingsService::saveMany()` (448), `ParserSettingsService::saveParserSettings()` (204) и `$now` в миграциях; база потому хранит один часовой пояс, и переезд сервера в другой пояс ничего не сдвигает
+- Ряду списка время отдаётся отдельным атрибутом (`data-utc`, `data-published-at-utc`), а `renderUtcTimes()` (3532) переводит его на экран через `utcToPickerValue()` (3545); вызов стоит и при первой раскладке страницы (10303), и после всякой AJAX-перерисовки блока (3602), и после догрузки ряда (3768) — иначе новый ряд показал бы UTC-строку как местное время
+- Пояс для чтения — `SiteController::getUserDisplayTimezone()` (2810): cookie `portal_tz`, проверенная `new DateTimeZone(...)` (2815), и `UTC`, если cookie нет или её значение не разбирается; `PublicationsService::detectUserTimezone()` (1908) читает ту же cookie и держит ответ в `static`, чтобы не строить объект пояса на каждую запись
+- Время публикации форма отправляет своим поясом: `publicationTz` рядом с `publicationAt` (`actionPublicationCreate()`, 1861; `actionPublicationSchedule()`, 2644), а `normalizeDate()` (1846) переводит его в UTC перед записью
+
+#### Пояс читателя берётся из его браузера и живёт в cookie целый год
+
+- `app/views/layouts/dashboard.php` (78–131) пишет `portal_tz` до всякого рендера: `getBrowserTimezone()` (84) спрашивает `Intl.DateTimeFormat().resolvedOptions().timeZone`, найденное значение проверяется `new Date().toLocaleString('en', {timeZone: …})` (109) — cookie, оставшаяся от прежнего браузера с выдуманным поясом, перечитывается, а не доверяется, — и `writeCookie(..., 365)` (114) ставит его на год с `path=/` и `SameSite=Lax`
+- Кроме cookie та же строка оставляет `window.portalUserTimezone` (117) и функцию `getPortalTimezone()` (120), которая думает о том же на случай, если cookie не записалась; страница публикаций отдаёт это значение в `publicationTz` при отправке и планировании
+- Ни одна ручка страницы пояс не переключает: это не настройка портала, а то, как браузер сам видит машину, поэтому на страницах настроек его поля нет
+
+#### Фильтры блока «Форум» помнят себя в сессии и показывают себя в адресе
+
+- Пять фильтров (`withImages`, `withPosts`, `imagesCount`, `withLinks`, `linksCount`) живут сессией ключом `forumFilters` (`SiteController::forumFilters()`, 529), а `normalizeForumFilters()` (389) приводит их к виду «строка `1` или нет» и отсекает числа по `min()` потолками настроек `imagesCountFilterMax` и `linksCountFilterMax` — число, присланное руками, не рисует выборку, которой база не ответит
+- Ссылка адресует то же, что и сессия: `syncForumFilters()` (372) берёт из адреса `GET`-параметры только когда сессия их не держит, `hasActiveForumFilter()` (408) решает, показывать ли пилюлю сброса, `forumFilterUrl()` (423) собирает из сессии фильтр-половину адреса, а `publicationsUrl()` (454) вставляет её в каждую ссылку страницы
+- Два глагола пишут сессию и отвечают адресом: `site/forum-filter-save` (`actionForumFilterSave()`, 952) и `site/forum-filter-clear` (`actionForumFilterClear()`, 975, `session->remove('forumFilters')`), а `viewStateDisagreesWithSession()` (350) сторожит случай, когда человек вернулся по ссылке, чей фильтр уже не тот, что в сессии
+- Тот же порядок — сессия плюс зеркало в адресе — у пяти переключателей формы (`titleFromFirstLine`, `linksToButtons`, `albumRows`, `partsPublication`, `distributeImages`) и у двух порядков (`publicationsSort`, `forumTextOrder`); состояние страницы не хранится в localStorage и не уезжает в базу
+
+#### Четыре блока страницы читаются постранично прокруткой
+
+- `site/publication-page` (`actionPublicationPage()`, 1638–1663) принимает `block` и `offset`, отдаёт `renderPartial()` одного ряда на каждую строку страницы и отвечает `{ok, block, offset, total, html}`; `offset` в ответе — уже пройденный, `offset + count($records)`, чтобы прокрутка не повторила ряд и не пропустила его
+- Каким рядом и чем считается блок, решает `publicationPage()` (1675): `posts` → `_item_post` + `posts()`, `drafts` → `_item_draft` + `drafts()`, `deleted` → `_item_deleted` + `deleted()`, `forum` → `_item_topic` + `latestTopicsWithPosts()`; незнакомое имя блока отвечает `null`, и запрос на него разворачивается на страницу — так проверка ключа блока не отдельный код, а следствие выборки
+- Размер страницы читается из настроек, а не из кода: `publicationPageSize`, `forumTopicsPageSize`, `forumPostsPageSize` (`PublicationSettingsService::SCHEMA`); общий потолок списка — `total` из `countPosts()`/`countDrafts()`/`countDeleted()`/`countTopics()`
+- У блока «Форум» две прокрутки: список топиков идёт тем же `publication-page`, а посты одного топика — `site/forum-post-page` (`actionForumPostPage()`, 1722–…), который дописывает ряды под уже открытым обсуждением; его `offset` стартует с того, где кончилась страница топика, потому что топик приходит на страницу со своей страницей постов
+- На странице за прокрутку отвечают `pagingState` (3697), `loadNextPage()` (3753) и `loadNextReplies()` (3790); поведение проверено живьём и своими тестами — см. запись «Бесконечная прогрузка трёх списков проверена живьём и получила свои тесты»
+
+#### Всякий список и всякий тред читаются от старых к новым
+
+- Порядок каждого блока — сессия ключом `publicationsSort` (`publicationsSort()`, 552), где четыре независимых ответа: `posts`, `drafts`, `deleted` и пара форума (`forumTopics`, `forumPosts`); набор блоков, которым порядок задаётся, перечислен в `PUBLICATIONS_SORT_BLOCKS` (45), и новый блок не получит переключатель, пока не вписан туда
+- На базе порядок собирает `PublicationRepository::order($column, $oldestFirst)` (773) — тот же SQL на трёх таблицах, где направление задаёт один флаг, а не отдельная ветка; у форума `ForumRepository::latestTopicsWithPosts()` и `topicPosts()` принимают `oldestFirst` теми же словами
+- Сортировка по длине текста у топиков — отдельная настройка (`forumTextOrder()`, 597, глагол `site/forum-text-order-save`, маршрут `forum-text-order-save`), её колонка `topic.text_length` принесена миграцией `m261001_000001_add_text_length_to_topic.php`
+- Перевёрнутый список переворачивает выборку, а не её показ: окно `LIMIT`/`OFFSET` берёт строки с другого конца, поэтому прокрутка продолжает тот же порядок, а не догоняет его
+
+#### Блоки страницы перерисовываются ответом сервера, а не перезагрузкой страницы
+
+- Всякий POST страницы отвечает адресом (`finishPublicationsRequest()`), а страница по нему перерисовывает только те блоки, которые названы: `applyBlocks()` (3585) вставляет пришедший HTML в контейнеры, `postForBlocks()` (3652) собирает запрос и говорит, какие блоки брать, `postForJson()` (3613) ждёт JSON, а `mirrorUrl()` (3646) подставляет в адрес строку, которую вернул сервер
+- Контейнеры блоков — `#pub-forum-list` (1046) и три списка записей; парциалы `_block_posts.php`, `_block_drafts.php`, `_block_deleted.php`, `_block_forum.php` отдаются и целой страницей, и одним блоком, поэтому второй раз разметку писать не нужно
+- Ручки ряда (`PublicationsUi::publishForm()`, `toDraftForm()`, `scheduleButton()`, `deleteForm()`, `viewedForm()`) отправляются тем же путём, и после ответа сервера ряд остаётся на своём месте: страница не прыгает вверх, а форма, которую человек заполняет, не перезаписывается — перерисовку рядов блок получает только когда его самих касаются
+- Проверка «это AJAX» стоит на самих глаголах (`$this->request->getIsAjax()`, 1644, 1727): запрос без этого заголовка разворачивается на `/publications`, а не отдаёт голый JSON
+
+#### Каждому действию портала — свой короткий адрес
+
+- `app/config/web.php` (132–177): `enablePrettyUrl` плюс `showScriptName => false`, и 35 плоских правил в `urlManager` (141–175), из которых 29 ведут на глаголы портала публикаций — от `publications` и `settings` до `heading-number-template-save` и `forum-thread`
+- Адрес действия совпадает с именем глагола и читается без подсказки: `site/publication-part-group` — единственное исключение, для него отдельного правила нет, и он доезжает до страницы по форме `<controller>/<action>`; об этом сказано в комментарии самого файла (136–139), который перечисляет то, что осталось на форме по умолчанию (`/gii`, `/debug`, `site/error`)
+- Правило читается по порядку, поэтому `'' => 'site/index'` стоит первым; порядок правил не настраивается — он записан в файле, и новый глагол добавляет строку сюда, а не полагается на маршрут по имени
+- До этого все ссылки строились как `?r=site%2F…`, поэтому адрес фильтра или сортировки, который страница зеркалит в строку браузера, был нечитаем и не переносим в закладку
+
+#### Длинный текст разбивается на последовательные части
+
+- Ряды частей живут в `#publicationTextParts`; шаблон ряда (`partTemplate`) клонируется, поэтому новый ряд приходит со своим полем текста (`publicationText[]`, 1219 — скрытая mirror-строка, в которую редактор пишет), своим заголовком (`publicationPartTitle<N>`, 7178), своими метками (`publicationFormatting[]`, 1223), своим рядом альбома (`publicationPartImages[]` 1252, `publicationPartImageFiles0[]` 1321), своими кнопками (`publicationPartButtonText0[]` 1413, `publicationPartButtonUrl0[]` 1422) и своим слотом времени (`publicationPartSlot[]`, 1212)
+- Что делить и как, решает страница: `splitIntoParts()` (6881) режет одно поле по каретке или посередине, `setTextParts()` (7129) раскладывает готовый набор частей по рядам, `splitPartAt(index)` (7657) отдаёт место реза, а ряды шва между частями несут свои ручки (`.publication-seam-split-btn` 1524, `.publication-add-part-btn` 1529/1550, `.publication-merge-btn` 1534)
+- На сервер части приходят одним запросом (`publication-create`) и ложатся одним рядом строк: `PublicationsService::saveParts()` (325) → `PublicationRepository::insertParts()` (546), где `part_group_id` и `part_order` пишутся рядом (574–575). Колонки принесла миграция `m261010_000001_add_publication_part_sequence.php` вместе с `part_released` и индексом `idx_publications_post_part_sequence`
+- `part_group_id` — это то, чем группа частей отличается от набора отдельных записей: по нему блок «Форум» и списки показывают бейдж принадлежности, форма собирает группу назад (`fillGroupParts()`, `site/publication-part-group`), а `part_released` говорит, ушла ли уже эта часть в канал — выборка очереди берёт только `part_released = TRUE`
+- Разность времени между соседними частями задаёт настройка `partsOffsetMinutes` (`PublicationsService::partsOffsetMinutes()`, 1899), поэтому «опубликовать частями» не выкладывает их в одну секунду
+- Состояние тумблера «Публиковать части отдельно» живёт сессией `partsPublication` (1096), а группа и место части уезжают вместе с ней: миграция `m261017_000001_keep_part_state_outside_posts.php` дописала `part_group_id`, `part_order` и `part_released` трём таблицам, где часть может лежать вне списка постов (`publications_draft`, `publications_deleted`, `publications_edited`), — до неё часть, уехавшая в черновики, приходила туда без группы и возвращалась без соседей
+
+#### Три способа разбить весь текст сразу
+
+- Ряд `#publicationSplitModes` (1558) несёт три ручки `data-split-whole` — `paragraphs` (1570), `lines` (1574), `sentences` (1578), — и каждая называет своё правило в подсказке: пустая строка начинает новую часть, перенос строки делает частью каждую строку, а `.`, `!`, `?` и `…` начинают часть по концам предложений
+- Три способа считаются одной функцией: `splitWholeText()` (7779) спрашивает границы у `wholeTextCuts()` (7747), а режет по кускам `piecesAt()` (7759); режим — единственный аргумент, поэтому добавление четвёртого способа не добавляет ни обработчика, ни переноса состояния
+- Ручки стоят у правого края ряда, а «Разделить» одной частью прижата к левому (`me-auto`, 1566): край куплен автостилем кнопки, а не классом ряда, — классная строка ряда является якорем набора проверок, и то, что она объявляет, всё ещё нужно
+- Разбиение по абзацам с форума — не четвёртая ручка: подстановка треда считает части сама (`fillFormFromThread()`), а тумблер раздачи изображений режет при подстановке и при всякой смене числа частей — см. запись «Тумблер раздачи изображений между частями стал режимом»
+
+#### Деление по каретке привязано к границе рядом
+
+- `manualCut()` (7575) режет часть там, где каретка, а без каретки — примерно посередине поля; до реза `splitPartAtCaret()` (7642) отдаёт место `snapCut()` (7556), который ищет границу внутри окна вокруг каретки
+- Окно привязки — настройка `splitSnapRangeChars` (600, `PublicationSettingsService::SCHEMA` 177), которая приходит на страницу числом `__SNAP_RANGE` (2425): рез, который в окне не нашёл границы, остаётся ровно там, где был курсор
+- Меток редактора деление не теряет: `splitEntitiesAt()` (2542) режет метку пополам, `exciseEntities()` (2551) вырезает то, что попало в новый ряд, `remapEntities()` (2563) переставляет смещения на начало куска, поэтому перенос выделенного и деление одним и тем же кодом пользуются
+- Ряд шва между двумя частями режет ту, что над ним (`.publication-seam-split-btn`, 1524), а нижняя `#publicationSplitPart` — свою; об этом и о гашении ручки на неразрезаемом тексте сказано в записи «Ряд шва между двумя частями получил свою кнопку «Разделить»»
+
+#### Части сливаются обратно в одно поле
+
+- Ряд `.publication-merge-row` (1522) несёт ручку «Объединить» (`.publication-merge-btn`, 1534) у каждой пары швов, а ряды, которым сливать нечего, гасит `updateMergeRows()` (6981); сама строчка скрыта до первого деления
+- Слияние делает `mergeParts()` (7838) — склейка двух соседних частей в один текст — и `joinParts()` (7806), когда частей больше двух; после склейки `setTextParts()` (7129) перестраивает список, а счётчик номера части пересчитывается заново, поэтому «Часть 3» не остаётся у ряда, ставшего вторым
+- «Объединить» стоит между рамками частей, а не внутри рамки (записи «Ряд «Объединить» вышел из рамки части и встал между частями», ««Объединить» перешла в зелёный»), и её ручка живёт в зелёном блоке разбивки — тот же набор, что и ряды очереди
+- В базу слияние уходит тем же `publication-create`: части, оставшиеся после склейки, — это тот же `saveParts()` с другим числом строк, а снятые ряды группы больше не выбираются, потому что их в списке нет
+
+#### Выделенный текст переезжает в соседнюю часть
+
+- Над полем части появляется поповер `#publicationSelectionActions` (2133) с парой ручек в одной группе (`btn-group`): `#publicationMovePrevPart` несёт выделенное в конец предыдущей части, `#publicationMoveNextPart` — в начало следующей, о чём говорят их подсказки (2136, 2140); показывает его `showSelectionActions(field)` (8251)
+- Перенос делает `moveSelectedText(forward)` (8285), а саму перестановку текста и его меток в двух рядах — `shiftSelectedText(values, formats, index, from, to, forward)` (8100): кусок снимается с одного поля и вставляется в другое, метки едут с ним, а не теряются
+- В ряду, где такие же слова уже есть, кусок не дублируется, а склеивается: перенос вперёд и назад собирает новый текст через `joinParts()` (7806, вызовы 8152–8153), поэтому порядок «перед существующим» и «после существующего» остаётся тем, что обещает подсказка
+- На краю списка ручка не гаснет, а снимается, и рисует её тот же `selection-change`, что приносит выделение, — это записано отдельной записью «У поповера переноса на краю списка частей ручка снята, а не погашена»
+
+#### Раздача изображений между частями собрана в один тумблер
+
+- Тумблер `#publicationDistributeImages` (1733) стоит в ряду разбивки, его состояние живёт сессией ключом `distributeImages` (`SiteController::distributeImages()`, 1144, `normalizeDistributeImages()`), а глагол `site/distribute-images-save` (`__DISTRIBUTE_IMAGES_URL`, 4074) пишет сессию и отвечает адресом, который страница подставляет через `mirrorUrl`
+- Раздачу считает `groupImages(urls, partCount)` (8659): список ссылок делится между частями по порядку, `distributeImages()` (8865) раскладывает куски по полям альбома, а `redistributeOnPartCount()` (8896) перераздаёт всё заново, когда частей стало больше или меньше, — иначе деление текста оставляло бы альбом целиком у первой части
+- Раздача не трогает то, что человек положил в поле руками: `writeImages(index, raw, fromFill)` (8810) различает запись от раздачи и запись от перерисовки ряда, поэтому переразложение не затирает ряд, который уже правят
+- Тем же тумблером держится и режим, который режет сам — при подстановке с форума и при всякой смене числа частей; это записано отдельной записью «Тумблер раздачи изображений между частями стал режимом», а синей рамкой ряд одет записью «Рамки, в которых лежат изображения, и ряд их раздачи обведены синей линией темы»
+
+#### Тред форума ложится в форму целиком и по частям
+
+- У топика в блоке «Форум» две ручки (`PublicationsUi::threadButtons($topicId)`, 106): «Тред целиком» кладёт обсуждение в одно поле, «Тред по частям» — каждый пост в свою часть. Обе идут на `site/forum-thread` (`__THREAD_URL`), где `fillFormFromThread(btn)` (10071) спрашивает сервер и разбирает ответ
+- `SiteController::actionForumThread()` (1768–1791) читает `topic` POST-параметром, берёт посты `ForumRepository::topicThread($topicId, $sorts['forumPosts'])` (590) — в том порядке, который сейчас стоит в сессии для постов форума, — и отвечает `{ok, topic, posts: [{text, images}]}`; запрос без признака AJAX разворачивается на страницу
+- Картинки каждого поста едут в альбом той части, куда лёг этот пост: `publicationPartImages[]` (1252) принимает ссылки, `publicationPartImageOrder[]` (1310) — порядок, а `publicationPartImageFiles0[]` (1321) остаётся для файлов, которые человек берёт с диска
+- Порядок постов тред приносит тот же, что показывает блок, поэтому «сначала старые» переворачивает и части; подстановка не называет себя редактированием — `setEditing()` при ней не вызывается, и ряд журнала не помечается как правимый
+
+#### В альбом формы берут файлы с компьютера
+
+- Коммит `dc18c66` (2026-09-26) принёс в общий альбом `#publicationImageFiles` (`input type="file" accept="image/*" multiple`, 1947–1948), а разбивке — своё поле у каждой части (`#publicationPartImageFiles`, `publicationPartImageFiles0[]`, 1320–1322); ряд части закрыт, пока блок не надет в режим, и открывается той же проводкой, что и остальные его поля
+- На странице выбранные файлы собирает `acceptPickedFiles(target)` (8773), а их ссылки кладёт в поле `writeImages()` (8810) — тот же путь, чем раздача и загрузка записи, поэтому предпросмотр, порядок и мёртвые ссылки видят файлы так же, как ссылки с форума
+- На сервере три шага: `withUploadedImages()` (2311) превращает группы ссылок в те, что легли на диск портала, `validatedUpload()` (2365) проверяет тип по `UPLOAD_IMAGE_TYPES` (65) и размер по настройкам `imageUploadMaxMb` и `imageUploadLimit` (SCHEMA 150, 159), `storeUpload()` (2393) пишет файл в `UPLOAD_DIR` — `uploads/publications` (58)
+- Просьба «уменьшите файлы» отвечает до разбора формы: PHP выбрасывает тело больше `post_max_size`, и ни поля, ни файлы до приложения не доходят, поэтому `actionPublicationCreate()` (1841–1850) сверяет `CONTENT_LENGTH` с пустым телом и говорит об этом прямо, а не отправляет публикацию с пустым текстом
+
+#### Мёртвая ссылка на картинку видна до отправки
+
+- `probeImage(url)` (8700–8724) проверяет ссылку настоящим `Image()`: `onload` — жива, `onerror` — мертва, а если ответ не пришёл вовсе, истёкший `setTimeout` с `__IMAGE_PROBE_TIMEOUT` (2424, настройка `imageProbeTimeoutMs`, в SCHEMA 132, 6000 мс) отвечает «жива»: не ответившую за шесть секунд ссылку нельзя объявить мёртвой
+- Проба одна на запись обещает `albumWrites` (8698) — счётчик перестановок списка у каждого места альбома: ответ пробы, пришедший после того, как ряд переписали, не должен показывать то, чего уже нет
+- Результат показывает `renderNotice(notice, deadUrls)` (8729): пустой список гасит `.publication-images-notice` (1339), непустой собирает в её `.publication-notice-text` — текст пишется в держатель, а не в саму коробку, потому что вместе с текстом коробка теряла бы свой крестик
+- `groupImages()` (8659) считает мёртвые ссылки до раздачи по частям, иначе кусок раздачи спрятал бы битую ссылку в ряд, где её никто не видит
+
+#### Числа машины переехали на две страницы настроек
+
+- Коммит `eb9d7d2` (2026-09-25) дал порталу `site/settings` + `site/settings-save` (`actionSettings()` 228, `actionSettingsSave()` 256) и `site/parser-settings` + `site/parser-settings-save` (277, 292) с вьюхами `app/views/site/settings.php` и `parser-settings.php`; у каждой страницы свой пункт меню в `app/views/layouts/dashboard.php`
+- Числа публикаций описаны схемой `PublicationSettingsService::SCHEMA` (77) — 17 настроек от `publicationPageSize`, `forumTopicsPageSize`, `forumPostsPageSize` и `scrollEdgePx` до `splitSnapRangeChars`, `imagesCountFilterMax`, `linksCountFilterMax`, `partsOffsetMinutes`, `blockOrderDefault` и `dateFormat`; лежат в таблице `publications_setting(code, value, updated_at)` (миграция `m260925_000001_create_publications_setting.php`), пишет `save()` (412) через `saveMany(..., gmdate('Y-m-d H:i:s'))` (448)
+- Числа парсера описаны `ParserSettingsService::BOUNDS` (41) — восемь ключей (`http_timeout`, `http_retries`, `http_delay_microseconds`, `http_max_redirects`, `max_pages`, `http_banned_statuses`, `login_url`, `source_timezone`), — лёгших в `{{%parser_config}}` колонками той же величины (миграция `m260925_000002_add_parser_tunables_to_parser_config.php`); `tunables()` (93) отдаёт их, `rows()` (119) — границы диапазонов для формы, `bannedStatuses()` (142) разбирает список статусов, `save()` (155) прогоняет присланное через `ranges()` (214)
+- `.env` после переезда держит доступы и расписания — 17 переменных в `.env.example`, от `POSTGRES_PASSWORD` и `TELEGRAM_BOT_TOKEN` до четырёх `*_CRON_SCHEDULE`, — и больше не держит ни одного числа формы; то, что осталось в коде, названо в «Планируется» этого релиза
+- Числа, которые канал обещает сам, на страницы не переехали: `$textLimit` вьюхи (44) читает `ChannelService::TEXT_MAX_LENGTH` (4096), `$buttonLimit` (47) — `LinkButtons::MAX_BUTTONS` (10), и ряд «Форума» показывает «до N символов на часть» (2153) ровно этим числом
+
+#### Метки редактора доезжают до канала
+
+- Редактор отдаёт операции Quill, а `entitiesFromOps(ops)` (2974) собирает из них метки: `makeEntity(type, offset, length, url)` (2481) строит одну, `ENTITY_ORDER` (2467) задаёт порядок, в котором метки уходят серверу и обратно, — один и тот же на странице, в репозитории и в Bot API
+- Шесть типов — `MessageEntities::TYPES = ['bold', 'italic', 'underline', 'strikethrough', 'code', 'text_link']` (19), а смещения и длины считаются в кодовых единицах UTF-16 (`MessageEntities::utf16Length()`, 241), потому что так их считает Telegram: эмодзи и кириллица иначе сдвинули бы каждую метку после себя
+- Носитель — колонка `formatting` (`jsonb`, `NOT NULL DEFAULT '[]'`) во всех четырёх таблицах записей: `publications_post`, `publications_draft`, `publications_deleted`, `publications_edited` — миграция `m260926_000001_add_formatting_to_publications.php`; её читают `MessageEntities::fromStored()` (66) и `fromArray()` (37)
+- Метки живут при всякой перестановке текста: `splitEntitiesAt()` (2542) режет метку пополам, `exciseEntities()` (2551) вырезает то, что ушло в новый ряд, `remapEntities()` (2563) переставляет смещения на начало куска, `slice()` (102) берёт метки куска при переносе выделения, а `joinFormats()` (2594) и `formatsOfParts()` (2950) склеивают их при слиянии частей и при делении целого текста
+- На выходе `PublicationData::messageEntities()` (175) отдаёт набор для сообщения, `NutgramChannelClient::toMessageEntities()` (268) превращает его в параметр `entities` для `sendMessage` (77) и в `caption_entities` для `sendPhoto` (103), а `assertFitsText()` (210) не даёт метке выехать за границу текста — набор, который не влезает, отвергается до отправки
+
+#### Ссылку ставят в редакторе, а адрес в тексте сам ею становится
+
+- Ручка «Ссылка» тулбара открывает модалку (`openLinkDialog(field)`, 4829; `showLinkModal(show)`, 4822 на `bootstrap.Modal.getOrCreateInstance`), где `linkAddressInput` принимает адрес, а `linkRemoveButton` показывается только у выделения, которое уже ссылкой является (4854)
+- Выделение берут у редактора, а не у документа: без выделения ищется ссылка, внутри которой каретка (`enclosingLink(field, at)`, 4791), и если ничего не найдено, страница отвечает флешем «Выделите текст, который станет ссылкой» (4845) вместо молчаливой модалки
+- Написанное уходит меткой `text_link`: `writeLinkOfSelection(address)` (4859) вызывает `formatText(start, length, 'link', address, 'user')` (4867) — с источником `user`, чтобы редактор сам поднял `selection-change` и страница перерисовала предпросмотр, — и возвращает выделение на то же место (4868)
+- Голый адрес становится ссылкой сам: `linkifyEditor(field)` (4743) и `linkifyParts()` (4773) проходят по тексту и ставят метку там, где нашли адрес, `linkAddressOf(raw)` (4809) приводит его к каноничному виду, `findLinks()` (3044) собирает адреса — тем же списком пользуется подпись кнопки-ссылки
+
+#### Под сообщением встаёт одна кнопка-ссылка
+
+- Колонка `button` (`jsonb`, `NOT NULL DEFAULT '{}'`) в тех же четырёх таблицах — миграция `m260927_000001_add_button_to_publications.php`; её читают `LinkButton::fromArray()` (38) и `fromStored()` (51)
+- Два предела у самой кнопки, и оба приходят из Bot API, а не из настроек: `LinkButton::TEXT_MAX_LENGTH` (64) и `URL_MAX_LENGTH` (2048) — строки 21–22, проверка `assertValid()` (90); `maxlength="2048"` стоит и на поле страницы (1422), чтобы отказ стал виден до отправки
+- Поля формы — `publicationButtonText[]` (2048) и `publicationButtonUrl[]` (2056) у общего блока и `publicationPartButtonText0[]`/`publicationPartButtonUrl0[]` (1413, 1422) у части; на сервере их берёт `publicationButtonsFromRequest()` (2015–2026) через `partRowGroupsFromRequest()` и собирает `LinkButtons::fromPairs($texts, $urls)`
+- Подпись кнопке страница даёт сама, когда человек её не назвал: `buttonLabelOf(address, bound)` (3099) берёт слово из адреса и обрезает его по тот же `TEXT_MAX_LENGTH`
+- В канал кнопка уходит `reply_markup`: `NutgramChannelClient::toKeyboard()` (241) строит `InlineKeyboardMarkup` с `InlineKeyboardButton` (импорты 19–20), а у альбома клавиатура доклеивается к первому сообщению группы отдельным запросом — `sendMediaGroup` клавиатуры не принимает (комментарий 111–115)
+
+#### Кнопок-ссылок стало несколько, и ложатся они в два ряда
+
+- `LinkButtons` (app/shared/Telegram/Dto/) держит два числа: `MAX_BUTTONS` 10 (23) — сколько кнопок у сообщения, `MAX_ROWS` 2 (31) — сколько рядов; `fromPairs($texts, $urls)` (55) собирает набор из параллельных списков, `rows()` (131) раскладывает его по рядам и растит ряд вниз: две кнопки встают в один, три — одна над парой, поэтому порядок, который видит человек, — это и есть порядок на экране канала
+- Ряды рисует страница и переставляет их руками: `addButtonRow` (6477), `removeButtonRow` (6486), `moveButtonRow` (6503), `updateButtonRows` (6526) с `readButtonRow` (6393), `buttonsOf` (6409) и `readButtonGroups` (6541); потолок ряда берётся из `__BUTTON_LIMIT` (2418) — то же `LinkButtons::MAX_BUTTONS`, что принес `$buttonLimit` вьюхи (47)
+- Надписи кнопок живут редакторами того же вида, что поле текста (`mountButtonLabelEditors` 6440, `writeButtons` 6455), а имя ряда переставляет `nameButtonRows` (6420) и `applyButtonNames` (6578), чтобы клонированный ряд части не унаследовал чужое имя поля
+- У набора кнопок есть своё состояние — тумблер «Свои кнопки-ссылки у каждой части» (сессия `buttonsPerPart`, 1196) с коробкой, рамкой и проводкой, записанные отдельными записями; вместе с кнопками тем же коммитом пришёл и фильтр «Форума» по числу ссылок, о котором сказано выше
+
+#### У части появился заголовок, который канал рисует жирным
+
+- Колонка `title` (`text NOT NULL DEFAULT ''`) в четырёх таблицах записей — миграция `m260928_000001_add_title_to_publications.php`; пустой заголовок ничего в сообщение не добавляет, поэтому правка не трогает записи, где его не заполняли
+- Поле страницы — `#publicationTitleInput` (`name="publicationTitle"`, 1186, метка 1157) у общего блока и `publicationPartTitle<N>` (7178) у каждой части; на сервере их собирает `publicationTitlesFromRequest()` (2028–…), где ряд части даёт свой заголовок, а общее поле — заголовок первой части
+- В сообщении заголовок отделён от тела `HEADING_GAP = "\n\n"` (`PublicationData`, 36), а делит запись `headingAndBody()` (194) — туда же смотрит и предпросмотр блока, и `splitHeader()` (217), который поднимает первую строку, когда своего заголовка нет
+- Жирным его рисует канал, а не слова: над заголовком встаёт метка `bold` из набора, который отдаёт `messageEntities()` (175), поэтому предпросмотр портала и сообщение канала показывают одно и то же
+- Дальше заголовок стал редактором со своими метками и своей рамкой — это записано отдельными записями «Поле «Заголовок» стало редактором того же вида, что поле текста» и «Заголовок получил свою рамку цвета info и четыре чебокса»
+
+#### Панель emoji с русским поиском
+
+- Таблица эмодзи лежит в `app/web/ui-kit/assets/vendor/emoji/trvl-emoji.js` (приносится `PublicationEditorAsset`): 1921 эмодзи в порядке UTS #51 `emoji-test.txt`, где `g` — категории, а `d` — по одной строке на эмодзи (сам символ, индекс категории, имя и слова поиска). Подписи — русские аннотации CLDR, и таблица, и аннотации стоят под Unicode License v3, о чём говорит файл лицензии рядом
+- Страница читает её функциями, а не текстом файла: `readEmojiTable(table)` (3134) разворачивает строки, `emojiCategories(list)` (3246) режет на вкладки, `emojiSearch(query, list, limit)` (3192) ищет по словам и имени, `emojiKey(...)` (3176) держит ключ повтора
+- `emojiSupported(list, measure, single, missing)` (3160) отмеряет, что шрифт машины рисует, и отсекает остальное, `wholeCharacter(text, at)` (3301) не даёт вставить половинку суррогатной пары — иначе два клика по несуществующему глифу оставили бы в тексте мусор, который канал не примет
+- Поиск и выбор идут у канала тем же порядком, что панель: ручка emoji встаёт в тулбар редактора одной линией с остальными, а одета в поповер и лишена неотрисовываемых глифов записями «Панель emoji одета в rich popover», «Панель emoji не показывает то, чего шрифт машины не рисует» и «Иконка emoji на панели инструментов встаёт на одну линию с остальными»
+
+### Изменено
+
+#### Списки записей сошли с таблицы на ленту
+
+- `a671841` (2026-09-10, `+82/−79` в одной вьюхе) снял `<table class="table table-hover">` с пятью колонками — «ID в Telegram», «Изображения», «Текст», «Время публикации», «Статус» — и положил на его место строки `.activity-log` внутри `div.scroll350`: те же сведения ряд несёт шапкой с ручками, текстом, картинками и бейджами, но читается журналом сверху вниз, а не сеткой, где одна длинная запись растягивает всю строку колонок
+- Лента стоит на трёх списках страницы (`publications.php` 2179, 2205, 2231) и тем же классом находится при перерисовке блока: `applyBlocks()` (3585) берёт `posts`, `drafts` и `deleted` по селектору `.activity-log` (3673–3675)
+- Табличной разметки в вьюхе не осталось: `table-responsive` и `table-outer` выведены вместе с колонками, а сам ряд сегодня несут парциалы `_item_post.php`, `_item_draft.php` и `_item_deleted.php`, в которые он уехал при разборе блоков на парциалы
+- Ряду, которому нечего показать, не остаётся пустого места: `PublicationsUi::dateMeta()` (127) опускает метку, у которой время пусто (131–133), `partBadge()` (149) молчит о группе из одной части (151–157), а `stackedImages()` (186) — о пустом альбоме
+
+#### Ряд показывает номер сообщения канала, а не свой id
+
+- `dd4150e` (2026-09-11, `+5/−3`) подменил число в шапке ряда и обнёс его проверкой: `#<?= $post->telegramId ?>` стоит под `if ($post->telegramId !== null)`. До этого ряд подписывался id строки таблицы — числом, которое ни человек, ни канал не читают; у запланированной записи, которую канал ещё не принял, номера нет, и в ряду нет его, а не «#0»
+- `968429d` (2026-09-11, `−3`) убрал то же `#<?= $draft->id ?>` из черновиков: сообщения канала у черновика нет по определению, и показывать внутренний id — значит выдавать за номер то, чем он не является
+- `137175e` (2026-09-10, `−6`) снял `div.activity-meta` с `bi-clock` и словом «Черновик» из двух рядов предпросмотра: рядом уже стоял `span.badge.bg-secondary` с тем же словом, и два способа сказать одно и то же в одном ряду ничего не добавляли
+- Сегодня статус и принадлежность группе даёт ряду один вызов на строку — `PublicationsUi::statusBadge($record, $now)` (169) и `partBadge()` (149): «Опубликовано» только по номеру, который вернул канал (171–173), «В очереди» — по времени, которое наступило без номера (175–177), «Запланировано» — остальное (179)
+
+#### Порядок списков задаёт время записи, а не номер строки
+
+- `df84f97` (2026-09-12, пять файлов, `+27/−14`) убрал `ORDER BY id DESC` из выборок репозитория: посты легли по `published_at DESC, id DESC`, черновики — по `updated_at DESC, id DESC`; докстроки `PublicationsService::posts()` и `drafts()` переписаны с «newest first» на конкретную колонку, тест репозитория — за ними
+- Порядок по id обещал порядок, которым список не был: запись, созданную раньше и передвинутую позже, он держал ниже той, что ушла в канал позднее, а отредактированный старый черновик оставался на своём месте вместо того, чтобы встать к свежим
+- Тот же порядок читают сегодня `PublicationRepository::allPosts()` (32) и `allDrafts()` (44), только колонка передана хелперу `order($column, $oldestFirst)` (773): направление берёт один флаг (775), а `id` доканчивается тем же направлением (777), чтобы страницы `LIMIT`/`OFFSET` не перекрывались и не пропускали строки на записях с одинаковым временем
+
+#### Префиксы уведомлений портала заговорили по-русски
+
+- `83aba7f` (2026-09-19, `app/widgets/Alert.php`, `+5/−5`) тронул один словарь: `$alertPrefixes` (62–68) вместо `Action Completed:`, `Info:` и `Warning:` открывает сообщение словами «Готово:», «Инфо:», «Внимание:»
+- `error` и `danger` (63–64) правка не тронула — они до сих пор начинаются с `Error:`, хотя текст, который кладёт рядом контроллер, русский
+- Префикс стоит в `<strong>` перед сообщением (`run()`, 109–111), а слева от него — глиф типа из `$alertIcons` (50–56): `bi-check2-circle` у успеха, `bi-x-circle` у ошибки, `bi-info-circle` и `bi-exclamation-triangle` у остальных
+- Русское слово вошло в проверки живых прогонов тех же дней: снятая ручка очистки оставляет на странице flash «Готово: Форма очищена.» — это записано в записи «Форму «Новая публикация» можно очистить кнопкой»
+
+#### Запасным часовым поясом портала стал UTC
+
+- `3f885f7` (2026-09-20) убрал `Europe/Moscow` из `SiteController::getUserDisplayTimezone()`: ответом без cookie стал `'UTC'` (2821), и докстрока метода (2805–2806) говорит то же — «consistent with client-side detection»
+- Расходились только записи, чей пояс не записан в `portal_tz`: браузер определяет свой сам на дашборде (`getBrowserTimezone()`, `app/views/layouts/dashboard.php` 84) и кладёт его в cookie на год, а `PublicationsService::detectUserTimezone()` (1908) при пустой cookie отвечает `'UTC'` (1925–1926). Москва в запасе рисовала время на три часа позже того, что показывал список
+- Читается пояс из одного места: `getPortalTimezone()` (`dashboard.php` 120) на странице и `utcToPickerValue()` (3545) в рядах, поэтому форма, списки и предпросмотр говорят одним временем
+
+#### Тело релиза GitHub берётся из секции этого тега
+
+- `d986e0d` (2026-09-10) — одна строка в `.github/workflows/release.yml` (33): `body: ${{ steps.changelog.outputs.changelog }}` стала `body: ${{ steps.changelog.outputs.changes }}`
+- У `mindsers/changelog-reader-action@v2` (25) `changelog` — весь документ, `changes` — только секция, которая соответствует версии; до правки каждый релиз выкладывал в GitHub историю всех прежних, включая те, что уже опубликованы
+- Версия для чтения снимается с имени тега (19–21), а сам workflow запускается тегами `v*` и `N.*` (4–7), поэтому секция, которую берёт действие, и есть запись о релизе под этим тегом
+
+### Исправлено
+
+#### Проверка cookie с поясом перестала ронять страницу
+
+- `4e67366` (2026-09-26) — одна строка в `app/controllers/SiteController.php`: `use DateTimeZone;` (32). Без неё `new DateTimeZone($cookie->value)` (2815) разрешался в `app\controllers\DateTimeZone` — такого класса нет, а это `Error`, который `catch (\Exception)` (2818) не ловит: первый же запрос с cookie `portal_tz` кончался 500
+- Обёртка осталась той же формы и ловит то, для чего написана: `new DateTimeZone(...)` (2815) отсекает значение, которое PHP не разбирает как пояс — cookie, пришедшую от прежнего браузера с выдуманным поясом, — и функция отвечает `'UTC'` (2821); отсутствующий класс к этим случаям не относится
+- Тот же класс импортирован в `PublicationsService` (20), где `detectUserTimezone()` (1908) строит пояс из той же cookie для разности времени частей: там правка ничего не меняла
+
+#### Переносы строк доживают от поля формы до сообщения канала
+
+- Браузер кладёт в многострочное поле формы пары `CRLF`, и текст, сохранённый дважды, набирал бы по невидимому символу на всякий перенос. `7c906be` (2026-09-22) снял это на входе, а сегодня нормализация стоит в `SiteController::publicationTextsFromRequest()` (1967–1980): `str_replace(["\r\n", "\r"], "\n", …)` (1977) проходит по каждому ряду частей, а не по одному общему полю, как в первом варианте
+- Тот же коммит починил подпись альбома: `ChannelService::publishPhotos()` (155) обрезает её до `CAPTION_MAX_LENGTH` (169), но ищет последний перенос, который влезает (172–175), чтобы не резать строку посередине, а остаток несёт отдельным продолжением (177–181, 218–225) вместо прежнего повтора всего текста вторым сообщением
+- Метки продолжения не съезжают: их берёт `MessageEntities::slice()` с отсечкой по длине хвоста (189–193) — смещения полного текста и его хвоста различаются ровно на то, что ушло в подпись
+- Показ закрыл `9418ab8` (2026-09-13): `white-space: pre-line` и `word-break: break-word` легли на `<p>` с текстом записи; сегодня эти два правила несут пять парциалов строки — `_item_post.php` 56, `_item_topic.php` 38, `_item_reply.php` 46, `_item_draft.php` 32, `_item_deleted.php` 36. Без них канал показывал абзацы, а портал складывал их в одну строку
+
+#### Обработанные посты остаются в своём топике
+
+- Фильтр «С постами» оставлял в обсуждении только посты без строки в `publications_post_map`, поэтому топик, разобранный по частям, показывал пустой список, и человек не видел, что из него уже взято. `d85cc73` (2026-09-22) снял это условие при включённом фильтре
+- Сегодня правило живёт отдельным хелпером `ForumRepository::unprocessedPostFilterSql($withPostsOnly)` (675–680): пустая строка при фильтре «с постами», `AND NOT EXISTS (SELECT 1 FROM {{%publications_post_map}} fpm WHERE fpm.post_id = bp.id)` — при любом другом наборе; вызов стоит внутри окна выборки в `latestTopicsWithPosts()` (483)
+- Состояние обработанного поста при этом не теряется: те же `ppm.post_id AS publication_map_id` и `ppm.telegram_id AS publication_telegram_id` (476) читаются этим запросом, и бейдж ряда говорит про просмотр или публикацию, а не молчит
+- Докстрока метода (413–417) описывает это теми же словами: под фильтром «с постами» топик несёт все свои посты, и обработанные остаются в списке со своим статусом
+
+#### Взятие записи в работу не двигает страницу
+
+- `1c08a32` (2026-09-22, `+32/−29` в вьюхе) развёл колонки: «Фильтры» и «Форум» остались в `col-12`, форма уехала в свою `col-sm-6 col-6`, а flex-правила `.forum-column`, которые держали форму в колонке форума и растягивали её вместе со списком, сняты целиком
+- Второй половиной правки подгон высоты поля текста перестал вызываться на каждое нажатие и встал по таймеру после того, как печать кончилась: `height:auto` на одну раскладку ронял коробку до двух её строк и уводил каретку вместе с высотой
+- Ни того таймера, ни самого хелпера в вьюхе больше нет; неподвижность страницы держит другое, и оно выросло из этой же правки: списки скроллятся внутри себя (`.scroll350`, 2179, 2205, 2231), а `setEditing()` (9724) подставляет ряд в форму и центрирует его только в этом скроллере — `scrollToMiddle()` (9570) берёт `closest('.scroll350')`, `querySelector('.os-viewport') || scroller` и двигает `scrollTop` (9575–9582), не трогая окно браузера
+
+#### Время публикации по умолчанию — ближайший слот, а не текущая минута
+
+- `49994ca` (2026-09-11, `+2/−1`) убрал из вьюхи `gmdate('d/m/Y h:i A')` и поставил `$defaultAt = gmdate('d/m/Y h:i A', (int)ceil((time() + 60) / 600) * 600)`: следующий момент, кратный десяти минутам, с запасом в секунду — иначе слот, который уже начался, оказывался выбранным и публикация уезжала в прошлое
+- Сегодня тот же расчёт делает страница, и шаг у неё — настройка: `roundUpToMinuteStep()` (3472) и `computeNextPublicationSlot()` (3481) работают от `__MINUTE_STEP` (2426), куда кладётся `scheduleMinuteStep` из таблицы настроек (`$minuteStep`, 2381), поэтому смена шага не просит правки кода
+- Двойная страховка от начавшегося слота осталась: округление даёт следующий шаг, если время стоит ровно на границе (3475–3477), а `computeNextPublicationSlot()` добавляет шаг ещё раз, когда кандидат оказался не позже текущего момента (3484–3486)
+- Пустое поле получает слот при сборке пикера (`setupDateTimePicker()`, 3490–3501), а очистка формы возвращает его (`applyPublicationSlot(computeNextPublicationSlot()->format(pickerFormat))`, 9855)
+
+#### published_at получает время отправки, а не план
+
+- `storeTelegramId()` писал только `telegram_id` и `updated_at`, поэтому запись, ушедшая в канал позже назначенного, оставалась в списке с запланированным временем — и нельзя было отличить просроченную очередь от отправленной. `5bd7843` (2026-09-11) добавил четвёртый параметр, `string $publishedAt`, и третье поле в `UPDATE` (169–177)
+- Сервис передаёт одну метку дважды: `$sentAt = $this->now()` (507), `storeTelegramId($post->id, $telegramId, $sentAt, $sentAt)` (508), а `now()` (1929–1931) считает её по `UTC` — отсюда одно и то же число в колонке времени и в `updated_at`
+- Тот же коммит починил чтение картинок: `decodeImageUrls()` (813, вызов в гидраторе — 745) разбирает `jsonb`, который Yii pgsql отдаёт строкой JSON, и пропускает массив как есть; до этого ряд, у которого колонка пришла строкой, показывал пустой альбом
+
+#### Портал под Docker: один jQuery, свои иконки, читаемые пределы загрузки
+
+- `c35ef9c` (2026-09-28, восемь файлов, `+72/−11`) снял `BootstrapIconAsset` из `$depends` и из импортов `AppAsset`: пакет `twbs/bootstrap-icons` не является зависимостью проекта, и попытка опубликовать его шрифты роняла рендер всякой страницы основного лейаута; на её место в `$css` встал `ui-kit/assets/fonts/bootstrap/bootstrap-icons.css` (34) — тот иконочный шрифт, что портал уже несёт
+- `DashboardAsset` убрал `jquery.min.js` из своего `$js` и объявил `$depends = [JqueryAsset::class]` (36–38), а `app/config/web.php` (89–99) положил сам `JqueryAsset` на копию UI-kit'а — `sourcePath` `@webroot/ui-kit/assets/js`, `js` — `jquery.min.js`, `publishOptions.only` — только этот файл. До этого всякий `yii\bootstrap5\Widget` печатал свою копию jQuery после копии UI-kit'а, `window.jQuery` заменялся, а плагины, зарегистрированные на выброшенной копии, пропадали: на странице не оставалось ни пикера даты, ни скроллбаров — об этом говорит комментарий самой правки (82–88)
+- `docker/php/php.ini`: комментарии над тремя пределами загрузки переведены с `#` на `;` — сами числа правка не тронула и сегодня они на месте (`upload_max_filesize=30M`, `post_max_size=32M`, `max_file_uploads=60`, строки 13–15)
+- У блока «Черновики» починена одна подпись: `publications.php` (2208) передаёт парциалу `$now`, параметр объявлен в `_block_drafts.php` (5) и доходит до `_item_draft` (15). Из трёх списков текущее время ряда сегодня читает только ряд поста (`statusBadge($record, $now)`, `_item_post.php` 64 — «В очереди» это время, наступившее без номера канала), черновик несёт метку «Черновик» без проверки (`_item_draft.php` 39), а удалённая запись — свою (`_item_deleted.php` 45–47)
+
+#### Правила листа, границы настроек и таймаут канала
+
+- `acca672` (2026-09-29, шесть файлов, `+58/−30`) переложил три правила, которые страница публикаций читала из `app/web/css/site.css`, в `app/web/ui-kit/assets/css/publication-editor.css` — `.telegram-preview-text` (161), `#publicationPreview` (169–170) и `.thread-replies` (181–184): дашборд-лейаут `site.css` не подключает вовсе, поэтому на портале эти правила не действовали, хотя в файле лежали
+- `app/views/site/settings.php` (21–31): цикл границ пропускает определения не-`int` (`continue` на 24), поэтому формат даты и порядок блоков больше не едут в `min="…"`, которого у них нет; числовые поля по-прежнему берут нижнюю границу из `$bounds` (97), а `partsOffsetMinutes` — из крона публикации (28–30)
+- `NutgramChannelClient`: константа `REQUEST_TIMEOUT = 30` (37) уходит в `Configuration::fromArray(['timeout' => …])` (45). Nutgram ждёт пять секунд, и это время не ответа API, а установки соединения: первый вызов прогона тратит его почти весь на согласование маршрута — в комментарии самой константы стоят измеренные пятнадцать секунд, — поэтому задача, которая не прошла коннект, падала каждые пять минут
 
 ## [0.2.0] - 2026-09-09
 

@@ -1,6 +1,6 @@
 # TRVL
 
-Последний релиз, перечисленный в [CHANGELOG.md](CHANGELOG.md): **0.2.0**. В `Unreleased` находятся изменения после него; версия пакета в `app/composer.json` отдельно не задана.
+Последний релиз, перечисленный в [CHANGELOG.md](CHANGELOG.md): **1.0.0** (2026-11-01). Секция под него в changelog уже собрана, тег — нет: на GitHub Releases опубликован пока только `v0.2.0`. В `Unreleased` лежат разборы, которые решено делать дальше; версия пакета в `app/composer.json` отдельно не задана.
 
 ## Запуск проекта
 
@@ -753,7 +753,7 @@ Emoji — обычный текст: форма не хранит про них 
 
 ## Релизы
 
-Релизы публикуются автоматически на [GitHub Releases](https://github.com/Resident234/TRVL/releases) через GitHub Actions (`.github/workflows/release.yml`). Последняя опубликованная по changelog версия — 0.2.0; после неё документированы изменения в секции `Unreleased`.
+Релизы публикуются автоматически на [GitHub Releases](https://github.com/Resident234/TRVL/releases) через GitHub Actions (`.github/workflows/release.yml`). Последняя опубликованная версия — `v0.2.0`; следующей в `CHANGELOG.md` записана `1.0.0` (2026-11-01): секция под неё собрана, тега ещё нет. В `Unreleased` лежат будущие разборы.
 
 Порядок выпуска релиза:
 
