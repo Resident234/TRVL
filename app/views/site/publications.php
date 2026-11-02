@@ -7173,6 +7173,7 @@ jQuery(document).ready(function () {
                 randomOptionsBox.classList.toggle('d-none', !on);
                 var mode = '';
                 randomModeInputs.forEach(function (radio) {
+                    radio.disabled = !on;
                     if (radio.checked) {
                         mode = radio.value;
                     }
@@ -8566,6 +8567,7 @@ jQuery(document).ready(function () {
                 scheduleRandomOptionsBox.classList.toggle('d-none', !on);
                 var mode = '';
                 scheduleRandomModeInputs.forEach(function (radio) {
+                    radio.disabled = !on;
                     if (radio.checked) {
                         mode = radio.value;
                     }
