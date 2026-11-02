@@ -2325,6 +2325,53 @@ CSS
                                    class="form-control publication-datepicker-time"
                                    autocomplete="off">
                         </div>
+                        <?php /* The same «Рандомное время» deal the form offers: a checked
+                               box takes the field out of the submit and the throw is cast
+                               inside the range the options under it name. */ ?>
+                        <div class="form-check mt-2" data-bs-toggle="popover" data-bs-trigger="hover"
+                             data-bs-placement="top-start" data-bs-custom-class="popover-info"
+                             data-bs-content="Случайное время внутри выбранного диапазона назначается в момент сохранения публикации.">
+                            <input class="form-check-input" type="checkbox" id="scheduleRandomTime"
+                                   name="publicationRandomTime" value="1">
+                            <label class="form-check-label" for="scheduleRandomTime">Рандомное время</label>
+                        </div>
+                        <div class="publication-random-time-options ms-4 mt-2 d-none"
+                             id="scheduleRandomOptions">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio"
+                                       name="scheduleRandomMode" id="scheduleRandomRelative"
+                                       value="relative" checked>
+                                <label class="form-check-label" for="scheduleRandomRelative">от текущего момента до</label>
+                                <div class="d-flex align-items-center gap-2 ms-4 mt-1">
+                                    <input type="number" class="form-control" style="max-width: 6rem;"
+                                           id="scheduleRandomAmount" name="publicationRandomAmount"
+                                           min="1" step="1" value="2">
+                                    <select class="form-select" style="max-width: 9rem;"
+                                            id="scheduleRandomUnit" name="publicationRandomUnit">
+                                        <option value="minutes">минут</option>
+                                        <option value="hours">часов</option>
+                                        <option value="days">дней</option>
+                                        <option value="weeks" selected>недель</option>
+                                        <option value="months">месяцев</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="radio"
+                                       name="scheduleRandomMode" id="scheduleRandomRange"
+                                       value="range">
+                                <label class="form-check-label" for="scheduleRandomRange">диапазон даты и времени</label>
+                                <div class="d-flex align-items-center gap-2 ms-4 mt-1">
+                                    <input type="text" class="form-control publication-datepicker-time"
+                                           id="scheduleRandomFrom" name="publicationRandomFrom"
+                                           autocomplete="off" placeholder="от">
+                                    <span class="text-muted">—</span>
+                                    <input type="text" class="form-control publication-datepicker-time"
+                                           id="scheduleRandomTo" name="publicationRandomTo"
+                                           autocomplete="off" placeholder="до">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -4229,6 +4276,10 @@ jQuery(document).ready(function () {
         setupDateTimePicker(scheduleAtJq);
         setupDateTimePicker(randomFromJq);
         setupDateTimePicker(randomToJq);
+        var scheduleRandomFromJq = jQuery('#scheduleRandomFrom');
+        var scheduleRandomToJq = jQuery('#scheduleRandomTo');
+        setupDateTimePicker(scheduleRandomFromJq);
+        setupDateTimePicker(scheduleRandomToJq);
         // The two ends of the explicit range open a day apart from now, so the
         // option is usable the moment it is switched to; either end still takes
         // any moment its calendar offers.
@@ -4246,6 +4297,22 @@ jQuery(document).ready(function () {
             if (randomToPicker) {
                 randomToPicker.setStartDate(randomToStart);
                 randomToPicker.setEndDate(randomToStart.clone().add(__HORIZON_HOURS, 'hour'));
+            }
+        }
+        if (scheduleRandomFromJq.length && scheduleRandomToJq.length) {
+            var scheduleFromStart = moment();
+            var scheduleToStart = scheduleFromStart.clone().add(1, 'day');
+            scheduleRandomFromJq.val(scheduleFromStart.format(pickerFormat));
+            scheduleRandomToJq.val(scheduleToStart.format(pickerFormat));
+            var scheduleFromPicker = scheduleRandomFromJq.data('daterangepicker');
+            var scheduleToPicker = scheduleRandomToJq.data('daterangepicker');
+            if (scheduleFromPicker) {
+                scheduleFromPicker.setStartDate(scheduleFromStart);
+                scheduleFromPicker.setEndDate(scheduleFromStart.clone().add(__HORIZON_HOURS, 'hour'));
+            }
+            if (scheduleToPicker) {
+                scheduleToPicker.setStartDate(scheduleToStart);
+                scheduleToPicker.setEndDate(scheduleToStart.clone().add(__HORIZON_HOURS, 'hour'));
             }
         }
 
@@ -8475,6 +8542,48 @@ jQuery(document).ready(function () {
         var sourceIdInput = document.getElementById('publicationSourceId');
         var publishedAtInput = document.getElementById('publicationAt');
         var scheduleModal = document.getElementById('scheduleModal');
+        var scheduleRandomTimeInput = document.getElementById('scheduleRandomTime');
+        var scheduleRandomOptionsBox = document.getElementById('scheduleRandomOptions');
+        var scheduleRandomModeInputs = Array.prototype.slice.call(
+            document.querySelectorAll('input[name="scheduleRandomMode"]'));
+        var scheduleRandomAmountInput = document.getElementById('scheduleRandomAmount');
+        var scheduleRandomUnitInput = document.getElementById('scheduleRandomUnit');
+        var scheduleRandomFromInput = document.getElementById('scheduleRandomFrom');
+        var scheduleRandomToInput = document.getElementById('scheduleRandomTo');
+        var scheduleAtInput = document.getElementById('scheduleAt');
+
+        // The modal's own «Рандомное время» box mirrors the form's: checked, it
+        // takes the field out of the submit and opens the range options, and the
+        // fields of the way that is not chosen stay out of the submit too. The
+        // radio carries a name of its own — radios of one name fuse into a
+        // single group across the whole document, form boundaries or not.
+        function syncScheduleRandomControls() {
+            var on = scheduleRandomTimeInput !== null && scheduleRandomTimeInput.checked;
+            if (scheduleAtInput) {
+                scheduleAtInput.disabled = on;
+            }
+            if (scheduleRandomOptionsBox) {
+                scheduleRandomOptionsBox.classList.toggle('d-none', !on);
+                var mode = '';
+                scheduleRandomModeInputs.forEach(function (radio) {
+                    if (radio.checked) {
+                        mode = radio.value;
+                    }
+                });
+                scheduleRandomAmountInput.disabled = !on || mode !== 'relative';
+                scheduleRandomUnitInput.disabled = !on || mode !== 'relative';
+                scheduleRandomFromInput.disabled = !on || mode !== 'range';
+                scheduleRandomToInput.disabled = !on || mode !== 'range';
+            }
+        }
+
+        if (scheduleRandomTimeInput) {
+            scheduleRandomTimeInput.addEventListener('change', syncScheduleRandomControls);
+            scheduleRandomModeInputs.forEach(function (radio) {
+                radio.addEventListener('change', syncScheduleRandomControls);
+            });
+            syncScheduleRandomControls();
+        }
 
         // The field and its calendar are two views of one moment: a value written
         // without moving the picker leaves the dialog that opens over the form on the
@@ -10292,6 +10401,13 @@ jQuery(document).ready(function () {
                             scheduleInput.value = startM.format(pickerFormat);
                         }
                     } catch (e) {}
+                }
+                // Every opening of the dialog names a moment for the record it
+                // was raised over: the box stays unticked until it is asked for
+                // this very record.
+                if (scheduleRandomTimeInput) {
+                    scheduleRandomTimeInput.checked = false;
+                    syncScheduleRandomControls();
                 }
             });
         }

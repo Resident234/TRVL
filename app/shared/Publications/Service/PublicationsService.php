@@ -723,8 +723,12 @@ final class PublicationsService
      *
      * @throws InvalidArgumentException when the draft does not exist or the date is invalid
      */
-    public function scheduleDraft(int $id, string $publishedAt, ?string $userTimezone = null): void
-    {
+    public function scheduleDraft(
+        int $id,
+        string $publishedAt,
+        ?string $userTimezone = null,
+        ?string $randomTime = null,
+    ): void {
         $this->assertDraftExists($id);
         $draft = $this->publications->deleteDraft($id);
         $now = $this->now();
@@ -733,7 +737,7 @@ final class PublicationsService
                 $draft->text,
                 $draft->imageUrls,
                 null,
-                $this->normalizeDate($publishedAt, $userTimezone),
+                $randomTime ?? $this->normalizeDate($publishedAt, $userTimezone),
                 $draft->formatting,
                 $draft->buttons,
                 $draft->title,
@@ -1671,8 +1675,12 @@ final class PublicationsService
      *
      * @throws InvalidArgumentException when the record does not exist or the date is invalid
      */
-    public function scheduleDeleted(int $id, string $publishedAt, ?string $userTimezone = null): void
-    {
+    public function scheduleDeleted(
+        int $id,
+        string $publishedAt,
+        ?string $userTimezone = null,
+        ?string $randomTime = null,
+    ): void {
         $record = $this->publications->deleteDeleted($id);
         $now = $this->now();
         $postId = $this->publications->insertPostWithHistory(
@@ -1680,7 +1688,7 @@ final class PublicationsService
                 $record->text,
                 $record->imageUrls,
                 null,
-                $this->normalizeDate($publishedAt, $userTimezone),
+                $randomTime ?? $this->normalizeDate($publishedAt, $userTimezone),
                 $record->formatting,
                 $record->buttons,
                 $record->title,

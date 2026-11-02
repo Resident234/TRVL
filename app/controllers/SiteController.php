@@ -1993,16 +1993,23 @@ class SiteController extends Controller
      * and the fields of the way that is not chosen stay disabled, so nothing of
      * them arrives.
      *
+     * The schedule modal asks the same with a radio of its own name — two radio
+     * groups of one name would fuse into one across the document — so the
+     * field the mode is read from is handed in.
+     *
      * @return string[]|null
      * @throws InvalidArgumentException when the named range cannot be read
      */
-    private function publicationRandomTimesFromRequest(int $count, ?string $userTimezone): ?array
-    {
+    private function publicationRandomTimesFromRequest(
+        int $count,
+        ?string $userTimezone,
+        string $modeField = 'publicationRandomMode',
+    ): ?array {
         if ((string)$this->request->post('publicationRandomTime', '') !== '1') {
             return null;
         }
 
-        if ((string)$this->request->post('publicationRandomMode', 'relative') === 'range') {
+        if ((string)$this->request->post($modeField, 'relative') === 'range') {
             return $this->publications->randomTimes(
                 $count,
                 (string)$this->request->post('publicationRandomFrom', ''),
@@ -2685,10 +2692,24 @@ class SiteController extends Controller
 
         $ok = false;
         try {
+            // The «Рандомное время» box of the schedule modal is dealt the same
+            // way the form's is: one throw inside the named range, already UTC.
+            $randomTimes = $this->publicationRandomTimesFromRequest(1, $userTz ?: null, 'scheduleRandomMode');
+            $randomTime = $randomTimes[0] ?? null;
             if ($source === 'deleted') {
-                $this->publications->scheduleDeleted($id === '' ? 0 : (int)$id, $publishedAt, $userTz ?: null);
+                $this->publications->scheduleDeleted(
+                    $id === '' ? 0 : (int)$id,
+                    $publishedAt,
+                    $userTz ?: null,
+                    $randomTime,
+                );
             } else {
-                $this->publications->scheduleDraft($id === '' ? 0 : (int)$id, $publishedAt, $userTz ?: null);
+                $this->publications->scheduleDraft(
+                    $id === '' ? 0 : (int)$id,
+                    $publishedAt,
+                    $userTz ?: null,
+                    $randomTime,
+                );
             }
             Yii::$app->session->setFlash('success', 'Публикация запланирована.');
             $ok = true;
