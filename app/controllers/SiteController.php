@@ -1882,6 +1882,7 @@ class SiteController extends Controller
 
             $imageGroups = $this->withUploadedImages($this->imageGroupsFromRequest());
             $imageUrls = $imageGroups[0];
+            $randomTimes = $this->publicationRandomTimesFromRequest(count($texts), $userTz ?: null);
 
             if ($source === 'new') {
                 $this->publications->saveParts(
@@ -1898,6 +1899,7 @@ class SiteController extends Controller
                     $individualParts,
                     array_values($partTimes),
                     $partGroupId,
+                    $randomTimes,
                 );
                 Yii::$app->session->setFlash('success', $action === 'draft'
                     ? 'Черновик сохранён.'
@@ -1919,6 +1921,7 @@ class SiteController extends Controller
                         $action,
                         $partGroupId,
                         $userTz ?: null,
+                        $randomTimes,
                     );
                     Yii::$app->session->setFlash('success', 'Изменения сохранены.');
 
@@ -1946,6 +1949,7 @@ class SiteController extends Controller
                     $sourceId,
                     $action,
                     $userTz ?: null,
+                    $randomTimes,
                 );
                 Yii::$app->session->setFlash('success', 'Изменения сохранены.');
             }
@@ -1976,6 +1980,48 @@ class SiteController extends Controller
         return array_map(
             static fn ($text): string => str_replace(["\r\n", "\r"], "\n", (string)$text),
             $fields,
+        );
+    }
+
+    /**
+     * The random times the «Рандомное время» box asks for, as one UTC stamp per
+     * part and already in the order of the parts — the server deals them at the
+     * moment the rows are written, which is exactly the moment a publication
+     * lands in its table. An unchecked box answers with null and the save keeps
+     * reading the field of the form as before; a checked one comes with either
+     * the «от текущего момента до» count and unit or the two ends of a range,
+     * and the fields of the way that is not chosen stay disabled, so nothing of
+     * them arrives.
+     *
+     * The schedule modal asks the same with a radio of its own name — two radio
+     * groups of one name would fuse into one across the document — so the
+     * field the mode is read from is handed in.
+     *
+     * @return string[]|null
+     * @throws InvalidArgumentException when the named range cannot be read
+     */
+    private function publicationRandomTimesFromRequest(
+        int $count,
+        ?string $userTimezone,
+        string $modeField = 'publicationRandomMode',
+    ): ?array {
+        if ((string)$this->request->post('publicationRandomTime', '') !== '1') {
+            return null;
+        }
+
+        if ((string)$this->request->post($modeField, 'relative') === 'range') {
+            return $this->publications->randomTimes(
+                $count,
+                (string)$this->request->post('publicationRandomFrom', ''),
+                (string)$this->request->post('publicationRandomTo', ''),
+                $userTimezone,
+            );
+        }
+
+        return $this->publications->randomRelativeTimes(
+            $count,
+            (int)$this->request->post('publicationRandomAmount', 0),
+            (string)$this->request->post('publicationRandomUnit', ''),
         );
     }
 
@@ -2646,10 +2692,24 @@ class SiteController extends Controller
 
         $ok = false;
         try {
+            // The «Рандомное время» box of the schedule modal is dealt the same
+            // way the form's is: one throw inside the named range, already UTC.
+            $randomTimes = $this->publicationRandomTimesFromRequest(1, $userTz ?: null, 'scheduleRandomMode');
+            $randomTime = $randomTimes[0] ?? null;
             if ($source === 'deleted') {
-                $this->publications->scheduleDeleted($id === '' ? 0 : (int)$id, $publishedAt, $userTz ?: null);
+                $this->publications->scheduleDeleted(
+                    $id === '' ? 0 : (int)$id,
+                    $publishedAt,
+                    $userTz ?: null,
+                    $randomTime,
+                );
             } else {
-                $this->publications->scheduleDraft($id === '' ? 0 : (int)$id, $publishedAt, $userTz ?: null);
+                $this->publications->scheduleDraft(
+                    $id === '' ? 0 : (int)$id,
+                    $publishedAt,
+                    $userTz ?: null,
+                    $randomTime,
+                );
             }
             Yii::$app->session->setFlash('success', 'Публикация запланирована.');
             $ok = true;
