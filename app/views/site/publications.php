@@ -698,6 +698,34 @@ $this->registerCss(
     border-color: rgba(var(--bs-success-rgb), 1);
 }
 
+/* The options of the publication date are one question, and the frame says so: the moment
+   the reader names it, the box that hands the moment over to the server, and the two ways of
+   naming the range a random moment is thrown inside all stand under a single line. Before this
+   revision no line stood anywhere in this block: the box of the two ways was set apart from the
+   checkbox by its `ms-4`, put away by its `d-none` and drawn by nothing, since the sheet keys no
+   rule on `.publication-random-time-options`. The colour is pink. The five semantic colours of
+   the theme are all spent on a border of this page already — success wraps the split, primary
+   rings the field of the album and of the file, danger opens the forum, warning draws the card
+   of the publication, info boxes the heading — and purple is the block of the addresses. Five of
+   the extended palette had drawn no border here yet, pink, teal, indigo, orange and cyan, and
+   pink is the one of those with no near neighbour among the spent: teal would read as a second
+   green beside the success of the split, cyan as a second blue beside the info of the heading,
+   indigo beside the purple that frames the block standing directly above this one, and orange
+   beside the warning of the publication card, while pink is neither the violet of that frame nor
+   the coral of the «Очистить» button standing under this one. The palette ships no
+   `--bs-pink-rgb` beside its hex, as it ships none beside the purple, so the line is drawn with
+   `var(--bs-pink)` itself. The room under the block is the `mb-3` of the markup rather than a
+   number in this rule: the form keeps 1rem between any two of its blocks, and this one already
+   says so. The box of the two ways keeps its `ms-4` under the checkbox it answers for and its
+   `d-none` while that checkbox is off — an unchecked box leaves no frame in the layout, only
+   the fields it hides — and it draws no line of its own inside the line above it, the way the
+   box of the split stops drawing inside the group of the parts. */
+.publication-date-controls {
+    border: var(--bs-border-width) var(--bs-border-style) var(--bs-pink);
+    padding: 1rem;
+    border-radius: .8rem;
+}
+
 /* What an album refused is named by a notice standing over that same album, and
    the notice is put away by a cross of its own. The cross is the element the ui-kit
    ships for it, `.btn-close`, but the sheet only pins that element into a corner
@@ -2089,7 +2117,7 @@ CSS
                             </div>
 
                             <!-- Publication date & time -->
-                            <div class="mb-3">
+                            <div class="mb-3 publication-date-controls">
                                 <label class="form-label" for="publicationAt">Дата и время публикации</label>
                                 <div class="input-group">
                                     <span class="input-group-text">
@@ -2315,7 +2343,7 @@ CSS
                     <input type="hidden" name="publicationId" id="scheduleDraftId" value="">
                     <input type="hidden" name="publicationTz" id="schedulePublicationTz" value="">
                     
-                    <div class="mb-3">
+                    <div class="mb-3 publication-date-controls">
                         <label class="form-label" for="scheduleAt">Дата и время публикации</label>
                         <div class="input-group">
                             <span class="input-group-text">
