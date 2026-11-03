@@ -10115,6 +10115,10 @@ jQuery(document).ready(function () {
         }
 
         var ajaxInFlight = false;
+        // The schedule dialog keeps its answer until it opens again: the in-flight
+        // flag alone frees a second click that lands between the response and the
+        // dialog closing, and that click posts the same record a second time.
+        var scheduleSubmitDone = false;
 
         // Publications forms post over AJAX and the lists are swapped in place.
         // Without JavaScript the controller keeps answering with a redirect.
@@ -10123,7 +10127,7 @@ jQuery(document).ready(function () {
             if (!form || form.tagName !== 'FORM' || !form.hasAttribute('data-ajax')) {
                 return;
             }
-            if (ajaxInFlight) {
+            if (ajaxInFlight || (form.id === 'scheduleForm' && scheduleSubmitDone)) {
                 event.preventDefault();
                 return;
             }
@@ -10148,6 +10152,7 @@ jQuery(document).ready(function () {
                         clearEditingState();
                     }
                     if (form.id === 'scheduleForm') {
+                        scheduleSubmitDone = true;
                         hideScheduleModal();
                     }
                 })
@@ -10404,6 +10409,9 @@ jQuery(document).ready(function () {
                         }
                     } catch (e) {}
                 }
+                // The send the last opening made is done the moment this one is —
+                // its record is posted once, and a new record is a new send.
+                scheduleSubmitDone = false;
                 // Every opening of the dialog names a moment for the record it
                 // was raised over: the box stays unticked until it is asked for
                 // this very record.
