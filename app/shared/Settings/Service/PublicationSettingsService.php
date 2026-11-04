@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\shared\Settings\Service;
 
 use app\shared\Settings\Contract\PublicationSettingsRepositoryInterface;
+use app\shared\Settings\Contract\TextStyleCatalogInterface;
 use app\shared\Telegram\Dto\LinkButton;
 use app\shared\Telegram\Service\ChannelService;
 use InvalidArgumentException;
@@ -18,6 +19,10 @@ use InvalidArgumentException;
  * and an unknown choice falls back to the default — so the callers never
  * have to check what they read. Writing is what refuses bad input: save()
  * checks every submitted value and throws before a single row is stored.
+ *
+ * The formats and the orders are fixed tables of this class. The styles are not: that
+ * list is read from the disk, so what the form offers changes with the folders a
+ * reader puts into the catalog.
  *
  * The interval between the parts of one publication cannot be shorter than
  * the task that drains the queue, so that number comes from the environment
@@ -68,6 +73,12 @@ final class PublicationSettingsService
 
     /** The words of the heading, the other token a shape of the reader has to promise. */
     public const HEADING_NUMBER_TOKEN_TEXT = '#TITLE_TEXT#';
+
+    /**
+     * The choice a reader makes when no style of the catalog is active. It is stored
+     * as nothing at all, so a style added later does not have to disagree with it.
+     */
+    public const STYLE_NONE_LABEL = 'Стиль не выбран';
 
     private const ORDERS = [
         'newest' => 'Свежие сверху',
@@ -222,6 +233,13 @@ final class PublicationSettingsService
             'label' => 'Формат даты и времени',
             'hint' => 'Один формат для дат на страницах и в выборе времени публикации.',
         ],
+        'activeTextStyle' => [
+            'type' => 'style',
+            'default' => '',
+            'label' => 'Активный стиль текста',
+            'hint' => 'Каждый стиль — папка внутри каталога styles на диске; список показывает те, что нашлись. '
+                . 'Пока настройка только хранится: на текст публикаций она не влияет.',
+        ],
     ];
 
     /** @var array<string, string>|null the values read once, so one request does not query per tunable */
@@ -229,6 +247,7 @@ final class PublicationSettingsService
 
     public function __construct(
         private readonly PublicationSettingsRepositoryInterface $repository,
+        private readonly TextStyleCatalogInterface $textStyles,
         private readonly string $publishCronSchedule = '',
     ) {
     }
@@ -323,6 +342,23 @@ final class PublicationSettingsService
     public static function orderOptions(): array
     {
         return self::ORDERS;
+    }
+
+    /**
+     * The styles the form offers: the empty choice first, then every folder of the
+     * catalog under the name it carries on the disk. A style that is not there gives
+     * the form nothing but the empty choice.
+     *
+     * @return array<string, string>
+     */
+    public function styleOptions(): array
+    {
+        $options = ['' => self::STYLE_NONE_LABEL];
+        foreach ($this->textStyles->names() as $name) {
+            $options[$name] = $name;
+        }
+
+        return $options;
     }
 
     /**
@@ -432,6 +468,10 @@ final class PublicationSettingsService
                     throw new InvalidArgumentException(
                         "«{$label}» принимает значения от {$min} до {$max}, передано {$number}.",
                     );
+                }
+            } elseif ($definition['type'] === 'style') {
+                if (!$this->isStyleListed($raw)) {
+                    throw new InvalidArgumentException("Вариант настройки «{$label}» надо выбрать из списка.");
                 }
             } else {
                 $options = $definition['type'] === 'date'
@@ -546,6 +586,17 @@ final class PublicationSettingsService
     }
 
     /**
+     * Whether a value names a style the form could have offered: nothing at all is
+     * the empty choice, everything else has to be a folder the catalog found. A name
+     * whose folder was removed counts as not listed, which is what pushes the stored
+     * value back to the empty choice when it is read.
+     */
+    private function isStyleListed(string $raw): bool
+    {
+        return $raw === '' || in_array($raw, $this->textStyles->names(), true);
+    }
+
+    /**
      * Brings a stored value inside the bounds of its own definition.
      */
     private function normalize(string $code, string $raw): string
@@ -565,6 +616,14 @@ final class PublicationSettingsService
             }
 
             return (string)$number;
+        }
+
+        if ($definition['type'] === 'style') {
+            if ($this->isStyleListed($raw)) {
+                return $raw;
+            }
+
+            return $definition['default'];
         }
 
         $options = $definition['type'] === 'date' ? self::dateOptions() : self::ORDERS;

@@ -45,6 +45,7 @@ $config = [
             \app\shared\Settings\Service\PublicationSettingsService::class => static fn (): \app\shared\Settings\Service\PublicationSettingsService =>
                 new \app\shared\Settings\Service\PublicationSettingsService(
                     \Yii::createObject(\app\shared\Settings\Contract\PublicationSettingsRepositoryInterface::class),
+                    \app\shared\Settings\Infrastructure\DirectoryTextStyleCatalog::fromEnvironment(),
                     (string)(getenv('TELEGRAM_PUBLISH_CRON_SCHEDULE') ?: ''),
                 ),
             \app\shared\Forum\Service\ParserSettingsService::class => static fn (): \app\shared\Forum\Service\ParserSettingsService =>

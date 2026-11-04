@@ -243,6 +243,9 @@ class SiteController extends Controller
             'channelDescription' => $channelDescription,
             'publishedDescriptions' => $publishedDescriptions,
             'settings' => $this->publicationSettings(),
+            'styleOptions' => $this->settings !== null
+                ? $this->settings->styleOptions()
+                : ['' => PublicationSettingsService::STYLE_NONE_LABEL],
             'partsOffsetMin' => $this->settings !== null ? $this->settings->minimumPartsOffsetMinutes() : 1,
             'cronSchedule' => $this->settings !== null ? $this->settings->cronSchedule() : '',
         ]);

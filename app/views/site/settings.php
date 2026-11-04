@@ -6,14 +6,19 @@ declare(strict_types=1);
 /** @var string|null $channelDescription */
 /** @var \app\shared\Telegram\Dto\PublishedDescriptionData[] $publishedDescriptions */
 /** @var array<string, string> $settings */
+/** @var array<string, string> $styleOptions the styles the catalog found, with the empty choice first */
 /** @var int $partsOffsetMin */
 /** @var string $cronSchedule */
 
+use app\assets\TextStyleSelectAsset;
 use app\shared\Settings\Service\PublicationSettingsService;
 use app\shared\Telegram\Service\ChannelService;
 use yii\helpers\Html;
 
 $this->title = 'Настройки публикаций';
+// The searchable selector of the style line: this page is the only one that
+// offers a catalog read from the disk.
+TextStyleSelectAsset::register($this);
 $schema = PublicationSettingsService::schema();
 // The lower bound of the gap between the parts is the cron of the publishing
 // task, not the number written in the schema.
@@ -101,6 +106,14 @@ foreach ($schema as $code => $definition) {
                             <?php elseif ($definition['type'] === 'date'): ?>
                                 <select class="form-select" id="setting-<?= $code ?>" name="settings[<?= $code ?>]">
                                     <?php foreach (PublicationSettingsService::dateOptions() as $value => $label): ?>
+                                        <option value="<?= Html::encode($value) ?>" <?= $settings[$code] === $value ? 'selected' : '' ?>>
+                                            <?= Html::encode($label) ?>
+                                        </option>
+                                    <?php endforeach ?>
+                                </select>
+                            <?php elseif ($definition['type'] === 'style'): ?>
+                                <select class="form-select select2" id="setting-<?= $code ?>" name="settings[<?= $code ?>]">
+                                    <?php foreach ($styleOptions as $value => $label): ?>
                                         <option value="<?= Html::encode($value) ?>" <?= $settings[$code] === $value ? 'selected' : '' ?>>
                                             <?= Html::encode($label) ?>
                                         </option>

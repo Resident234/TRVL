@@ -8,6 +8,9 @@ services:
     working_dir: /var/www/html
     volumes:
       - ./app:/var/www/html
+      # The catalog of text styles the settings page lists: it lives beside the
+      # application instead of inside it, and the page only reads it.
+      - ./styles:/var/www/styles:ro
       - composer-cache:/tmp/composer-cache
     environment:
       COMPOSER_CACHE_DIR: /tmp/composer-cache
@@ -40,6 +43,7 @@ services:
         GID: ${APP_GID:-1000}
     volumes:
       - ./app:/var/www/html
+      - ./styles:/var/www/styles:ro
       - composer-cache:/tmp/composer-cache
     environment:
       COMPOSER_CACHE_DIR: /tmp/composer-cache
@@ -71,6 +75,7 @@ services:
         GID: ${APP_GID:-1000}
     volumes:
       - ./app:/var/www/html
+      - ./styles:/var/www/styles:ro
       - composer-cache:/tmp/composer-cache
     environment:
       COMPOSER_CACHE_DIR: /tmp/composer-cache
