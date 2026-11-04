@@ -27,6 +27,9 @@ services:
       # The settings page shows this interval and refuses a shorter gap between
       # the parts of one publication.
       TELEGRAM_PUBLISH_CRON_SCHEDULE: ${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}
+      # Empty keeps the mounted catalog above; a path here moves where the
+      # settings page finds its text styles.
+      STYLES_PATH: ${STYLES_PATH:-}
     expose:
       - "9000"
     depends_on:
@@ -61,6 +64,7 @@ services:
       FORUM_POST_PARSER_CRON_SCHEDULE: ${FORUM_POST_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       GALLERY_PARSER_CRON_SCHEDULE: ${GALLERY_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       MEMBER_PARSER_CRON_SCHEDULE: ${MEMBER_PARSER_CRON_SCHEDULE:-*/10 * * * *}
+      STYLES_PATH: ${STYLES_PATH:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,6 +102,7 @@ services:
       # the parsers use, so the queue needs its credentials too.
       FORUM_LOGIN_USERNAME: ${FORUM_LOGIN_USERNAME:-}
       FORUM_LOGIN_PASSWORD: ${FORUM_LOGIN_PASSWORD:-}
+      STYLES_PATH: ${STYLES_PATH:-}
     depends_on:
       postgres:
         condition: service_healthy
