@@ -36,14 +36,14 @@ final class PublicationSettingsServiceLlmTest extends Unit
         );
     }
 
-    public function testSchemaHoldsTheSevenNewCodes(): void
+    public function testSchemaHoldsTheFiveTextCodes(): void
     {
         $schema = PublicationSettingsService::schema();
 
+        // Пять кодов этого задания; два числовых придут в Task 3 и расширят проверку до семи.
         foreach ([
             'llmBaseUrl', 'llmApiKey', 'llmModel',
             'llmPromptSpelling', 'llmPromptStyle',
-            'llmStyleSampleChars', 'llmTimeoutSeconds',
         ] as $code) {
             $this->assertArrayHasKey($code, $schema, "Код «{$code}» не стоит в схеме.");
         }
