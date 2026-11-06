@@ -36,17 +36,19 @@ final class PublicationSettingsServiceLlmTest extends Unit
         );
     }
 
-    public function testSchemaHoldsTheFiveTextCodes(): void
+    public function testSchemaHoldsTheSevenCodes(): void
     {
         $schema = PublicationSettingsService::schema();
 
-        // Пять кодов этого задания; два числовых придут в Task 3 и расширят проверку до семи.
+        // Семь кодов этого задания: пять текстовых из Task 2 и два числовых из Task 3.
         $codes = [
             'llmBaseUrl',
             'llmApiKey',
             'llmModel',
             'llmPromptSpelling',
             'llmPromptStyle',
+            'llmStyleSampleChars',
+            'llmTimeoutSeconds',
         ];
 
         foreach ($codes as $code) {
@@ -171,5 +173,39 @@ final class PublicationSettingsServiceLlmTest extends Unit
             $service->value('llmPromptSpelling'),
             'Пустое хранимое значение не должно дойти до формы.',
         );
+    }
+
+    public function testTheTwoNumberCodesStandAtTheirDefaults(): void
+    {
+        $defaults = PublicationSettingsService::defaults();
+
+        $this->assertSame('40000', $defaults['llmStyleSampleChars']);
+        $this->assertSame('90', $defaults['llmTimeoutSeconds']);
+    }
+
+    public function testSampleCeilingIsClampedOnARead(): void
+    {
+        $low = $this->service(new InMemorySettingsRepository(['llmStyleSampleChars' => '100']));
+        $high = $this->service(new InMemorySettingsRepository(['llmStyleSampleChars' => '999999']));
+
+        $this->assertSame(2000, $low->intValue('llmStyleSampleChars'));
+        $this->assertSame(200000, $high->intValue('llmStyleSampleChars'));
+    }
+
+    public function testFormRefusesATimeoutOverTheWebBudget(): void
+    {
+        $repository = new InMemorySettingsRepository();
+
+        try {
+            $this->service($repository)->save($this->submitted(['llmTimeoutSeconds' => '180']));
+            $this->fail('Отказ не прозвучал.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame(
+                '«Таймаут запроса к LLM» принимает значения от 10 до 110, передано 180.',
+                $e->getMessage(),
+            );
+        }
+
+        $this->assertSame(0, $repository->saves);
     }
 }
