@@ -785,7 +785,7 @@ feat(settings): два текстовых типа поля и признак к
 комментарий — кодов стало семь. Строки про `type` и `secret` остаются как есть: оба новых кода `int`,
 и их границы проверяют тесты выше, а не эта sweep-проверка.
 
-- [ ] **Step 2: Прогнать — ожидаем `OK (6 tests, …)` провалами на четырёх**
+- [ ] **Step 2: Прогнать — ожидаем `13 tests`, провалов на четырёх**
 
 ```sh
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Settings/Service/PublicationSettingsServiceLlmTest.php'
@@ -819,7 +819,8 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
         ],
 ```
 
-`min`/`max`/`unit` — те же ключи, что у восемнадцати существующих `int`-кодов; `$bounds` вьюхи
+`min`/`max`/`unit` — те же ключи, что у 15 существующих `int`-кодов (из 18 кодов до этой ревизии
+пятнадцать были `int`, остальные — `date`, `order` и `style`); `$bounds` вьюхи
 (:25-36) строит нижнюю границу из `minimumOf()`, и для этих двух кодов она равна числу из схемы.
 
 - [ ] **Step 4: Прогнать зелёными и снять гейты**
@@ -830,9 +831,10 @@ docker compose exec -T app php -l shared/Settings/Service/PublicationSettingsSer
 docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source shared/Settings/Service/PublicationSettingsService.php
 ```
 
-Ожидаем `OK (13 tests, …)`; две строки hint длиннее 120 знаков дадут ровно два новых
-предупреждения `Generic.Files.LineLength` — их записать в отчёт, разрывая строку, если заказчик
-попросит их убрать.
+Ожидаем `OK (13 tests, …)`; две hint-строки разорваны склейкой, и в этом прогоне ни одна добавленная
+строка не перешагнула 120 знаков (самая длинная — 110), поэтому число предупреждений
+`Generic.Files.LineLength` по файлу остаётся базовым — 7. Если живой прогон даст больше, разорвать
+длинную строку и записать замер в отчёт.
 
 - [ ] **Step 5: Страница настроек показывает два числа**
 
@@ -914,7 +916,7 @@ final class LlmReplyTest extends Unit
             'usage' => ['prompt_tokens' => 1234, 'completion_tokens' => 56],
         ]);
 
-        $this->assertNotNull($reply, 'Ответ с сообщением обязан разобратьcя.');
+        $this->assertNotNull($reply, 'Ответ с сообщением обязан разобраться.');
         $this->assertSame("Готово.\nТекст.", $reply->text);
         $this->assertSame('stop', $reply->finishReason);
         $this->assertSame(1234, $reply->promptTokens);
@@ -944,7 +946,9 @@ final class LlmReplyTest extends Unit
     public function testTreatsANonStringContentAsNoAnswer(): void
     {
         $this->assertNull($this->reply(['choices' => [['message' => ['content' => 42]]]]));
-        $this->assertNull($this->reply(['choices' => [['message' => ['content' => ['text' => 'массив вместо строки']]]]]));
+        $this->assertNull($this->reply([
+            'choices' => [['message' => ['content' => ['text' => 'массив вместо строки']]]],
+        ]));
     }
 
     public function testKeepsAStreamAnswerOfTheReasoningModel(): void
@@ -952,7 +956,10 @@ final class LlmReplyTest extends Unit
         // The proxy answers a `reasoning` model with its thinking in a separate field;
         // only `content` may reach the form, and the reason it stopped has to survive.
         $reply = $this->reply([
-            'choices' => [['message' => ['content' => 'Ответ.'], 'finish_reason' => 'stop'], 'reasoning' => 'Длинные рассуждения…'],
+            'choices' => [
+                ['message' => ['content' => 'Ответ.'], 'finish_reason' => 'stop'],
+                'reasoning' => 'Длинные рассуждения…',
+            ],
         ]);
 
         $this->assertNotNull($reply);
@@ -1016,10 +1023,11 @@ final readonly class LlmReply
         }
 
         $usage = isset($decoded['usage']) && is_array($decoded['usage']) ? $decoded['usage'] : [];
+        $finishReason = isset($choice['finish_reason']) ? $choice['finish_reason'] : null;
 
         return new self(
             $message['content'],
-            isset($choice['finish_reason']) ? (string)$choice['finish_reason'] : '',
+            is_scalar($finishReason) ? (string)$finishReason : '',
             isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : 0,
             isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : 0,
         );
