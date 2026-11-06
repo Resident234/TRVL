@@ -63,6 +63,14 @@ PHP-новдок JS страницы публикаций и офлайн-хар
   приписать.
 - Числа гейтов переснимаются живым прогоном этой ревизии, а не берутся из памяти: unit, phpstan,
   PSR12 по view и счётки `run-all.txt` пишутся в доку только из захвата этого же прогона.
+- Гейт phpcs называет только производящие пути. Тестовых файлов в его аргументах нет по двум
+  причинам, и обе замерены: префикс `app/` внутри контейнера не существует (`rc=16`, «The file
+  "app/tests/…" does not exist» — прогон обрывается до первого отчёта), а без префикса каркас
+  Codeception (`$_root`, `_before`, `_after`) в `TextStyleSampleReaderTest.php` даёт 2 ошибки и 1
+  предупреждение — ровно столько, сколько дают 40 уже отслеживаемых тестовых файлов репозитория
+  (`tests/Unit` целиком: 35 ошибок и 183 предупреждения). Этот каркас — конвенция проекта,
+  перекрашивать её под PSR12 ради зелёного гейта нельзя: тесты поют по каркасу, а не по линтеру,
+  и этот выбор уже сделан за нас сорока файлами.
 - Мажорная секция `CHANGELOG.md` — `## [2.0.0]` (слово заказчика). Строки README о последнем релизе
   и теге синхронизируются только когда тег поставлен, и только словом заказчика. Пуш и тег — по
   отдельному слову.
@@ -2558,7 +2566,7 @@ final class LlmTextService
 
 ```sh
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Service/LlmTextServiceTest.php'
-docker compose exec -T app sh -lc 'php -l shared/Llm/Service/LlmTextService.php && php -l ../app/tests/Unit/shared/Llm/Service/LlmClientStub.php'
+docker compose exec -T app sh -lc 'php -l shared/Llm/Service/LlmTextService.php && php -l tests/Unit/shared/Llm/Service/LlmClientStub.php'
 docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
@@ -3389,12 +3397,12 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Service/LlmTextServiceChatTest.php'
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Service/'
 docker compose exec -T app sh -lc 'php -l shared/Llm/Service/LlmTextService.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm app/tests/Unit/shared/Llm
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
 Ожидаем `OK (11 tests, …)` на файл и `OK (49 tests, …)` на каталог (13 + 13 + 12 + 11);
-phpcs — 0 ошибок; phpstan — прежние 5.
+phpcs по `shared/Llm` — 0 ошибок; phpstan — прежние 5.
 
 - [ ] **Step 5: Закоммитить**
 
@@ -4097,11 +4105,12 @@ final class LlmJobRepository implements LlmJobQueueInterface
 ```sh
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Infrastructure/LlmJobRepositoryTest.php'
 docker compose exec -T app sh -lc 'php -l shared/Llm/Dto/LlmJobData.php && php -l shared/Llm/Contract/LlmJobQueueInterface.php && php -l shared/Llm/Infrastructure/LlmJobRepository.php && php -l migrations/m261104_000001_create_llm_job.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm migrations/m261104_000001_create_llm_job.php app/tests/Unit/shared/Llm
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm migrations/m261104_000001_create_llm_job.php
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (11 tests, …)`; phpcs — 0 ошибок; phpstan — прежние 5. `resultFormatting` у ряда после
+Ожидаем `OK (11 tests, …)`; phpcs по `shared/Llm` и миграции — 0 ошибок; phpstan — прежние 5.
+`resultFormatting` у ряда после
 `markDone('…', '[]', …)` читается `'[]'`, а не `null`: пустой список меток — это значение колонки, а
 не её отсутствие.
 
@@ -4593,13 +4602,13 @@ final class LlmChatRepository implements LlmChatRepositoryInterface
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Infrastructure/LlmChatRepositoryTest.php'
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Infrastructure/'
 docker compose exec -T app sh -lc 'php -l shared/Llm/Dto/LlmChatMessageData.php && php -l shared/Llm/Contract/LlmChatRepositoryInterface.php && php -l shared/Llm/Infrastructure/LlmChatRepository.php && php -l migrations/m261104_000002_create_llm_chat_message.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm migrations/m261104_000002_create_llm_chat_message.php app/tests/Unit/shared/Llm
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm migrations/m261104_000002_create_llm_chat_message.php
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
 Ожидаем `OK (8 tests, …)` на файл и `OK (23 tests, …)` на каталог — 11 очереди, 8 истории и 4
-транспорта: урл-тест клиента Task 6 лежит в том же `Infrastructure/`; phpcs — 0 ошибок; phpstan —
-прежние 5.
+транспорта: урл-тест клиента Task 6 лежит в том же `Infrastructure/`; phpcs по `shared/Llm` и
+миграции — 0 ошибок; phpstan — прежние 5.
 
 - [ ] **Step 9: Закоммитить**
 
@@ -5307,12 +5316,12 @@ final class LlmJobProcessor
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Service/LlmJobProcessorTest.php'
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Service/'
 docker compose exec -T app sh -lc 'php -l shared/Llm/Service/LlmJobProcessor.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm app/tests/Unit/shared/Llm
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (9 tests, …)` на файл и `OK (58 tests, …)` на каталог (13 + 13 + 12 + 11 + 9); phpcs — 0
-ошибок; phpstan — прежние 5.
+Ожидаем `OK (9 tests, …)` на файл и `OK (58 tests, …)` на каталог (13 + 13 + 12 + 11 + 9); phpcs по
+`shared/Llm` — 0 ошибок; phpstan — прежние 5.
 
 - [ ] **Step 6: Контроллер-воркер**
 
@@ -6709,13 +6718,17 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/LoginTest.php'
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/LogoutTest.php'
 docker compose exec -T app sh -lc 'php -l controllers/SiteController.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 controllers/SiteController.php app/tests/Unit/SiteControllerLlmPanelTest.php app/tests/Unit/shared/Llm/Service/FakeChatHistory.php
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source controllers/SiteController.php
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
 Ожидаем `OK (23 tests, …)` на новый файл, `OK (20 tests, …)` на проверки блока заголовка и по
 `OK (1 test, …)` на вход и выход: конструктор дополнен, а трое, кто собирает его позиционными
-аргументами, этого не заметили. phpcs — 0 ошибок, phpstan — прежние 5.
+аргументами, этого не заметили. phpcs по `controllers/SiteController.php` — прежняя база из 4
+нарушений в 2 источниках: 1 ошибка `Generic.Files.LineEndings` (CRLF первой строки) и 3
+предупреждения `Generic.Files.LineLength`; phpstan — прежние 5. База меряется этой таблицей
+источников, а не номерами строк: три длинных строки лежат ниже вставок задания и их номера
+сдвигаются сами (до Task 13 это 1687-1689 со 134, 139 и 145 байтами).
 
 - [ ] **Step 9: Пять адресов в `web.php`**
 
@@ -8605,9 +8618,10 @@ feat(llm): скрипт панели идёт по пяти адресам и д
 - Create: `app/runtime/_tmp_gates.txt` — захват трёх мер (вне git: `app/runtime/` не индексируется).
 - Ничего не правится: ни один файл репозитория это задание не трогает и в stage не кладёт.
 - Reference: `docs/superpowers/plans/2026-11-04-llm-integration.md:64-65` — пункт Global
-  Constraints о пересъёмке чисел; `:671-673` — базовая линия unit-набора `372 tests, 1228 assertions`
-  и правило «дельта равна числу новых тестов»; `:684-687` — как мерить `LineLength` и почему
-  phpstan до вьюхи не касается.
+  Constraints о пересъёмке чисел; `:691-693` — базовая линия unit-набора `372 tests, 1228 assertions`
+  и правило «дельта равна числу новых тестов»; `:704-707` — как мерить `LineLength` и почему
+  phpstan до вьюхи не касается. Числа сняты с этого файла на этой ревизии и даны рядом с их
+  формулировками: искать по слову, сверяться по числу.
 
 **Interfaces:**
 - Consumes: всё, что поставили задания 1–15, — три таблицы, семь кодов настроек, граф DI из двух
@@ -8682,19 +8696,30 @@ docker compose exec -T app sh -lc '
 
 ```sh
 docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source \
-  shared/Llm commands/LlmController.php tests/Unit/shared/Llm \
-  tests/Unit/shared/Settings/Service/PublicationSettingsServiceLlmTest.php \
-  tests/Unit/SiteControllerLlmPanelTest.php 2>&1 | tee -a app/runtime/_tmp_gates.txt
+  shared/Llm commands/LlmController.php \
+  migrations/m261104_000000_widen_publications_setting_value.php \
+  migrations/m261104_000001_create_llm_job.php \
+  migrations/m261104_000002_create_llm_chat_message.php 2>&1 | tee -a app/runtime/_tmp_gates.txt
 docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source \
   views/site/publications.php views/site/settings.php controllers/SiteController.php \
   2>&1 | tee -a app/runtime/_tmp_gates.txt
 ```
 
-Первый прогон обязан кончаться `A TOTAL OF 0 ERRORS`. Во втором ошибок тоже ноль, а предупреждения
-`Generic.Files.LineLength` — это та самая мера, ради которой здесь стоит `--report=source`: строки
-отчёта с именем файла и числом переносятся в доку Task 18 дословно. Вьюха публикаций держит 259
-строк длиннее 120 байт после Task 15 (`252 → 259` дали задания 14 и 15), и эта цифра — мера
-плана, а не phpcs; отчёт phpcs кладётся рядом, а не вместо.
+Имена путей — без префикса `app/` (пункт Global Constraints выше) и без тестовых файлов: гейт PSR12 называет
+производящие пути. Три миграции перечислены именами, а не `m261104_*.php`: маску раскрывает хостовый
+shell, который `migrations/` не видит, а не контейнер. Первый прогон на чистом коде печатает не
+ноль-таблицу, а две строки: `Time: …; Memory: …` при `rc=0` — без нарушений таблица источников не
+выводится вовсе, и строки `A TOTAL OF 0 …` в отчёте не бывает. Во втором прогоне ошибки — прежняя база, снятая
+живым прогоном до этой ревизии: `views/site/settings.php` 17 (`Squiz.ControlStructures` — 14
+`space after close paren` и 3 `space after keyword`, PHPCBF-фиксабельные) и
+`controllers/SiteController.php` 1 (`Generic.Files.LineEndings`, CRLF первой строки) — 18 ошибок,
+и 182 предупреждения `Generic.Files.LineLength` (170 + 9 + 3). Задания 13-15 ни одной из этих
+ошибок не плодят и не чинят: чинить чужое попутно нельзя. Предупреждения `LineLength` — это та
+самая мера, ради которой здесь стоит `--report=source`: строки отчёта с именем файла и числом
+переносятся в доку Task 18 дословно. Вьюха публикаций держит 259 строк длиннее 120 байт после
+Task 15 (`252 → 259` дали задания 14 и 15), и эта цифра — мера плана, а не phpcs: phpcs меряет
+длину строки в знаках, а счётка плана — в байтах, и на кириллице байтов больше (170 против 252 —
+это одна и та же вьюха, две меры). Отчёт phpcs кладётся рядом, а не вместо.
 
 - [ ] **Step 5: Unit — дерево Llm, два отдельных файла и весь набор**
 
