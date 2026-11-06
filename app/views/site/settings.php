@@ -109,9 +109,9 @@ foreach ($schema as $code => $definition) {
                                        <?php if (array_key_exists('secret', $definition)): ?>
                                            value="" placeholder="Оставлено пустым = не менять"
                                        <?php else: ?>
-                                           value="<?= Html::encode($settings[$code]) ?>"
+                                           value="<?= Html::encode($settings[$code]) ?>" required
                                        <?php endif ?>
-                                       maxlength="<?= (int)$definition['max'] ?>" required>
+                                       maxlength="<?= (int)$definition['max'] ?>">
                             <?php elseif ($definition['type'] === 'textarea'): ?>
                                 <textarea class="form-control" id="setting-<?= $code ?>"
                                           name="settings[<?= $code ?>]"
