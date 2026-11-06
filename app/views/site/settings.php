@@ -103,6 +103,20 @@ foreach ($schema as $code => $definition) {
                                            step="1" required>
                                     <span class="input-group-text"><?= Html::encode($definition['unit']) ?></span>
                                 </div>
+                            <?php elseif ($definition['type'] === 'text'): ?>
+                                <input type="text" class="form-control" id="setting-<?= $code ?>"
+                                       name="settings[<?= $code ?>]"
+                                       <?php if (array_key_exists('secret', $definition)): ?>
+                                           value="" placeholder="Оставлено пустым = не менять"
+                                       <?php else: ?>
+                                           value="<?= Html::encode($settings[$code]) ?>"
+                                       <?php endif ?>
+                                       maxlength="<?= (int)$definition['max'] ?>" required>
+                            <?php elseif ($definition['type'] === 'textarea'): ?>
+                                <textarea class="form-control" id="setting-<?= $code ?>"
+                                          name="settings[<?= $code ?>]"
+                                          rows="8" maxlength="<?= (int)$definition['max'] ?>"
+                                          required><?= Html::encode($settings[$code]) ?></textarea>
                             <?php elseif ($definition['type'] === 'date'): ?>
                                 <select class="form-select" id="setting-<?= $code ?>" name="settings[<?= $code ?>]">
                                     <?php foreach (PublicationSettingsService::dateOptions() as $value => $label): ?>

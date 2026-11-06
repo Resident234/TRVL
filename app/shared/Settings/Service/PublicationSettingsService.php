@@ -85,6 +85,43 @@ final class PublicationSettingsService
         'oldest' => 'Старые сверху',
     ];
 
+    /**
+     * The work of the spell checker, written out so the settings page has something to
+     * edit on the first run. The response contract is not in here: the code appends it,
+     * so the format of the answer cannot be edited away.
+     */
+    private const DEFAULT_PROMPT_SPELLING =
+        "Отредактируй присланный текст как корректор: исправь опечатки, орфографические\n"
+        . "и пунктуационные ошибки, лишние и пропущенные пробелы, неверный регистр буквы\n"
+        . "после точки.\n"
+        . "Не меняй смысл, порядок слов, лексику, тон и длину: после правки должен читаться\n"
+        . "тот же текст, только без ошибок.\n"
+        . "Ничего не добавляй от себя: ни вступлений, ни пояснений, ни эмодзи, ни хештегов.\n"
+        . "Выделение сохрани там, где оно стоит, и пересчитай его границы по исправленному тексту.\n"
+        . "Формат ответа возьми из блока, приложенного к этому тексту.";
+
+    /**
+     * The work of the style transfer. `{style}` is replaced by the code with the name of
+     * the folder the reader took from `activeTextStyle`; the sample itself travels in the
+     * block the application appends after this prompt, and this text is what points the
+     * model at that block.
+     */
+    private const DEFAULT_PROMPT_STYLE =
+        "Ты пишешь публикацию за автора канала «{style}». К запросу приложен образец его\n"
+        . "текстов: сначала прочитай его целиком и внимательно разбери — как построены\n"
+        . "предложения и какой у них ритм, какие слова, жаргон, фразеологизмы и обращения\n"
+        . "он использует, какая у него тональность и настроение, как он начинает и заканчивает\n"
+        . "пост, как расставляет выделение и ссылки.\n"
+        . "Потом перепиши присланный текст так, будто его написал этот автор: та же манера,\n"
+        . "те же обороты, та же интонация.\n"
+        . "Факты, имена, числа, адреса и порядок событий присланного текста сохраняй без\n"
+        . "изменений. Длину держи близкой к исходной — не длиннее полутора исходных абзацев.\n"
+        . "Выделение разбери дважды: оставь то, что стоит в присланном тексте и подходит\n"
+        . "переписанному, и добавь своё там, где автор образца на таком же месте выделил бы, —\n"
+        . "по закономерности, которую ты нашёл в образце.\n"
+        . "Задача — стиль, а не оценка: даже скучный текст перепиши в манере автора.\n"
+        . "Формат ответа возьми из блока, приложенного к этому тексту.";
+
     private const SCHEMA = [
         'publicationPageSize' => [
             'type' => 'int',
@@ -239,6 +276,53 @@ final class PublicationSettingsService
             'label' => 'Активный стиль текста',
             'hint' => 'Каждый стиль — папка внутри каталога styles на диске; список показывает те, что нашлись. '
                 . 'Пока настройка только хранится: на текст публикаций она не влияет.',
+        ],
+        'llmBaseUrl' => [
+            'type' => 'text',
+            'default' => 'http://host.docker.internal:31415/v1',
+            'min' => 10,
+            'max' => 255,
+            'pattern' => 'url',
+            'label' => 'Адрес LLM',
+            'hint' => 'Базовый адрес OpenAI-совместимого прокси; запрос идёт на {адрес}/chat/completions. '
+                . 'Из контейнера приложение видит хост именем host.docker.internal.',
+        ],
+        'llmApiKey' => [
+            'type' => 'text',
+            'default' => '',
+            'min' => 0,
+            'max' => 255,
+            'secret' => true,
+            'label' => 'Ключ LLM',
+            'hint' => 'Ключ прокси в открытом виде хранится только в базе и никогда не выводится на страницу. '
+                . 'Пустой ввод сохраняет то, что уже лежит.',
+        ],
+        'llmModel' => [
+            'type' => 'text',
+            'default' => 'auto',
+            'min' => 1,
+            'max' => 120,
+            'label' => 'Модель LLM',
+            'hint' => 'Алиас роутера прокси, а не имя модели: какое окно у «auto» и на что он меняется — '
+                . 'дело роутера.',
+        ],
+        'llmPromptSpelling' => [
+            'type' => 'textarea',
+            'default' => self::DEFAULT_PROMPT_SPELLING,
+            'min' => 20,
+            'max' => 4000,
+            'label' => 'Промт проверки орфографии',
+            'hint' => 'Работа корректора. Формат ответа дописывает код: его здесь нельзя ни испортить, '
+                . 'ни убрать.',
+        ],
+        'llmPromptStyle' => [
+            'type' => 'textarea',
+            'default' => self::DEFAULT_PROMPT_STYLE,
+            'min' => 20,
+            'max' => 4000,
+            'label' => 'Промт стилизации',
+            'hint' => 'Работа автора. {style} подставляется именем папки из «Активного стиля текста»; '
+                . 'сам образец прикладывается к запросу приложением.',
         ],
     ];
 
@@ -469,6 +553,32 @@ final class PublicationSettingsService
                         "«{$label}» принимает значения от {$min} до {$max}, передано {$number}.",
                     );
                 }
+            } elseif ($definition['type'] === 'text' || $definition['type'] === 'textarea') {
+                $min = (int)$definition['min'];
+                $max = (int)$definition['max'];
+                $length = mb_strlen($raw);
+                if ($raw === '' && array_key_exists('secret', $definition)) {
+                    // The form posts an empty key when nobody typed one: the value that
+                    // is already stored is what the page means to keep.
+                    $values[$code] = $this->value($code);
+                    continue;
+                }
+
+                if ($raw === '') {
+                    throw new InvalidArgumentException("«{$label}» нельзя оставить пустым.");
+                }
+
+                if ($length < $min || $length > $max) {
+                    throw new InvalidArgumentException(
+                        "«{$label}» принимает от {$min} до {$max} знаков, передано {$length}.",
+                    );
+                }
+
+                if (array_key_exists('pattern', $definition) && !self::isUsableUrl($raw)) {
+                    throw new InvalidArgumentException(
+                        "«{$label}» надо задать адресом вида http://хост[:порт]/путь, без пробелов.",
+                    );
+                }
             } elseif ($definition['type'] === 'style') {
                 if (!$this->isStyleListed($raw)) {
                     throw new InvalidArgumentException("Вариант настройки «{$label}» надо выбрать из списка.");
@@ -597,6 +707,20 @@ final class PublicationSettingsService
     }
 
     /**
+     * Whether the text is an address the client could actually call: a scheme this
+     * project speaks, a host, no space anywhere, no path tricks. The client glues
+     * `/chat/completions` behind it, so a trailing slash is allowed and a query is not.
+     */
+    private static function isUsableUrl(string $raw): bool
+    {
+        if (preg_match('#^https?://[^\s/?\#]+(:\d{1,5})?(/[^\s]*)?$#', $raw) !== 1) {
+            return false;
+        }
+
+        return strlen($raw) <= 255;
+    }
+
+    /**
      * Brings a stored value inside the bounds of its own definition.
      */
     private function normalize(string $code, string $raw): string
@@ -624,6 +748,26 @@ final class PublicationSettingsService
             }
 
             return $definition['default'];
+        }
+
+        if ($definition['type'] === 'text' || $definition['type'] === 'textarea') {
+            $raw = trim($raw);
+            if ($raw === '') {
+                // An empty prompt would send a request with no task in it, and an empty
+                // base url would make every button of the form useless.
+                return array_key_exists('secret', $definition) ? '' : $definition['default'];
+            }
+
+            if (array_key_exists('pattern', $definition) && !self::isUsableUrl($raw)) {
+                return $definition['default'];
+            }
+
+            $max = (int)$definition['max'];
+            if (mb_strlen($raw) > $max) {
+                return mb_substr($raw, 0, $max);
+            }
+
+            return $raw;
         }
 
         $options = $definition['type'] === 'date' ? self::dateOptions() : self::ORDERS;
