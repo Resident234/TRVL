@@ -951,6 +951,20 @@ final class LlmReplyTest extends Unit
         ]));
     }
 
+    public function testANonScalarFinishReasonLeavesAnEmptyReason(): void
+    {
+        // `finish_reason` иногда приезжает объектом. Голый `(string)` споткнулся бы на нём
+        // об `Object of class … could not be converted to string`, хотя текст части цел —
+        // отказ из-за причины дороже самой причины.
+        $reply = $this->reply([
+            'choices' => [['message' => ['content' => 'Ответ.'], 'finish_reason' => ['a' => 'b']]],
+        ]);
+
+        $this->assertNotNull($reply, 'Причина не решает, есть ли ответ.');
+        $this->assertSame('Ответ.', $reply->text);
+        $this->assertSame('', $reply->finishReason);
+    }
+
     public function testKeepsAStreamAnswerOfTheReasoningModel(): void
     {
         // The proxy answers a `reasoning` model with its thinking in a separate field;
@@ -1160,7 +1174,7 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (5 tests, …)`; пять `No syntax errors detected`; phpcs — 0 ошибок на каталог;
+Ожидаем `OK (6 tests, 22 assertions)`; пять `No syntax errors detected`; phpcs — 0 ошибок на каталог;
 phpstan — прежние 5 ошибок, ни одной новой.
 
 - [ ] **Step 7: Закоммитить**
@@ -1297,7 +1311,7 @@ final class TextStyleSampleReaderTest extends Unit
     }
 ```
 
-Дальше одиннадцать методов того же класса:
+Дальше тринадцать методов того же класса:
 
 ```php
     public function testBothShapesOfTextReachTheBlock(): void
@@ -1311,6 +1325,11 @@ final class TextStyleSampleReaderTest extends Unit
 
         $this->assertStringContainsString($this->long('старое'), $sample->block);
         $this->assertStringContainsString($this->long('жирное') . ' ' . $this->long('новое'), $sample->block);
+        $this->assertStringContainsString(
+            "\n\n---\n\n",
+            $sample->block,
+            'Заголовок обещает модели разделитель; склейка обязана его печатать, а не склеивать подряд.',
+        );
     }
 
     public function testAnArrayGluesItsPartsAndSkipsWhatCarriesNoText(): void
@@ -1322,23 +1341,28 @@ final class TextStyleSampleReaderTest extends Unit
                     ['type' => 'bold', 'text' => $this->long('меткой')],
                     ['type' => 'unknown'],
                     7,
+                    ['type' => 'italic', 'text' => 42],
                     null,
                 ],
             ],
         ]);
 
-        $block = $reader->read(self::STYLE, 40000)->block;
+        $sample = $reader->read(self::STYLE, 40000);
 
         $this->assertStringContainsString(
             'строкой' . $this->long('меткой'),
-            $block,
+            $sample->block,
             'Части склеиваются без разделителя, как они склеены в самом сообщении.',
         );
         $this->assertStringNotContainsString(
             'unknown',
-            $block,
+            $sample->block,
             'Часть без текста пропущена, а не подставлена пустой или своим типом.',
         );
+        // Число знаков — единственный страж для частей-чисел: каст `(string)` дописал бы
+        // «7» и «42» в склейку, и проверка длины поймала бы это, а проверка на вхождение
+        // цифры могла бы столкнуться с самой цифрой в заголовке блока.
+        $this->assertSame(mb_strlen('строкой' . $this->long('меткой')), $sample->chars);
     }
 
     public function testTheNewestMessageComesFirst(): void
@@ -1350,16 +1374,17 @@ final class TextStyleSampleReaderTest extends Unit
         ]);
 
         $block = $reader->read(self::STYLE, 40000)->block;
+        $oldest = mb_strpos($block, $this->long('первое'));
+        $middle = mb_strpos($block, $this->long('второе'));
+        $newest = mb_strpos($block, $this->long('третье'));
 
-        $this->assertLessThan(
-            (int) mb_strpos($block, $this->long('второе')),
-            (int) mb_strpos($block, $this->long('третье')),
-            'Файл идёт от старых к новым, значит свежее в блоке стоит раньше.',
-        );
-        $this->assertLessThan(
-            (int) mb_strpos($block, $this->long('первое')),
-            (int) mb_strpos($block, $this->long('второе')),
-        );
+        // Без этих трёх `mb_strpos() === false` превращался бы в `0` после каста, и
+        // пропущенное сообщение выглядело бы самым свежим.
+        $this->assertNotFalse($oldest, 'Самое старое сообщение обязано влезть в выборку.');
+        $this->assertNotFalse($middle);
+        $this->assertNotFalse($newest);
+        $this->assertLessThan($middle, $newest, 'Файл идёт от старых к новым, значит свежее в блоке стоит раньше.');
+        $this->assertLessThan($oldest, $middle);
     }
 
     public function testTheCeilingCutsOnAMessageBoundary(): void
@@ -1371,16 +1396,41 @@ final class TextStyleSampleReaderTest extends Unit
             ['text' => $this->long('третье')],
         ]);
 
-        $sample = $reader->read(self::STYLE, $one * 2);
+        // Потолок не кратен сообщению: два сообщения влезают, а остаток (100 знаков) —
+        // нет. Реализация, которая добивает потолок серединой третьего, здесь отдала бы
+        // `$one * 2 + 100` и кусок «первое:…»; граница по сообщению отдаёт `$one * 2`.
+        $sample = $reader->read(self::STYLE, $one * 2 + 100);
 
         $this->assertSame($one * 2, $sample->chars);
         $this->assertStringContainsString($this->long('третье'), $sample->block);
+        $this->assertStringContainsString($this->long('второе'), $sample->block);
         $this->assertStringNotContainsString($this->long('первое'), $sample->block);
         $this->assertStringNotContainsString(
             'первое',
             $sample->block,
             'Сообщение не переносится в выборку серединой — ни хвоста, ни начала.',
         );
+    }
+
+    public function testAMessageThatDoesNotFitEndsTheSampleRightThere(): void
+    {
+        $one = mb_strlen($this->long('новое'));
+        $reader = $this->writeFixture([
+            ['text' => $this->long('старое')],
+            ['text' => str_repeat('д', 1000)],
+            ['text' => $this->long('новое')],
+        ]);
+
+        // По спецификации выборка «обрывается на границе сообщения». Значит сообщение,
+        // которое не влезает в остаток потолка, обрывает выборку, а не перескакивается:
+        // самое старое «старое» в блок не попадает. Реализация на `continue`
+        // отдала бы `$one * 2`.
+        $sample = $reader->read(self::STYLE, $one * 2 + 100);
+
+        $this->assertSame($one, $sample->chars);
+        $this->assertStringContainsString($this->long('новое'), $sample->block);
+        $this->assertStringNotContainsString('старое', $sample->block);
+        $this->assertStringNotContainsString('ддд', $sample->block);
     }
 
     public function testWhitespaceInsideAMessageIsCompressed(): void
@@ -1474,7 +1524,23 @@ final class TextStyleSampleReaderTest extends Unit
             $this->fail('Отказ на короткий образец не прозвучал.');
         } catch (StyleSampleUnavailableException $e) {
             $this->assertStringContainsString(self::STYLE, $e->getMessage());
+            $this->assertStringContainsString(
+                (string) TextStyleSampleReader::MIN_SAMPLE_CHARS,
+                $e->getMessage(),
+                'Отказ называет порог, иначе человек не поймёт, до скольких знаков доращивать папку.',
+            );
         }
+    }
+
+    public function testASampleOfExactlyTheThresholdIsAccepted(): void
+    {
+        $reader = $this->writeFixture([['text' => str_repeat('а', TextStyleSampleReader::MIN_SAMPLE_CHARS)]]);
+
+        // Порог входит в выборку: реализация на `<=` отказала бы ровно на 200 знаках.
+        $sample = $reader->read(self::STYLE, 40000);
+
+        $this->assertSame(TextStyleSampleReader::MIN_SAMPLE_CHARS, $sample->chars);
+        $this->assertStringContainsString(str_repeat('а', 200), $sample->block);
     }
 }
 ```
@@ -1559,9 +1625,13 @@ final class TextStyleSampleReader
     {
     }
 
+    /**
+     * Whether this style has a sample that reads. `read()` asks the stricter
+     * question, because its refusal has to name what exactly is missing.
+     */
     public function has(string $styleName): bool
     {
-        return is_file($this->sampleFile($styleName));
+        return is_readable($this->sampleFile($styleName));
     }
 
     /**
@@ -1616,9 +1686,10 @@ final class TextStyleSampleReader
 
         if ($chars < self::MIN_SAMPLE_CHARS) {
             throw new StyleSampleUnavailableException(sprintf(
-                'В образце папки «%s» всего %d знаков — разобрать по ним стиль нельзя.',
+                'В образце папки «%s» всего %d знаков — нужно не меньше %d.',
                 $styleName,
                 $chars,
+                self::MIN_SAMPLE_CHARS,
             ));
         }
 
@@ -1661,7 +1732,7 @@ final class TextStyleSampleReader
     }
 
     /**
-     * @param string[] $messages newest first
+     * @param string[] $taken newest first
      */
     private function block(string $styleName, int $chars, array $taken): string
     {
@@ -1678,9 +1749,11 @@ final class TextStyleSampleReader
 }
 ```
 
-Замечание к `block(string $styleName, int $chars, array $taken)`: имена в скобках строки `@param`
-и списка параметров должны совпадать — phpcs PSR12 спорит против расхождения, если ругнётся на
-`$messages` в доке, править док на `$taken`.
+Замечание к `block(string $styleName, int $chars, array $taken)`: имя в строке `@param` обязано
+совпадать с именем из списка параметров — на `$messages` в доке phpstan отдаёт шестую ошибку
+`PHPDoc tag @param references unknown parameter: $messages` (`parameter.notFound`), и базовая линия
+из пяти перестаёт быть базовой линией. phpcs PSR12 на расхождение имён не спорит; ругань в бридже
+проверок Task 5 шла именно от phpstan.
 
 - [ ] **Step 5: Прогнать зелёным и снять гейты**
 
@@ -1691,18 +1764,32 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (11 tests, …)`; два `No syntax errors detected`; phpcs — 0 ошибок; phpstan — прежние
+Ожидаем `OK (13 tests, 37 assertions)`; два `No syntax errors detected`; phpcs — 0 ошибок; phpstan — прежние
 5 ошибок базовой линии, ни одной новой.
 
 - [ ] **Step 6: сверить читателя на живом корпусе**
 
+Команда ниже работает как написана: `\$` внутри `php -r "…"` экранированы (без этого `$r` съедает
+оболочка), классы подключены явными `require` (автозагрузчик Yii вне бутстрапа консоли их не знает),
+папки берёт `glob()`, чтобы в самой команде не было кириллицы.
+
 ```sh
-docker compose exec -T app sh -lc 'php -r "require \"vendor/autoload.php\"; $r = new app\shared\Llm\Service\TextStyleSampleReader(getenv(\"STYLES_PATH\") ?: \"/var/www/styles\"); $s = $r->read(\"Ватник в Америке\", 40000); echo $s->chars, PHP_EOL, mb_strlen($s->block), PHP_EOL;"'
+docker compose exec -T app sh -lc 'php -r "\$root = getenv(\"STYLES_PATH\") ?: \"/var/www/styles\"; require \"shared/Llm/Dto/StyleSampleData.php\"; require \"shared/Llm/Infrastructure/StyleSampleUnavailableException.php\"; require \"shared/Llm/Service/TextStyleSampleReader.php\"; \$r = new app\shared\Llm\Service\TextStyleSampleReader(\$root); foreach (glob(\$root . \"/*/result.json\") as \$file) { \$name = basename(dirname(\$file)); \$s = \$r->read(\$name, 40000); echo \"chars=\", \$s->chars, \" block=\", mb_strlen(\$s->block), \" has=\", var_export(\$r->has(\$name), true), \" folder=\", \$name, PHP_EOL; }"'
 ```
 
-Ожидаем `40000` или меньше ровно на одно сообщение (граница по сообщению, а не по знаку) и длину
-блока на пару сотен знаков больше — это заголовок с разделителем. `0` или исключение означают, что
-путь в контейнере не тот; проверять `docker compose exec -T app printenv STYLES_PATH`.
+Снято на живой папке каталога (`STYLES_PATH` в контейнере не задан, сработало резервное
+`/var/www/styles`) — вывод в файл, потому что имена папок кириллицей:
+
+```
+chars=39504 block=40109 has=true folder=g_jobbot
+chars=39037 block=39552 has=true folder=Ватник в Америке
+```
+
+Оба числа — «меньше потолка ровно на одно сообщение»: у Ватника следующее по старине сообщение стоит
+1309 знаков, и `39 037 + 1309 = 40 346 > 40 000`, поэтому граница по сообщению и отдаёт 39 037. Блок
+длиннее выборки на 515 и 605 знаков соответственно — это заголовок плюс разделители `---`. Нули или
+исключение означали бы, что путь в контейнере не тот: проверять `docker compose exec -T app printenv
+STYLES_PATH`.
 
 - [ ] **Step 7: Закоммитить**
 
@@ -1997,15 +2084,17 @@ docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 - [ ] **Step 5: Живой вызов через прокси**
 
 Ключ берётся из строки `llmApiKey` базы (Task 17 его заполнит словом заказчика); в скрипте его нет.
+Переменные внутри `php -r "…"` экранированы (`\$`): двойные кавычки достались оболочке, и без слэшей
+`$settings`, `$client`, `$reply` и `$app` развернулись бы в пустоту ещё до `php`.
 
 ```sh
 docker compose exec -T -u appuser app sh -lc 'DB_DSN="pgsql:host=postgres;port=5432;dbname=yii_dev" php -r "
 require \"vendor/autoload.php\";
 $app = require \"config/bootstrap_console.php\";
-$settings = app\shared\Settings\Service\PublicationSettingsService::instance();
-$client = new app\shared\Llm\Infrastructure\OpenAiCompatibleClient($settings);
-$reply = $client->chat([[\"role\" => \"user\", \"content\" => \"Ответь одним словом: готово\"]], 30);
-echo strlen($reply->text), PHP_EOL, $reply->finishReason, PHP_EOL;
+\$settings = app\shared\Settings\Service\PublicationSettingsService::instance();
+\$client = new app\shared\Llm\Infrastructure\OpenAiCompatibleClient(\$settings);
+\$reply = \$client->chat([[\\"role\\" => \\"user\\", \\"content\\" => \\"Ответь одним словом: готово\\"]], 30);
+echo strlen(\$reply->text), PHP_EOL, \$reply->finishReason, PHP_EOL;
 "'
 ```
 
@@ -2940,7 +3029,7 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (12 tests, …)` на файл, `OK (36 tests, …)` на каталог (11 образца + 13 орфографии +
+Ожидаем `OK (12 tests, …)` на файл, `OK (38 tests, …)` на каталог (13 образца + 13 орфографии +
 12 стилизации); phpcs — 0 ошибок; phpstan — прежние 5. Строки 240–241 сервиса настроек остаются
 двумя теми же предупреждениями `Generic.Files.LineLength`, что были до правки: перемонтированная
 подсказка держит те же два длинных куска и добавляет третий короткий.
@@ -3304,7 +3393,7 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm app/test
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (11 tests, …)` на файл и `OK (47 tests, …)` на каталог (11 + 13 + 12 + 11);
+Ожидаем `OK (11 tests, …)` на файл и `OK (49 tests, …)` на каталог (13 + 13 + 12 + 11);
 phpcs — 0 ошибок; phpstan — прежние 5.
 
 - [ ] **Step 5: Закоммитить**
@@ -5222,7 +5311,7 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm app/test
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (9 tests, …)` на файл и `OK (56 tests, …)` на каталог (11 + 13 + 12 + 11 + 9); phpcs — 0
+Ожидаем `OK (9 tests, …)` на файл и `OK (58 tests, …)` на каталог (13 + 13 + 12 + 11 + 9); phpcs — 0
 ошибок; phpstan — прежние 5.
 
 - [ ] **Step 6: Контроллер-воркер**
@@ -8616,15 +8705,15 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit' 2>&1 | tee -a app/runtime/_tmp_gates.txt
 ```
 
-Ожидаем `OK (84 tests, …)` на дерево (56 в `Service/`, 23 в `Infrastructure/`, 5 в `Dto/`), `OK
-(13 tests, …)` и `OK (23 tests, …)` на два файла. Целый набор обязан дать `492 tests` — базовая
-линия этого прогона плюс ровно те 120, что добавили задания:
+Ожидаем `OK (87 tests, …)` на дерево (58 в `Service/`, 23 в `Infrastructure/`, 6 в `Dto/`), `OK
+(13 tests, …)` и `OK (23 tests, …)` на два файла. Целый набор обязан дать `495 tests` — базовая
+линия этого прогона плюс ровно те 123, что добавили задания:
 
 | Файл | Задание | Тестов |
 |---|---|---|
 | `PublicationSettingsServiceLlmTest.php` | 2 и 3 | 13 |
-| `LlmReplyTest.php` | 4 | 5 |
-| `TextStyleSampleReaderTest.php` | 5 | 11 |
+| `LlmReplyTest.php` | 4 | 6 |
+| `TextStyleSampleReaderTest.php` | 5 | 13 |
 | `OpenAiCompatibleClientUrlTest.php` | 6 | 4 |
 | `LlmTextServiceTest.php` | 7 | 13 |
 | `LlmTextServiceStylizeTest.php` | 8 | 12 |
@@ -8633,11 +8722,16 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
 | `LlmChatRepositoryTest.php` | 11 | 8 |
 | `LlmJobProcessorTest.php` | 12 | 9 |
 | `SiteControllerLlmPanelTest.php` | 13 | 23 |
-| Итого новых | | 120 |
+| Итого новых | | 123 |
 
-Дельта больше 120 — значит кто-то дописал метод в чужой существующий тест и об этом в плане нет
+Дельта больше 123 — значит кто-то дописал метод в чужой существующий тест и об этом в плане нет
 ни строки; меньше — значит один из девяти файлов дерева с тестами не доехал (проверить `Step 3`,
 где их число уже стоит).
+
+`495` — число чистого дерева. Пока в рабочем дереве лежат незакоммиченные тесты чужой задачи, прогон
+даёт их сверху: четыре файла форума (`ForumSectionScanServiceTest` 6, `ForumTagScanServiceTest` 4,
+`CountryTagExtractorTest` 6, `ForumSectionPageParserTest` 4) добавляют ровно 20, и снятая на живом
+дереве цифра `421` после Task 5 складывается из `372 + 29 + 20`. Сверять надо дельту, а не итог.
 
 - [ ] **Step 6: PHPStan и песочница**
 
