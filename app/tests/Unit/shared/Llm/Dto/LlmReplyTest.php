@@ -26,7 +26,7 @@ final class LlmReplyTest extends Unit
             'usage' => ['prompt_tokens' => 1234, 'completion_tokens' => 56],
         ]);
 
-        $this->assertNotNull($reply, 'Ответ с сообщением обязан разобратьcя.');
+        $this->assertNotNull($reply, 'Ответ с сообщением обязан разобраться.');
         $this->assertSame("Готово.\nТекст.", $reply->text);
         $this->assertSame('stop', $reply->finishReason);
         $this->assertSame(1234, $reply->promptTokens);

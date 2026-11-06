@@ -40,10 +40,11 @@ final readonly class LlmReply
         }
 
         $usage = isset($decoded['usage']) && is_array($decoded['usage']) ? $decoded['usage'] : [];
+        $finishReason = isset($choice['finish_reason']) ? $choice['finish_reason'] : null;
 
         return new self(
             $message['content'],
-            isset($choice['finish_reason']) ? (string)$choice['finish_reason'] : '',
+            is_scalar($finishReason) ? (string)$finishReason : '',
             isset($usage['prompt_tokens']) ? (int)$usage['prompt_tokens'] : 0,
             isset($usage['completion_tokens']) ? (int)$usage['completion_tokens'] : 0,
         );
