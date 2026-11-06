@@ -61,6 +61,20 @@ final class LlmReplyTest extends Unit
         ]));
     }
 
+    public function testANonScalarFinishReasonLeavesAnEmptyReason(): void
+    {
+        // `finish_reason` иногда приезжает объектом. Голый `(string)` споткнулся бы на нём
+        // об `Object of class … could not be converted to string`, хотя текст части цел —
+        // отказ из-за причины дороже самой причины.
+        $reply = $this->reply([
+            'choices' => [['message' => ['content' => 'Ответ.'], 'finish_reason' => ['a' => 'b']]],
+        ]);
+
+        $this->assertNotNull($reply, 'Причина не решает, есть ли ответ.');
+        $this->assertSame('Ответ.', $reply->text);
+        $this->assertSame('', $reply->finishReason);
+    }
+
     public function testKeepsAStreamAnswerOfTheReasoningModel(): void
     {
         // The proxy answers a `reasoning` model with its thinking in a separate field;

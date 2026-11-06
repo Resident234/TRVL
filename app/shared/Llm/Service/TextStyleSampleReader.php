@@ -40,9 +40,13 @@ final class TextStyleSampleReader
     {
     }
 
+    /**
+     * Whether this style has a sample that reads. `read()` asks the stricter
+     * question, because its refusal has to name what exactly is missing.
+     */
     public function has(string $styleName): bool
     {
-        return is_file($this->sampleFile($styleName));
+        return is_readable($this->sampleFile($styleName));
     }
 
     /**
@@ -97,9 +101,10 @@ final class TextStyleSampleReader
 
         if ($chars < self::MIN_SAMPLE_CHARS) {
             throw new StyleSampleUnavailableException(sprintf(
-                'В образце папки «%s» всего %d знаков — разобрать по ним стиль нельзя.',
+                'В образце папки «%s» всего %d знаков — нужно не меньше %d.',
                 $styleName,
                 $chars,
+                self::MIN_SAMPLE_CHARS,
             ));
         }
 

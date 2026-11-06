@@ -90,6 +90,11 @@ final class TextStyleSampleReaderTest extends Unit
 
         $this->assertStringContainsString($this->long('старое'), $sample->block);
         $this->assertStringContainsString($this->long('жирное') . ' ' . $this->long('новое'), $sample->block);
+        $this->assertStringContainsString(
+            "\n\n---\n\n",
+            $sample->block,
+            'Заголовок обещает модели разделитель; склейка обязана его печатать, а не склеивать подряд.',
+        );
     }
 
     public function testAnArrayGluesItsPartsAndSkipsWhatCarriesNoText(): void
@@ -101,23 +106,28 @@ final class TextStyleSampleReaderTest extends Unit
                     ['type' => 'bold', 'text' => $this->long('меткой')],
                     ['type' => 'unknown'],
                     7,
+                    ['type' => 'italic', 'text' => 42],
                     null,
                 ],
             ],
         ]);
 
-        $block = $reader->read(self::STYLE, 40000)->block;
+        $sample = $reader->read(self::STYLE, 40000);
 
         $this->assertStringContainsString(
             'строкой' . $this->long('меткой'),
-            $block,
+            $sample->block,
             'Части склеиваются без разделителя, как они склеены в самом сообщении.',
         );
         $this->assertStringNotContainsString(
             'unknown',
-            $block,
+            $sample->block,
             'Часть без текста пропущена, а не подставлена пустой или своим типом.',
         );
+        // Число знаков — единственный страж для частей-чисел: каст `(string)` дописал бы
+        // «7» и «42» в склейку, и проверка длины поймала бы это, а проверка на вхождение
+        // цифры могла бы столкнуться с самой цифрой в заголовке блока.
+        $this->assertSame(mb_strlen('строкой' . $this->long('меткой')), $sample->chars);
     }
 
     public function testTheNewestMessageComesFirst(): void
@@ -129,16 +139,17 @@ final class TextStyleSampleReaderTest extends Unit
         ]);
 
         $block = $reader->read(self::STYLE, 40000)->block;
+        $oldest = mb_strpos($block, $this->long('первое'));
+        $middle = mb_strpos($block, $this->long('второе'));
+        $newest = mb_strpos($block, $this->long('третье'));
 
-        $this->assertLessThan(
-            (int) mb_strpos($block, $this->long('второе')),
-            (int) mb_strpos($block, $this->long('третье')),
-            'Файл идёт от старых к новым, значит свежее в блоке стоит раньше.',
-        );
-        $this->assertLessThan(
-            (int) mb_strpos($block, $this->long('первое')),
-            (int) mb_strpos($block, $this->long('второе')),
-        );
+        // Без этих трёх `mb_strpos() === false` превращался бы в `0` после каста, и
+        // пропущенное сообщение выглядело бы самым свежим.
+        $this->assertNotFalse($oldest, 'Самое старое сообщение обязано влезть в выборку.');
+        $this->assertNotFalse($middle);
+        $this->assertNotFalse($newest);
+        $this->assertLessThan($middle, $newest, 'Файл идёт от старых к новым, значит свежее в блоке стоит раньше.');
+        $this->assertLessThan($oldest, $middle);
     }
 
     public function testTheCeilingCutsOnAMessageBoundary(): void
@@ -150,16 +161,41 @@ final class TextStyleSampleReaderTest extends Unit
             ['text' => $this->long('третье')],
         ]);
 
-        $sample = $reader->read(self::STYLE, $one * 2);
+        // Потолок не кратен сообщению: два сообщения влезают, а остаток (100 знаков) —
+        // нет. Реализация, которая добивает потолок серединой третьего, здесь отдала бы
+        // `$one * 2 + 100` и кусок «первое:…»; граница по сообщению отдаёт `$one * 2`.
+        $sample = $reader->read(self::STYLE, $one * 2 + 100);
 
         $this->assertSame($one * 2, $sample->chars);
         $this->assertStringContainsString($this->long('третье'), $sample->block);
+        $this->assertStringContainsString($this->long('второе'), $sample->block);
         $this->assertStringNotContainsString($this->long('первое'), $sample->block);
         $this->assertStringNotContainsString(
             'первое',
             $sample->block,
             'Сообщение не переносится в выборку серединой — ни хвоста, ни начала.',
         );
+    }
+
+    public function testAMessageThatDoesNotFitEndsTheSampleRightThere(): void
+    {
+        $one = mb_strlen($this->long('новое'));
+        $reader = $this->writeFixture([
+            ['text' => $this->long('старое')],
+            ['text' => str_repeat('д', 1000)],
+            ['text' => $this->long('новое')],
+        ]);
+
+        // По спецификации выборка «обрывается на границе сообщения». Значит сообщение,
+        // которое не влезает в остаток потолка, обрывает выборку, а не перескакивается:
+        // самое старое «старое» в блок не попадает. Реализация на `continue`
+        // отдала бы `$one * 2`.
+        $sample = $reader->read(self::STYLE, $one * 2 + 100);
+
+        $this->assertSame($one, $sample->chars);
+        $this->assertStringContainsString($this->long('новое'), $sample->block);
+        $this->assertStringNotContainsString('старое', $sample->block);
+        $this->assertStringNotContainsString('ддд', $sample->block);
     }
 
     public function testWhitespaceInsideAMessageIsCompressed(): void
@@ -253,6 +289,22 @@ final class TextStyleSampleReaderTest extends Unit
             $this->fail('Отказ на короткий образец не прозвучал.');
         } catch (StyleSampleUnavailableException $e) {
             $this->assertStringContainsString(self::STYLE, $e->getMessage());
+            $this->assertStringContainsString(
+                (string) TextStyleSampleReader::MIN_SAMPLE_CHARS,
+                $e->getMessage(),
+                'Отказ называет порог, иначе человек не поймёт, до скольких знаков доращивать папку.',
+            );
         }
+    }
+
+    public function testASampleOfExactlyTheThresholdIsAccepted(): void
+    {
+        $reader = $this->writeFixture([['text' => str_repeat('а', TextStyleSampleReader::MIN_SAMPLE_CHARS)]]);
+
+        // Порог входит в выборку: реализация на `<=` отказала бы ровно на 200 знаках.
+        $sample = $reader->read(self::STYLE, 40000);
+
+        $this->assertSame(TextStyleSampleReader::MIN_SAMPLE_CHARS, $sample->chars);
+        $this->assertStringContainsString(str_repeat('а', 200), $sample->block);
     }
 }
