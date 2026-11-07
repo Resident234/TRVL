@@ -98,7 +98,7 @@ final class LlmJobRepository implements LlmJobQueueInterface
                 'result_text' => $resultText,
                 'result_formatting' => $this->decoded($resultFormatting),
                 'finished_at' => $now,
-            ], ['id' => $id])
+            ], ['id' => $id, 'status' => LlmJobData::RUNNING])
             ->execute();
     }
 
@@ -110,7 +110,7 @@ final class LlmJobRepository implements LlmJobQueueInterface
                 'status' => LlmJobData::FAILED,
                 'error' => $error,
                 'finished_at' => $now,
-            ], ['id' => $id])
+            ], ['id' => $id, 'status' => LlmJobData::RUNNING])
             ->execute();
     }
 

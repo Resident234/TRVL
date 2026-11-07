@@ -66,7 +66,11 @@ final class LlmJobRepositoryTest extends Unit
         $this->assertSame(0, $row->partOrder);
         $this->assertSame(self::STYLE, $row->styleName);
         $this->assertSame('Братишка, мы в Америке.', $row->sourceText);
-        $this->assertSame(self::MARKS, $row->sourceFormatting);
+        $this->assertJsonStringEqualsJsonString(
+            self::MARKS,
+            $row->sourceFormatting,
+            'Метки читаются списком: jsonb переставляет ключи и расставляет пробелы.',
+        );
         $this->assertNull($row->resultText);
         $this->assertNull($row->resultFormatting);
         $this->assertNull($row->error);
@@ -129,6 +133,41 @@ final class LlmJobRepositoryTest extends Unit
         $this->_repository->claim(LlmJobData::KIND_STYLE, '2026-11-05 10:02:00');
 
         $this->_repository->markFailed($id, 'Прокси не принял ключ.', '2026-11-05 10:03:00');
+
+        $row = $this->_repository->find($id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(LlmJobData::FAILED, $row->status);
+        $this->assertNull($row->resultText);
+        $this->assertNull($row->resultFormatting);
+        $this->assertSame('Прокси не принял ключ.', $row->error);
+        $this->assertSame('2026-11-05 10:03:00', $row->finishedAt);
+    }
+
+    public function testALateFailureLeavesADoneRowAlone(): void
+    {
+        $id = $this->_repository->enqueue($this->job(), '2026-11-05 10:00:00');
+        $this->_repository->claim(LlmJobData::KIND_STYLE, '2026-11-05 10:02:00');
+        $this->_repository->markDone($id, 'Ну здравствуй, братишка.', '[]', '2026-11-05 10:03:00');
+
+        $this->_repository->markFailed($id, 'Поздний отказ.', '2026-11-05 10:04:00');
+
+        $row = $this->_repository->find($id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(LlmJobData::DONE, $row->status);
+        $this->assertSame('Ну здравствуй, братишка.', $row->resultText);
+        $this->assertNull($row->error);
+        $this->assertSame('2026-11-05 10:03:00', $row->finishedAt);
+    }
+
+    public function testALateAnswerLeavesAFailedRowAlone(): void
+    {
+        $id = $this->_repository->enqueue($this->job(), '2026-11-05 10:00:00');
+        $this->_repository->claim(LlmJobData::KIND_STYLE, '2026-11-05 10:02:00');
+        $this->_repository->markFailed($id, 'Прокси не принял ключ.', '2026-11-05 10:03:00');
+
+        $this->_repository->markDone($id, 'Поздний ответ.', '[]', '2026-11-05 10:04:00');
 
         $row = $this->_repository->find($id);
 
