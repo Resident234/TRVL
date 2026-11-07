@@ -4975,6 +4975,10 @@ final class FakeJobQueue implements LlmJobQueueInterface
 
     public int $nextId = 1;
 
+    public int $reclaimResult = 7;
+
+    public int $purgeResult = 9;
+
     public ?string $reclaimedBefore = null;
 
     public ?string $purgedBefore = null;
@@ -5047,7 +5051,7 @@ final class FakeJobQueue implements LlmJobQueueInterface
 
         $this->reclaimedBefore = $startedBefore;
 
-        return 0;
+        return $this->reclaimResult;
     }
 
     public function purgeFinished(string $finishedBefore): int
@@ -5056,7 +5060,7 @@ final class FakeJobQueue implements LlmJobQueueInterface
 
         $this->purgedBefore = $finishedBefore;
 
-        return 0;
+        return $this->purgeResult;
     }
 
     public function acquireLock(string $code): bool
@@ -5179,8 +5183,16 @@ final class LlmJobProcessorTest extends Unit
         $this->assertSame(0, $this->_stub->calls);
     }
 
+    /**
+     * Фикстура считает обе чистки ненулевыми числами, и здесь они стоят свои:
+     * рабочий берёт их из ответа очереди, поэтому ноль, вписанный в статистику
+     * дрейна напрямую, провалит этот тест, а не пройдёт незамеченным.
+     */
     public function testTheDrainLocksWorksAndUnlocksInThatOrder(): void
     {
+        $this->_queue->reclaimResult = 11;
+        $this->_queue->purgeResult = 5;
+
         $stats = $this->processor([self::PORTRAIT, self::ANSWER])->drain();
 
         $this->assertFalse($stats['locked']);
@@ -5193,6 +5205,8 @@ final class LlmJobProcessorTest extends Unit
             $this->_queue->lockCodes,
         );
         $this->assertSame('llm_job', LlmJobProcessor::LOCK_CODE);
+        $this->assertSame(11, $stats['reclaimed']);
+        $this->assertSame(5, $stats['purged']);
     }
 
     public function testADeniedLockStopsTheDrainBeforeAnyWork(): void

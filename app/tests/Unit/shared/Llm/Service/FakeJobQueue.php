@@ -34,6 +34,10 @@ final class FakeJobQueue implements LlmJobQueueInterface
 
     public int $nextId = 1;
 
+    public int $reclaimResult = 7;
+
+    public int $purgeResult = 9;
+
     public ?string $reclaimedBefore = null;
 
     public ?string $purgedBefore = null;
@@ -106,7 +110,7 @@ final class FakeJobQueue implements LlmJobQueueInterface
 
         $this->reclaimedBefore = $startedBefore;
 
-        return 0;
+        return $this->reclaimResult;
     }
 
     public function purgeFinished(string $finishedBefore): int
@@ -115,7 +119,7 @@ final class FakeJobQueue implements LlmJobQueueInterface
 
         $this->purgedBefore = $finishedBefore;
 
-        return 0;
+        return $this->purgeResult;
     }
 
     public function acquireLock(string $code): bool
