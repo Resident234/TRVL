@@ -8812,30 +8812,31 @@ docker compose exec -T app sh -lc '
 
 ```sh
 docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source \
-  shared/Llm commands/LlmController.php \
-  migrations/m261104_000000_widen_publications_setting_value.php \
-  migrations/m261104_000001_create_llm_job.php \
-  migrations/m261104_000002_create_llm_chat_message.php 2>&1 | tee -a app/runtime/_tmp_gates.txt
+  shared/Llm commands/LlmController.php 2>&1 | tee -a app/runtime/_tmp_gates.txt
 docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source \
   views/site/publications.php views/site/settings.php controllers/SiteController.php \
   2>&1 | tee -a app/runtime/_tmp_gates.txt
 ```
 
 Имена путей — без префикса `app/` (пункт Global Constraints выше) и без тестовых файлов: гейт PSR12 называет
-производящие пути. Три миграции перечислены именами, а не `m261104_*.php`: маску раскрывает хостовый
-shell, который `migrations/` не видит, а не контейнер. Первый прогон на чистом коде печатает не
-ноль-таблицу, а две строки: `Time: …; Memory: …` при `rc=0` — без нарушений таблица источников не
-выводится вовсе, и строки `A TOTAL OF 0 …` в отчёте не бывает. Во втором прогоне ошибки — прежняя база, снятая
-живым прогоном до этой ревизии: `views/site/settings.php` 17 (`Squiz.ControlStructures` — 14
-`space after close paren` и 3 `space after keyword`, PHPCBF-фиксабельные) и
-`controllers/SiteController.php` 1 (`Generic.Files.LineEndings`, CRLF первой строки) — 18 ошибок,
-и 182 предупреждения `Generic.Files.LineLength` (170 + 9 + 3). Задания 13-15 ни одной из этих
-ошибок не плодят и не чинят: чинить чужое попутно нельзя. Предупреждения `LineLength` — это та
-самая мера, ради которой здесь стоит `--report=source`: строки отчёта с именем файла и числом
-переносятся в доку Task 18 дословно. Вьюха публикаций держит 259 строк длиннее 120 байт после
-Task 15 (`252 → 259` дали задания 14 и 15), и эта цифра — мера плана, а не phpcs: phpcs меряет
-длину строки в знаках, а счётка плана — в байтах, и на кириллице байтов больше (170 против 252 —
-это одна и та же вьюха, две меры). Отчёт phpcs кладётся рядом, а не вместо.
+производящие пути. Миграций здесь тоже нет: PSR1 требует от класса пространства имён, а Squiz — PascalCase, имя класса
+миграции Yii не то и не другое, и чинить это нечем. Прогон
+`phpcs --standard=PSR12 --report=source migrations/m261104_000000_widen_publications_setting_value.php` и
+`migrations/m261104_000001_create_llm_job.php` рядом с чистым `shared/Llm` даёт
+`A TOTAL OF 4 SNIFF VIOLATIONS WERE FOUND IN 2 SOURCES` при `rc=2` — по две на миграцию, а `shared/Llm` не добавляет
+ни одной; миграция задания 11 дала бы шестую ошибку. Синтаксис миграций покрыт шагом 3, где их собирает
+`find migrations -name "m261104_*.php"` уже внутри контейнера: в развёрнутой команде `docker compose exec` маску
+раскрывает хостовый shell, который `migrations/` не видит. Первый прогон на чистом коде печатает не ноль-таблицу, а
+две строки: `Time: …; Memory: …` при `rc=0` — без нарушений таблица источников не выводится вовсе, и строки
+`A TOTAL OF 0 …` в отчёте не бывает. Во втором прогоне ошибки — прежняя база, снятая живым прогоном до этой ревизии:
+`views/site/settings.php` 17 (`Squiz.ControlStructures` — 14 `space after close paren` и 3 `space after keyword`,
+PHPCBF-фиксабельные) и `controllers/SiteController.php` 1 (`Generic.Files.LineEndings`, CRLF первой строки) — 18
+ошибок, и 182 предупреждения `Generic.Files.LineLength` (170 + 9 + 3). Задания 13-15 ни одной из этих ошибок не плодят
+и не чинят: чинить чужое попутно нельзя. Предупреждения `LineLength` — это та самая мера, ради которой здесь стоит
+`--report=source`: строки отчёта с именем файла и числом переносятся в доку Task 18 дословно. Вьюха публикаций держит
+259 строк длиннее 120 байт после Task 15 (`252 → 259` дали задания 14 и 15), и эта цифра — мера плана, а не phpcs:
+phpcs меряет длину строки в знаках, а счётка плана — в байтах, и на кириллице байтов больше (170 против 252 — это одна
+и та же вьюха, две меры). Отчёт phpcs кладётся рядом, а не вместо.
 
 - [ ] **Step 5: Unit — дерево Llm, два отдельных файла и весь набор**
 
