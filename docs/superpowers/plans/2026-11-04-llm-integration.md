@@ -4683,6 +4683,8 @@ final class LlmChatRepository implements LlmChatRepositoryInterface
     /**
      * The marks go into the jsonb column the way the queue and the four
      * publications tables put theirs: Yii encodes an array parameter on write.
+     * A string that is not a JSON list is stored as the empty list — the same
+     * reading the column of a part gives for a part nobody marked.
      *
      * @return array<int, mixed>
      */
