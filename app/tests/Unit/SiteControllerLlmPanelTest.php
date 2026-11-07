@@ -39,6 +39,10 @@ final class SiteControllerLlmPanelTest extends Unit
 
     private const GROUP = '0123456789abcdef0123456789abcdef';
 
+    // One hex digit more than the group form allows: it holds both anchors and
+    // the exact length, since a row of 33 passes /[a-f0-9]{32}/ and {33} alike.
+    private const NEAR_GROUP = '0123456789abcdef0123456789abcdef0';
+
     private const STYLE = 'Ватник в Америке';
 
     private const KEY = 'sk-ключ-из-строки-базы';
@@ -198,6 +202,15 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertFalse($this->controller()->llmPanelState()['readable']);
     }
 
+    public function testThePanelStateWithoutTheStoredKeyIsNotConfigured(): void
+    {
+        $state = $this->controller([], ['llmApiKey' => ''])->llmPanelState();
+
+        $this->assertFalse($state['configured']);
+        $this->assertSame(self::STYLE, $state['style']);
+        $this->assertTrue($state['readable']);
+    }
+
     public function testThePanelWithoutTheWiringRefusesThePageAndTheVerb(): void
     {
         $controller = $this->controller([], [], [], [], false);
@@ -253,6 +266,17 @@ final class SiteControllerLlmPanelTest extends Unit
 
         $this->assertFalse($data['ok']);
         $this->assertStringContainsString('не разбирается', $data['error']);
+    }
+
+    public function testSpellingRefusesTheMissingKeyBeforeTheMissingWiring(): void
+    {
+        $controller = $this->controller([self::ANSWER], ['llmApiKey' => ''], $this->part(), [], false);
+
+        $data = $this->data($controller->actionLlmSpelling());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Нет ключа или адреса прокси — ИИ не настроен.', $data['error']);
+        $this->assertSame(0, $this->_stub->calls);
     }
 
     public function testStyleQueuesTheChosenStyleAndAnswersItsNumber(): void
@@ -314,6 +338,18 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertSame([], $this->_queue->calls);
     }
 
+    public function testStyleRefusesAGroupOfThirtyThreeHexDigits(): void
+    {
+        $body = $this->part();
+        $body['llmPartGroupId'] = self::NEAR_GROUP;
+
+        $data = $this->data($this->controller([], [], $body)->actionLlmStyle());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Группа частей не названа.', $data['error']);
+        $this->assertSame([], $this->_queue->calls);
+    }
+
     public function testStatusAnswersTheRowOfTheQueue(): void
     {
         $this->_queue->queued[] = new LlmJobData(
@@ -340,6 +376,80 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertNull($data['error']);
     }
 
+    public function testStatusAnswersTheErrorOfAFailedRow(): void
+    {
+        $this->_queue->queued[] = new LlmJobData(
+            8,
+            LlmJobData::FAILED,
+            LlmJobData::KIND_STYLE,
+            self::GROUP,
+            0,
+            self::STYLE,
+            'Привет мир.',
+            '[]',
+            null,
+            null,
+            'Прокси не принял ключ: Unauthorized.',
+        );
+
+        $controller = $this->controller([], [], [], ['llmJobId' => '8']);
+
+        $data = $this->data($controller->actionLlmStyleStatus());
+
+        $this->assertTrue($data['ok']);
+        $this->assertSame('failed', $data['status']);
+        $this->assertSame('Прокси не принял ключ: Unauthorized.', $data['error']);
+        $this->assertNull($data['text']);
+        $this->assertNull($data['formatting']);
+    }
+
+    public function testStatusSaysNothingAboutAMarkupTheRowHasNotGot(): void
+    {
+        $this->_queue->queued[] = new LlmJobData(
+            9,
+            LlmJobData::QUEUED,
+            LlmJobData::KIND_STYLE,
+            self::GROUP,
+            0,
+            self::STYLE,
+            'Привет мир.',
+            '[]',
+        );
+
+        $controller = $this->controller([], [], [], ['llmJobId' => '9']);
+
+        $data = $this->data($controller->actionLlmStyleStatus());
+
+        $this->assertTrue($data['ok']);
+        $this->assertSame('queued', $data['status']);
+        $this->assertNull($data['text']);
+        $this->assertNull($data['formatting']);
+        $this->assertNull($data['error']);
+    }
+
+    public function testStatusWorksAfterTheKeyIsGone(): void
+    {
+        $this->_queue->queued[] = new LlmJobData(
+            7,
+            LlmJobData::DONE,
+            LlmJobData::KIND_STYLE,
+            self::GROUP,
+            0,
+            self::STYLE,
+            'Привет мир.',
+            '[]',
+            'Ну здравствуй, братишка.',
+            self::MARKS,
+        );
+
+        $controller = $this->controller([], ['llmApiKey' => ''], [], ['llmJobId' => '7']);
+
+        $data = $this->data($controller->actionLlmStyleStatus());
+
+        $this->assertTrue($data['ok']);
+        $this->assertSame('done', $data['status']);
+    }
+
     public function testStatusSaysWhenThereIsNoSuchJob(): void
     {
         $controller = $this->controller([], [], [], ['llmJobId' => '99']);
@@ -360,12 +470,13 @@ final class SiteControllerLlmPanelTest extends Unit
 
     public function testChatKeepsTheCommandAndTheAnswerInTheHistory(): void
     {
-        $body = array_merge($this->part(), ['llmCommand' => 'сократи текст']);
+        $body = array_merge($this->part('Привет мир.', '[]', 3), ['llmCommand' => 'сократи текст']);
         $controller = $this->controller([self::ANSWER], [], $body);
 
         $data = $this->data($controller->actionLlmChat());
 
         $this->assertTrue($data['ok']);
+        $this->assertSame(3, $data['partOrder']);
         $this->assertSame('Ну здравствуй, братишка.', $data['text']);
         $this->assertSame(self::MARKS, $data['formatting']);
         $this->assertSame(1, $data['userId']);
@@ -423,19 +534,45 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertSame(0, $this->_stub->calls);
     }
 
+    public function testChatRefusalOfTheProxyKeepsTheCommandRow(): void
+    {
+        $body = array_merge($this->part(), ['llmCommand' => 'сократи текст']);
+        $controller = $this->controller(['текст, а не JSON'], [], $body);
+
+        $data = $this->data($controller->actionLlmChat());
+
+        $this->assertFalse($data['ok']);
+        $this->assertStringContainsString('не разбирается', $data['error']);
+        $this->assertSame(1, $data['userId']);
+        $this->assertSame(['latest', 'append'], $this->_history->calls);
+        $this->assertSame(['user'], $this->_history->appended);
+    }
+
+    public function testChatRefusesAGroupOfThirtyThreeHexDigits(): void
+    {
+        $body = array_merge($this->part(), ['llmCommand' => 'сократи текст']);
+        $body['llmPartGroupId'] = self::NEAR_GROUP;
+
+        $data = $this->data($this->controller([self::ANSWER], [], $body)->actionLlmChat());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Группа частей не названа.', $data['error']);
+        $this->assertSame([], $this->_history->calls);
+    }
+
     public function testHistoryAnswersTheRowsOfThePart(): void
     {
         $this->_history->rows[] = new LlmChatMessageData(
             1,
             self::GROUP,
-            0,
+            3,
             LlmChatMessageData::ROLE_USER,
             'сократи текст',
         );
         $this->_history->rows[] = new LlmChatMessageData(
             2,
             self::GROUP,
-            0,
+            3,
             LlmChatMessageData::ROLE_ASSISTANT,
             'Коротко.',
             'Коротко.',
@@ -444,7 +581,7 @@ final class SiteControllerLlmPanelTest extends Unit
 
         $controller = $this->controller([], [], [], [
             'llmPartGroupId' => self::GROUP,
-            'llmPartOrder' => '0',
+            'llmPartOrder' => '3',
         ]);
 
         $data = $this->data($controller->actionLlmChatHistory());
@@ -454,6 +591,7 @@ final class SiteControllerLlmPanelTest extends Unit
         $keys = array_keys($messages[1]);
 
         $this->assertTrue($data['ok']);
+        $this->assertSame(3, $data['partOrder']);
         $this->assertCount(2, $messages);
         $this->assertSame(
             ['id', 'role', 'content', 'replacementText', 'replacementFormatting', 'createdAt'],
@@ -482,5 +620,18 @@ final class SiteControllerLlmPanelTest extends Unit
 
         $this->assertTrue($data['ok']);
         $this->assertCount(1, $data['messages']);
+    }
+
+    public function testHistoryRefusesAGroupOfThirtyThreeHexDigits(): void
+    {
+        $controller = $this->controller([], [], [], [
+            'llmPartGroupId' => self::NEAR_GROUP,
+            'llmPartOrder' => '0',
+        ]);
+
+        $data = $this->data($controller->actionLlmChatHistory());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Группа частей не названа.', $data['error']);
     }
 }
