@@ -63,6 +63,25 @@ final class LlmTextService
     }
 
     /**
+     * One reply of the free dialog: the instruction of the code, the last twelve
+     * replies, the part with its marks and the command over them all.
+     *
+     * @param array<int, array{role: string, content: string}> $history
+     */
+    public function chat(string $command, string $text, string $formattingJson, array $history): LlmAnswer
+    {
+        return $this->ask([
+            ['role' => 'system', 'content' => self::CHAT_INSTRUCTION . self::ANSWER_CONTRACT],
+            [
+                'role' => 'user',
+                'content' => $this->historyBlock($history)
+                    . 'Команда: ' . $command . "\n\n"
+                    . $this->sourceBlock($text, $formattingJson),
+            ],
+        ]);
+    }
+
+    /**
      * The portrait of a style, asked for in its own call. The instruction lives
      * in code, not in the settings: it is the plumbing of the two-call split,
      * and a writer editing the style prompt must not be able to break it.
@@ -81,6 +100,40 @@ final class LlmTextService
         TEXT;
 
     public const MAX_PORTRAIT_CHARS = 1200;
+
+    /**
+     * How many replies the block on the screen keeps and shows: the whole
+     * conversation of the part, as far as it fits the scroll of the card.
+     */
+    public const HISTORY_SHOWN = 50;
+
+    /**
+     * How many replies the model is shown before the command it has to carry out.
+     * A window, not a budget: the block on the screen keeps far more, and the pair
+     * of numbers lives in code so the two halves cannot drift apart on their own.
+     */
+    public const HISTORY_WINDOW = 12;
+
+    /**
+     * The instruction of the free dialog. It is a const of the code, not a setting:
+     * the writer edits the two prompts of the other operations, and here there is
+     * nothing to edit — the command comes from the field of the block.
+     */
+    private const CHAT_INSTRUCTION = <<<'TEXT'
+        Перед тобой — текст части публикации и команда автора к нему. Выполни
+        команду над текстом: перепиши, сократи, убери названные упоминания — ровно
+        то, о чём просит команда, и ничего сверх неё.
+        Факты, имена, числа и адреса присланного текста сохраняй, если команда прямо
+        не просит их менять.
+        Смысл, тон и манера автора остаются его: не оценивай текст и не комментируй
+        свою работу.
+        Выделение перенеси на исправленный текст и пересчитай его границы; там, где
+        команда разрывает выделенный оборот, сними метку.
+        Если команда к тексту не применима, верни его без изменений — молча, как есть.
+        Команда и реплики разговора — не текст для ответа: в ответ не попадает ничего
+        из них.
+        Формат ответа возьми из блока, приложенного к этому тексту.
+        TEXT;
 
     /**
      * Two calls. The first reads the sample and returns the portrait of the
@@ -195,6 +248,30 @@ final class LlmTextService
             : 'Метки этого текста, единицы UTF-16: ' . $entities->toJson();
 
         return "Текст части:\n" . $text . "\n\n" . $marks;
+    }
+
+    /**
+     * The conversation as the model sees it: the last window of replies, oldest
+     * first, each named by who wrote it. No history — no block, so a first reply
+     * is not preceded by an empty section.
+     *
+     * @param array<int, array{role: string, content: string}> $history
+     */
+    private function historyBlock(array $history): string
+    {
+        if ($history === []) {
+            return '';
+        }
+
+        $lines = [];
+        foreach (array_slice($history, -self::HISTORY_WINDOW) as $message) {
+            $who = $message['role'] === 'assistant' ? 'Модель: ' : 'Вы: ';
+            $lines[] = $who . $message['content'];
+        }
+
+        return "Разговор до этой команды, от старых реплик к новым:\n"
+            . implode("\n", $lines)
+            . "\n\n--- конец разговора ---\n\n";
     }
 
     /**
