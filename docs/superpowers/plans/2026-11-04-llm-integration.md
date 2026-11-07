@@ -2678,7 +2678,7 @@ final class StyleSampleFolder
 
         $messages = [];
         for ($index = 0; $index < 4; $index++) {
-            $messages[] = ['text' => $index . ':' . str_repeat('а', 250)];
+            $messages[] = ['text' => $index . ':' . str_repeat('а', 900)];
         }
 
         file_put_contents(
@@ -2786,6 +2786,11 @@ final class LlmTextServiceStylizeTest extends Unit
         $first = $this->_stub->seen[0];
         $this->assertStringContainsString('Образец стиля «Ватник в Америке»', $first[1]['content']);
         $this->assertStringNotContainsString('Перепиши за автора', $first[0]['content']);
+        $this->assertStringStartsWith(
+            'Перед тобой — приложенный образец текстов автора.',
+            $first[0]['content'],
+            'Первый вызов идёт со служебной инструкцией кода, а не с пустым системным блоком.',
+        );
         $this->assertStringNotContainsString(
             LlmTextService::ANSWER_CONTRACT,
             $first[0]['content'],
@@ -2795,16 +2800,20 @@ final class LlmTextServiceStylizeTest extends Unit
 
     public function testTheSampleRespectsTheCeilingOfTheSetting(): void
     {
-        $this->service([self::PORTRAIT, self::ANSWER], ['llmStyleSampleChars' => '600']);
+        // Минимум настройки `llmStyleSampleChars` — 2000 знаков, и `normalize()`
+        // поднимает до него любое меньшее значение: потолок в 600 знаков настройка
+        // не хранит, поэтому берут самый малый разрешённый.
+        $this->service([self::PORTRAIT, self::ANSWER], ['llmStyleSampleChars' => '2000']);
 
         $this->_service->stylize('Привет мир.', '[]');
 
         $sample = $this->_stub->seen[0][1]['content'];
-        // Фикстура каталога даёт четыре сообщения по 252 знака; под потолок в 600
-        // знаков становятся два самых свежих — 504.
-        $this->assertStringContainsString('— 504 знаков', $sample);
-        $this->assertStringNotContainsString('3:' . str_repeat('а', 250), $sample);
-        $this->assertStringContainsString('2:' . str_repeat('а', 250), $sample);
+        // Фикстура каталога даёт четыре сообщения по 902 знака; под потолок в 2000
+        // знаков становятся два самых свежих — «3» и «2», то есть 1804.
+        $this->assertStringContainsString('— 1804 знаков', $sample);
+        $this->assertStringContainsString('3:' . str_repeat('а', 900), $sample);
+        $this->assertStringContainsString('2:' . str_repeat('а', 900), $sample);
+        $this->assertStringNotContainsString('1:' . str_repeat('а', 900), $sample);
     }
 
     public function testThePortraitOfTheFirstCallTravelsIntoTheSecond(): void
@@ -2971,6 +2980,7 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
      * The style is the one the settings page chose: the button of the
      * publication form asks for `activeTextStyle` and nothing else.
      *
+     * @throws LlmRequestException when no style is chosen or the portrait of the sample came back empty
      * @throws StyleSampleUnavailableException when the folder of the chosen style cannot be read
      */
     public function stylize(string $text, string $formattingJson): LlmAnswer
@@ -2993,6 +3003,7 @@ docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbnam
      * folder name, and the block heading names the folder too, so the model is
      * told whose style it is even when the writer deleted the placeholder.
      *
+     * @throws LlmRequestException when the portrait of the sample came back empty
      * @throws StyleSampleUnavailableException when the folder named cannot be read
      */
     public function stylizeIn(string $styleName, string $text, string $formattingJson): LlmAnswer
