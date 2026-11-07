@@ -3520,6 +3520,8 @@ claim, завершение, возврат брошенного `running`, чи
   - `LlmJobQueueInterface::reclaimStale(string $startedBefore): int`
   - `LlmJobQueueInterface::purgeFinished(string $finishedBefore): int`
   - `LlmJobQueueInterface::acquireLock(string $code): bool` и `releaseLock(string $code): void`
+  - `markDone()` и `markFailed()` пишут только ряд, который ещё в работе: `AND status = running`
+    держит запоздалого финализатора от перезаписи чужого итога.
   - Границы `reclaimStale()` и `purgeFinished()` считает вызывающий (Task 12): репозиторий сравнивает
     `started_at`/`finished_at` с готовой строкой времени и не знает ни про таймаут настройки, ни про
     трое суток. Так дата-арифметика остаётся там, где её видно в тесте, а в SQL не нужен
@@ -3669,7 +3671,11 @@ final class LlmJobRepositoryTest extends Unit
         $this->assertSame(0, $row->partOrder);
         $this->assertSame(self::STYLE, $row->styleName);
         $this->assertSame('Братишка, мы в Америке.', $row->sourceText);
-        $this->assertSame(self::MARKS, $row->sourceFormatting);
+        $this->assertJsonStringEqualsJsonString(
+            self::MARKS,
+            $row->sourceFormatting,
+            'Метки читаются списком: jsonb переставляет ключи и расставляет пробелы.',
+        );
         $this->assertNull($row->resultText);
         $this->assertNull($row->resultFormatting);
         $this->assertNull($row->error);
@@ -3732,6 +3738,41 @@ final class LlmJobRepositoryTest extends Unit
         $this->_repository->claim(LlmJobData::KIND_STYLE, '2026-11-05 10:02:00');
 
         $this->_repository->markFailed($id, 'Прокси не принял ключ.', '2026-11-05 10:03:00');
+
+        $row = $this->_repository->find($id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(LlmJobData::FAILED, $row->status);
+        $this->assertNull($row->resultText);
+        $this->assertNull($row->resultFormatting);
+        $this->assertSame('Прокси не принял ключ.', $row->error);
+        $this->assertSame('2026-11-05 10:03:00', $row->finishedAt);
+    }
+
+    public function testALateFailureLeavesADoneRowAlone(): void
+    {
+        $id = $this->_repository->enqueue($this->job(), '2026-11-05 10:00:00');
+        $this->_repository->claim(LlmJobData::KIND_STYLE, '2026-11-05 10:02:00');
+        $this->_repository->markDone($id, 'Ну здравствуй, братишка.', '[]', '2026-11-05 10:03:00');
+
+        $this->_repository->markFailed($id, 'Поздний отказ.', '2026-11-05 10:04:00');
+
+        $row = $this->_repository->find($id);
+
+        $this->assertNotNull($row);
+        $this->assertSame(LlmJobData::DONE, $row->status);
+        $this->assertSame('Ну здравствуй, братишка.', $row->resultText);
+        $this->assertNull($row->error);
+        $this->assertSame('2026-11-05 10:03:00', $row->finishedAt);
+    }
+
+    public function testALateAnswerLeavesAFailedRowAlone(): void
+    {
+        $id = $this->_repository->enqueue($this->job(), '2026-11-05 10:00:00');
+        $this->_repository->claim(LlmJobData::KIND_STYLE, '2026-11-05 10:02:00');
+        $this->_repository->markFailed($id, 'Прокси не принял ключ.', '2026-11-05 10:03:00');
+
+        $this->_repository->markDone($id, 'Поздний ответ.', '[]', '2026-11-05 10:04:00');
 
         $row = $this->_repository->find($id);
 
@@ -4046,7 +4087,7 @@ final class LlmJobRepository implements LlmJobQueueInterface
                 'result_text' => $resultText,
                 'result_formatting' => $this->decoded($resultFormatting),
                 'finished_at' => $now,
-            ], ['id' => $id])
+            ], ['id' => $id, 'status' => LlmJobData::RUNNING])
             ->execute();
     }
 
@@ -4058,7 +4099,7 @@ final class LlmJobRepository implements LlmJobQueueInterface
                 'status' => LlmJobData::FAILED,
                 'error' => $error,
                 'finished_at' => $now,
-            ], ['id' => $id])
+            ], ['id' => $id, 'status' => LlmJobData::RUNNING])
             ->execute();
     }
 
@@ -4167,14 +4208,23 @@ final class LlmJobRepository implements LlmJobQueueInterface
 ```sh
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Infrastructure/LlmJobRepositoryTest.php'
 docker compose exec -T app sh -lc 'php -l shared/Llm/Dto/LlmJobData.php && php -l shared/Llm/Contract/LlmJobQueueInterface.php && php -l shared/Llm/Infrastructure/LlmJobRepository.php && php -l migrations/m261104_000001_create_llm_job.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm migrations/m261104_000001_create_llm_job.php
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (11 tests, …)`; phpcs по `shared/Llm` и миграции — 0 ошибок; phpstan — прежние 5.
-`resultFormatting` у ряда после
-`markDone('…', '[]', …)` читается `'[]'`, а не `null`: пустой список меток — это значение колонки, а
-не её отсутствие.
+Ожидаем `OK (13 tests, 62 assertions)`; phpcs PSR12 по `shared/Llm` — 0 ошибок; phpstan — прежние 5.
+`resultFormatting` у ряда после `markDone('…', '[]', …)` читается `'[]'`, а не `null`: пустой список
+меток — это значение колонки, а не её отсутствие.
+
+Метки сравниваются `assertJsonStringEqualsJsonString`, а не `assertSame`: `jsonb` переставляет ключи
+объекта по возрастанию длины и расставляет пробелы, поэтому побайтное сравнение записанного и
+прочитанного для этой колонки невыполнимо. Финализаторы пишут только ряд в работе: условие
+`AND status = running` не даёт запоздалому финализатору перезаписать итог того, кто забрал ряд после
+возврата в очередь. Миграции в скоуп phpcs не входят: PSR1 требует от класса пространства имён и
+PascalCase, а имя класса миграции Yii — ни то ни другое. Те же 2 ошибки дают
+`m260909_000006_create_published_descriptions.php` с
+`m261104_000000_widen_publications_setting_value.php`, то есть красна любая миграция репозитория, а не
+этот файл; миграции проверяются `php -l`.
 
 - [ ] **Step 9: Закоммитить**
 
@@ -4382,7 +4432,11 @@ final class LlmChatRepositoryTest extends Unit
         $this->assertCount(2, $rows);
         $this->assertNull($rows[0]->replacementText);
         $this->assertSame('Коротко: братишка, мы в Америке.', $rows[1]->replacementText);
-        $this->assertSame('[{"type":"bold","offset":8,"length":9}]', $rows[1]->replacementFormatting);
+        $this->assertJsonStringEqualsJsonString(
+            '[{"type":"bold","offset":8,"length":9}]',
+            $rows[1]->replacementFormatting,
+            'Метки читаются списком: jsonb переставляет ключи и расставляет пробелы.',
+        );
     }
 
     public function testLatestReturnsTheWindowOldestFirst(): void
@@ -4664,13 +4718,13 @@ final class LlmChatRepository implements LlmChatRepositoryInterface
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Infrastructure/LlmChatRepositoryTest.php'
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/shared/Llm/Infrastructure/'
 docker compose exec -T app sh -lc 'php -l shared/Llm/Dto/LlmChatMessageData.php && php -l shared/Llm/Contract/LlmChatRepositoryInterface.php && php -l shared/Llm/Infrastructure/LlmChatRepository.php && php -l migrations/m261104_000002_create_llm_chat_message.php'
-docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm migrations/m261104_000002_create_llm_chat_message.php
+docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (8 tests, …)` на файл и `OK (23 tests, …)` на каталог — 11 очереди, 8 истории и 4
-транспорта: урл-тест клиента Task 6 лежит в том же `Infrastructure/`; phpcs по `shared/Llm` и
-миграции — 0 ошибок; phpstan — прежние 5.
+Ожидаем `OK (8 tests, …)` на файл и `OK (25 tests, …)` на каталог — 13 очереди, 8 истории и 4
+транспорта: урл-тест клиента Task 6 лежит в том же `Infrastructure/`; phpcs PSR12 по
+`shared/Llm` — 0 ошибок; phpstan — прежние 5. Миграция в скоуп phpcs не входит, см. шаг 8 задания 10.
 
 - [ ] **Step 9: Закоммитить**
 
@@ -8725,7 +8779,7 @@ docker compose exec -T postgres psql -U yii -d yii_dev -c '\d publications_setti
 гонявшие пишущие юниты), и в `\d` — ровно те формы, что обещали миграции: у `publications_setting`
 колонка `value` типа `text` без ограничения длины (Task 1); у `llm_job` четырнадцать колонок, из них
 `status` и `kind` — `character varying(16)`, `part_group_id` — `varchar(32)`, `style_name` —
-`varchar(190)`, `source_formatting` — `json not null`, а `result_text`, `result_formatting` и `error`
+`varchar(190)`, `source_formatting` — `jsonb not null`, а `result_text`, `result_formatting` и `error`
 — с `null`, и один индекс `idx_llm_job_status` по одному лишь `status`; у `llm_chat_message` восемь
 колонок и индекс `idx_llm_chat_message_part` по `(part_group_id, part_order, id)`. Индекс по
 одному `status`, а не по паре со временем: дрейнер выбирает `WHERE status = 'queued'`, и ровно для
