@@ -9,6 +9,13 @@ use app\models\ContactForm;
 use app\models\LoginForm;
 use app\shared\Forum\Contract\ForumRepositoryInterface;
 use app\shared\Forum\Service\ParserSettingsService;
+use app\shared\Llm\Contract\LlmChatRepositoryInterface;
+use app\shared\Llm\Contract\LlmJobQueueInterface;
+use app\shared\Llm\Dto\LlmChatMessageData;
+use app\shared\Llm\Dto\LlmJobData;
+use app\shared\Llm\Infrastructure\LlmRequestException;
+use app\shared\Llm\Service\LlmTextService;
+use app\shared\Llm\Service\TextStyleSampleReader;
 use app\shared\Publications\Dto\ForumPublicationRef;
 use app\shared\Publications\Dto\PublicationData;
 use app\shared\Publications\Service\PublicationsService;
@@ -106,6 +113,10 @@ class SiteController extends Controller
         private readonly ForumRepositoryInterface $forum,
         private readonly ?PublicationSettingsService $settings = null,
         private readonly ?ParserSettingsService $parserSettings = null,
+        private readonly ?LlmTextService $llmText = null,
+        private readonly ?LlmJobQueueInterface $llmJobs = null,
+        private readonly ?LlmChatRepositoryInterface $llmChat = null,
+        private readonly ?TextStyleSampleReader $llmReader = null,
         $config = [],
     ) {
         parent::__construct($id, $module, $config);
@@ -173,6 +184,11 @@ class SiteController extends Controller
                     'forum-thread' => ['post'],
                     'settings-save' => ['post'],
                     'parser-settings-save' => ['post'],
+                    'llm-spelling' => ['post'],
+                    'llm-style' => ['post'],
+                    'llm-chat' => ['post'],
+                    'llm-style-status' => ['get'],
+                    'llm-chat-history' => ['get'],
                 ],
             ],
         ];
@@ -2882,5 +2898,338 @@ class SiteController extends Controller
             // invalid timezone in cookie, fall through
         }
         return 'UTC';
+    }
+
+    /**
+     * The three facts the panel of the form needs from the server: whether the
+     * connection is stored at all, which style the reader stands on, and whether
+     * the folder of that style is there to read. The page asks for them the way a
+     * block partial asks for publicationSettings(), and the key of the proxy is
+     * not among them — the panel gets a boolean in its place and never the secret
+     * itself, which is what lets the answer be logged or painted into the page.
+     *
+     * @return array{configured: bool, style: string, readable: bool}
+     */
+    public function llmPanelState(): array
+    {
+        $style = $this->settings !== null ? (string) $this->settings->value('activeTextStyle') : '';
+
+        $wired = $this->llmText !== null
+            && $this->llmJobs !== null
+            && $this->llmChat !== null
+            && $this->llmReader !== null;
+
+        return [
+            'configured' => $wired && $this->llmMissingConnection() === null,
+            'style' => $style,
+            'readable' => $style !== '' && $this->llmReader !== null && $this->llmReader->has($style),
+        ];
+    }
+
+    /**
+     * The reason the panel cannot talk to the proxy, or null when it can. Only the
+     * two numbers that decide it are read here: the key is used as a fact of
+     * being present, and the address of the schema default already points at the
+     * proxy of the customer.
+     */
+    private function llmMissingConnection(): ?string
+    {
+        if ($this->settings === null) {
+            return 'Настройки публикаций не заведены — ИИ не настроен.';
+        }
+
+        $key = (string) $this->settings->value('llmApiKey');
+        $baseUrl = (string) $this->settings->value('llmBaseUrl');
+
+        if ($key === '' || $baseUrl === '') {
+            return 'Нет ключа или адреса прокси — ИИ не настроен.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The answer of a verb whose services are missing: the DI of Task 12 wires all
+     * four of them, and a controller built without any — as three older tests
+     * still build it — has no panel to speak of.
+     */
+    private function llmNothingWired(): Response
+    {
+        return $this->asJson(['ok' => false, 'error' => 'За ИИ ничего не заведено.']);
+    }
+
+    /**
+     * Checks the spelling of one part and answers with the text and the marks the
+     * field takes. Nothing is written to the record: the reader still holds the
+     * form, and the answer lands in the editor of the part the same way the
+     * toolbar puts a mark there — the buttons the form already has save it.
+     *
+     * The group of parts is not asked for: an orthography check leaves no row
+     * behind, so the verb needs the text and nothing that ties it to a record.
+     *
+     * @return Response
+     */
+    public function actionLlmSpelling(): Response
+    {
+        $refused = $this->llmMissingConnection();
+        if ($refused !== null) {
+            return $this->asJson(['ok' => false, 'error' => $refused]);
+        }
+
+        if ($this->llmText === null) {
+            return $this->llmNothingWired();
+        }
+
+        $text = (string) $this->request->post('llmText', '');
+        $formatting = (string) $this->request->post('llmFormatting', '[]');
+        $partOrder = (int) $this->request->post('llmPartOrder', 0);
+
+        if (trim($text) === '') {
+            return $this->asJson(['ok' => false, 'error' => 'Часть пуста — править нечего.']);
+        }
+
+        try {
+            $answer = $this->llmText->spelling($text, $formatting);
+        } catch (LlmRequestException $e) {
+            return $this->asJson(['ok' => false, 'error' => $e->getMessage()]);
+        }
+
+        return $this->asJson([
+            'ok' => true,
+            'partOrder' => $partOrder,
+            'text' => $answer->text,
+            'formatting' => $answer->formattingJson(),
+        ]);
+    }
+
+    /**
+     * Puts the stylization of one part into the queue and answers with the number
+     * of its row: the reader pressed the handle, the two calls that make a
+     * portrait and rewrite the text are the business of the worker of Task 12,
+     * which steps once a minute.
+     *
+     * The style is taken here, from the setting the reader stands on, so the row
+     * freezes the style the press meant even if he moves the active style before
+     * the minute step reaches the row.
+     *
+     * @return Response
+     */
+    public function actionLlmStyle(): Response
+    {
+        $refused = $this->llmMissingConnection();
+        if ($refused !== null) {
+            return $this->asJson(['ok' => false, 'error' => $refused]);
+        }
+
+        if ($this->llmJobs === null) {
+            return $this->llmNothingWired();
+        }
+
+        $panel = $this->llmPanelState();
+        if ($panel['style'] === '') {
+            return $this->asJson(['ok' => false, 'error' => 'Стиль не выбран, стилизовать нечем.']);
+        }
+
+        if ($panel['readable'] === false) {
+            return $this->asJson([
+                'ok' => false,
+                'error' => 'Папки стиля «' . $panel['style'] . '» в каталоге нет — стилизовать нечем.',
+            ]);
+        }
+
+        $groupId = trim((string) $this->request->post('llmPartGroupId', ''));
+        if (preg_match('/^[a-f0-9]{32}$/', $groupId) !== 1) {
+            return $this->asJson(['ok' => false, 'error' => 'Группа частей не названа.']);
+        }
+
+        $partOrder = (int) $this->request->post('llmPartOrder', 0);
+        $text = (string) $this->request->post('llmText', '');
+        $formatting = (string) $this->request->post('llmFormatting', '[]');
+
+        if (trim($text) === '') {
+            return $this->asJson(['ok' => false, 'error' => 'Часть пуста — править нечего.']);
+        }
+
+        $jobId = $this->llmJobs->enqueue(
+            new LlmJobData(
+                0,
+                LlmJobData::QUEUED,
+                LlmJobData::KIND_STYLE,
+                $groupId,
+                $partOrder,
+                $panel['style'],
+                $text,
+                $formatting,
+            ),
+            gmdate('Y-m-d H:i:s'),
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'jobId' => $jobId,
+            'partOrder' => $partOrder,
+            'style' => $panel['style'],
+        ]);
+    }
+
+    /**
+     * What became of a queued stylization. The form asks every three seconds, so
+     * this verb reads only the row and touches no settings: a job that is already
+     * in the queue runs even if the reader removed the key in the meantime, and
+     * the page has to be able to say what happened to it.
+     *
+     * @return Response
+     */
+    public function actionLlmStyleStatus(): Response
+    {
+        if ($this->llmJobs === null) {
+            return $this->llmNothingWired();
+        }
+
+        $jobId = (int) $this->request->get('llmJobId', 0);
+        if ($jobId <= 0) {
+            return $this->asJson(['ok' => false, 'error' => 'Задача очереди не названа.']);
+        }
+
+        $job = $this->llmJobs->find($jobId);
+        if ($job === null) {
+            return $this->asJson(['ok' => false, 'error' => 'Задачи очереди с номером ' . $jobId . ' нет.']);
+        }
+
+        return $this->asJson([
+            'ok' => true,
+            'status' => $job->status,
+            'text' => $job->resultText,
+            'formatting' => $job->resultFormatting,
+            'error' => $job->error,
+        ]);
+    }
+
+    /**
+     * One reply of the free dialog. The window of the conversation is read before
+     * the command is stored, so the model does not meet the same sentence twice —
+     * once as the command over the text and once as a past reply. The two rows the
+     * verb leaves in the history stand in it in the order the reader typed them.
+     *
+     * A refused call keeps the row of the command and writes no answer: the reader
+     * did ask, and the next reply reads the conversation with that question in it.
+     *
+     * @return Response
+     */
+    public function actionLlmChat(): Response
+    {
+        $refused = $this->llmMissingConnection();
+        if ($refused !== null) {
+            return $this->asJson(['ok' => false, 'error' => $refused]);
+        }
+
+        if ($this->llmText === null || $this->llmChat === null) {
+            return $this->llmNothingWired();
+        }
+
+        $groupId = trim((string) $this->request->post('llmPartGroupId', ''));
+        if (preg_match('/^[a-f0-9]{32}$/', $groupId) !== 1) {
+            return $this->asJson(['ok' => false, 'error' => 'Группа частей не названа.']);
+        }
+
+        $partOrder = (int) $this->request->post('llmPartOrder', 0);
+        $command = trim((string) $this->request->post('llmCommand', ''));
+        $text = (string) $this->request->post('llmText', '');
+        $formatting = (string) $this->request->post('llmFormatting', '[]');
+
+        if ($command === '') {
+            return $this->asJson(['ok' => false, 'error' => 'Команда не написана.']);
+        }
+
+        if (trim($text) === '') {
+            return $this->asJson(['ok' => false, 'error' => 'Часть пуста — править нечего.']);
+        }
+
+        $now = gmdate('Y-m-d H:i:s');
+
+        $history = $this->llmChat->latest($groupId, $partOrder, LlmTextService::HISTORY_SHOWN);
+
+        $userId = $this->llmChat->append(
+            new LlmChatMessageData(0, $groupId, $partOrder, LlmChatMessageData::ROLE_USER, $command),
+            $now,
+        );
+
+        /** @var array<int, array{role: string, content: string}> $window */
+        $window = array_map(
+            static fn (LlmChatMessageData $message): array => [
+                'role' => $message->role,
+                'content' => $message->content,
+            ],
+            $history,
+        );
+
+        try {
+            $answer = $this->llmText->chat($command, $text, $formatting, $window);
+        } catch (LlmRequestException $e) {
+            return $this->asJson(['ok' => false, 'error' => $e->getMessage(), 'userId' => $userId]);
+        }
+
+        $assistantId = $this->llmChat->append(
+            new LlmChatMessageData(
+                0,
+                $groupId,
+                $partOrder,
+                LlmChatMessageData::ROLE_ASSISTANT,
+                $answer->text,
+                $answer->text,
+                $answer->formattingJson(),
+            ),
+            $now,
+        );
+
+        return $this->asJson([
+            'ok' => true,
+            'partOrder' => $partOrder,
+            'userId' => $userId,
+            'assistantId' => $assistantId,
+            'text' => $answer->text,
+            'formatting' => $answer->formattingJson(),
+        ]);
+    }
+
+    /**
+     * The dialog of one part as the block of the form paints it: the last fifty
+     * replies, oldest first, each with the text and the marks the reader is
+     * offered when the row is an answer. This verb reads only the storage, so a
+     * conversation is still there after the key of the proxy has been taken away —
+     * the reader can read what was said, only not ask for more.
+     *
+     * @return Response
+     */
+    public function actionLlmChatHistory(): Response
+    {
+        if ($this->llmChat === null) {
+            return $this->llmNothingWired();
+        }
+
+        $groupId = trim((string) $this->request->get('llmPartGroupId', ''));
+        if (preg_match('/^[a-f0-9]{32}$/', $groupId) !== 1) {
+            return $this->asJson(['ok' => false, 'error' => 'Группа частей не названа.']);
+        }
+
+        $partOrder = (int) $this->request->get('llmPartOrder', 0);
+
+        $rows = $this->llmChat->latest($groupId, $partOrder, LlmTextService::HISTORY_SHOWN);
+
+        return $this->asJson([
+            'ok' => true,
+            'partOrder' => $partOrder,
+            'messages' => array_map(
+                static fn (LlmChatMessageData $message): array => [
+                    'id' => $message->id,
+                    'role' => $message->role,
+                    'content' => $message->content,
+                    'replacementText' => $message->replacementText,
+                    'replacementFormatting' => $message->replacementFormatting,
+                    'createdAt' => $message->createdAt,
+                ],
+                $rows,
+            ),
+        ]);
     }
 }
