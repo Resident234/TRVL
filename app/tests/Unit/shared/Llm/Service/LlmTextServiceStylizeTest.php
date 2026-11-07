@@ -69,6 +69,11 @@ final class LlmTextServiceStylizeTest extends Unit
         $first = $this->_stub->seen[0];
         $this->assertStringContainsString('Образец стиля «Ватник в Америке»', $first[1]['content']);
         $this->assertStringNotContainsString('Перепиши за автора', $first[0]['content']);
+        $this->assertStringStartsWith(
+            'Перед тобой — приложенный образец текстов автора.',
+            $first[0]['content'],
+            'Первый вызов идёт со служебной инструкцией кода, а не с пустым системным блоком.',
+        );
         $this->assertStringNotContainsString(
             LlmTextService::ANSWER_CONTRACT,
             $first[0]['content'],
