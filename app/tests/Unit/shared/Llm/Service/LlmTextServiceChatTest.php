@@ -94,8 +94,11 @@ final class LlmTextServiceChatTest extends Unit
     {
         $this->userMessage();
 
-        $system = (string) $this->_stub->seen[0][0]['content'];
+        $messages = $this->_stub->seen[0];
+        $system = (string) $messages[0]['content'];
 
+        $this->assertSame('system', $messages[0]['role']);
+        $this->assertSame('user', $messages[1]['role']);
         $this->assertStringStartsWith('Перед тобой — текст части публикации и команда автора к нему.', $system);
         $this->assertStringContainsString(LlmTextService::ANSWER_CONTRACT, $system);
     }
@@ -133,7 +136,7 @@ final class LlmTextServiceChatTest extends Unit
         $user = (string) $this->_stub->seen[0][1]['content'];
 
         $this->assertStringContainsString('Братишка, мы в Америке.', $user);
-        $this->assertStringContainsString('italic', $user);
+        $this->assertStringContainsString('"italic"', $user);
         $this->assertStringContainsString('UTF-16', $user);
     }
 
@@ -146,6 +149,11 @@ final class LlmTextServiceChatTest extends Unit
 
         $this->assertStringContainsString('Вы: сократи текст', $user);
         $this->assertStringContainsString('Модель: Коротко: братишка, мы в Америке.', $user);
+        $this->assertStringContainsString(
+            "Вы: сократи текст\nМодель: Коротко: братишка, мы в Америке.",
+            $user,
+            'Реплики идут в блоке от старых к новым: модель не видит ответа раньше своей команды.',
+        );
     }
 
     public function testAHistoryShorterThanTheWindowGoesInWhole(): void

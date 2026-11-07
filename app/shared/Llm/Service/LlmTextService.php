@@ -64,9 +64,11 @@ final class LlmTextService
 
     /**
      * One reply of the free dialog: the instruction of the code, the last twelve
-     * replies, the part with its marks and the command over them all.
+     * replies, the part with its marks and the command over them all. The history
+     * comes from the oldest reply to the newest, and the window takes its tail.
      *
      * @param array<int, array{role: string, content: string}> $history
+     * @throws LlmRequestException when the answer does not parse or its marks do not describe the text
      */
     public function chat(string $command, string $text, string $formattingJson, array $history): LlmAnswer
     {
