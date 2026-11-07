@@ -6,7 +6,9 @@ namespace app\shared\Llm\Service;
 
 use app\shared\Llm\Contract\LlmClientInterface;
 use app\shared\Llm\Dto\LlmAnswer;
+use app\shared\Llm\Dto\StyleSampleData;
 use app\shared\Llm\Infrastructure\LlmRequestException;
+use app\shared\Llm\Infrastructure\StyleSampleUnavailableException;
 use app\shared\Settings\Service\PublicationSettingsService;
 use app\shared\Telegram\Dto\MessageEntities;
 use InvalidArgumentException;
@@ -57,6 +59,102 @@ final class LlmTextService
         return $this->ask([
             ['role' => 'system', 'content' => $prompt . self::ANSWER_CONTRACT],
             ['role' => 'user', 'content' => $this->sourceBlock($text, $formattingJson)],
+        ]);
+    }
+
+    /**
+     * The portrait of a style, asked for in its own call. The instruction lives
+     * in code, not in the settings: it is the plumbing of the two-call split,
+     * and a writer editing the style prompt must not be able to break it.
+     */
+    private const PORTRAIT_INSTRUCTION = <<<'TEXT'
+        Перед тобой — приложенный образец текстов автора. Разбери его манеру и верни
+        сплошной текст на русском, до 1200 знаков, 8-12 пунктов:
+        как построены предложения и какой у них ритм;
+        какие слова, жаргон, фразеологизмы и обращения автор использует;
+        какая у текстов тональность и настроение;
+        как автор начинает пост и как его заканчивает;
+        где и зачем он ставит выделение и ссылки — какую закономерность ты в этом
+        увидел.
+        Пиши только вывод: без вступлений, без пересказа образца, без цитат длиннее
+        пяти слов, без эмодзи и без рассуждений о самой задаче.
+        TEXT;
+
+    public const MAX_PORTRAIT_CHARS = 1200;
+
+    /**
+     * Two calls. The first reads the sample and returns the portrait of the
+     * style; the second rewrites the part with that portrait in hand. One call
+     * carrying the whole sample was measured and answered with reasoning
+     * instead of an answer, which is the whole reason for the split.
+     *
+     * The style is the one the settings page chose: the button of the
+     * publication form asks for `activeTextStyle` and nothing else.
+     *
+     * @throws LlmRequestException when no style is chosen or the portrait of the sample came back empty
+     * @throws StyleSampleUnavailableException when the folder of the chosen style cannot be read
+     */
+    public function stylize(string $text, string $formattingJson): LlmAnswer
+    {
+        $styleName = (string) $this->settings->value('activeTextStyle');
+        if ($styleName === '') {
+            throw new LlmRequestException('Стиль не выбран, стилизовать нечем.');
+        }
+
+        return $this->stylizeIn($styleName, $text, $formattingJson);
+    }
+
+    /**
+     * The same two calls for a style named by the caller. The queue row of Task 12
+     * freezes `style_name` when the job is put in, and the writer is free to move
+     * the active style before the worker reaches the row — the worker must do what
+     * the row says, so it calls this method and never `stylize()`.
+     *
+     * The prompt from the setting keeps its own words: `{style}` becomes the
+     * folder name, and the block heading names the folder too, so the model is
+     * told whose style it is even when the writer deleted the placeholder.
+     *
+     * @throws LlmRequestException when the portrait of the sample came back empty
+     * @throws StyleSampleUnavailableException when the folder named cannot be read
+     */
+    public function stylizeIn(string $styleName, string $text, string $formattingJson): LlmAnswer
+    {
+        $sample = $this->reader->read(
+            $styleName,
+            $this->settings->intValue('llmStyleSampleChars'),
+        );
+
+        $portrait = $this->portrait($sample, $styleName);
+        if (trim($portrait) === '') {
+            throw new LlmRequestException('Разбор образца пуст — стилизовать нечем.');
+        }
+
+        return $this->rewrite($styleName, $portrait, $text, $formattingJson);
+    }
+
+    private function portrait(StyleSampleData $sample, string $styleName): string
+    {
+        $content = $this->call([
+            ['role' => 'system', 'content' => self::PORTRAIT_INSTRUCTION],
+            ['role' => 'user', 'content' => $sample->block],
+        ]);
+
+        return mb_substr(trim($content), 0, self::MAX_PORTRAIT_CHARS);
+    }
+
+    private function rewrite(string $styleName, string $portrait, string $text, string $formattingJson): LlmAnswer
+    {
+        $prompt = str_replace(
+            '{style}',
+            $styleName,
+            (string) $this->settings->value('llmPromptStyle'),
+        );
+
+        $block = "Разбор образца стиля «{$styleName}»:\n" . $portrait . "\n\n--- конец разбора ---\n\n";
+
+        return $this->ask([
+            ['role' => 'system', 'content' => $prompt . self::ANSWER_CONTRACT],
+            ['role' => 'user', 'content' => $block . $this->sourceBlock($text, $formattingJson)],
         ]);
     }
 
