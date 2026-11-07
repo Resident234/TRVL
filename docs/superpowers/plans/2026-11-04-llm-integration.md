@@ -2591,10 +2591,18 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 shared/Llm
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (13 tests, …)`; два `No syntax errors detected`; phpcs — 0 ошибок; phpstan — прежние 5
-ошибок базовой линии. `ANSWER_CONTRACT` внутри heredoc с отступом: PHP срезает отступ по терминатору,
-и если phpcs ругнётся на длину строки — переносить нельзя, это текст промта; допустимая длина в
-PSR12 здесь 120, фактические строки короче.
+Ожидаем `OK (13 tests, 19 assertions)`; два `No syntax errors detected`; phpcs — 0 ошибок; phpstan —
+6 ошибок: пять базовой линии и шестая, которая кончается вместе с Task 8. Шестую даёт
+`LlmTextService.php:45` `property.onlyWritten` на `$reader`: в этом задании конструктор свойство только
+заполняет, читает его `stylize()` из следующего задания, и счётка возвращается к прежним 5 там же.
+Закрывать её `ignoreErrors` в `phpstan.neon` нельзя: несовпавший шаблон сам становится ошибкой, и
+прогон только по `shared/Llm` добавляет вторую —
+`Ignored error pattern #Unsafe usage of new static\(\)# was not matched in reported errors`.
+Параметр конструктора тоже не убрать: его зовёт блок Interfaces этого же задания и тест, который
+собирает сервис тремя аргументами. `ANSWER_CONTRACT` внутри heredoc с отступом: PHP срезает отступ по
+терминатору, и если phpcs ругнётся на длину строки — переносить нельзя, это текст промта; допустимая
+длина в PSR12 здесь 120 и считает она знаки, а не байты, а самая длинная строка блока — 89 знаков
+(117 байт), поэтому в этом прогоне линтер на неё и не посмотрел.
 
 - [ ] **Step 6: Закоммитить**
 
