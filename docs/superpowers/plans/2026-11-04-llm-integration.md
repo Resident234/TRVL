@@ -3256,9 +3256,14 @@ final class LlmTextServiceChatTest extends Unit
 
     public function testTheCommandTravelsInTheUserMessage(): void
     {
-        $user = $this->userMessage();
+        $user = $this->userMessage($this->history(2));
 
         $this->assertStringContainsString('Команда: сократи текст', $user);
+        $this->assertGreaterThan(
+            strpos($user, '--- конец разговора ---'),
+            strpos($user, 'Команда: '),
+            'Команда идёт за блоком истории: модель читает разговор до того, как ей прикажут.',
+        );
     }
 
     public function testThePartAndItsMarksTravelTogether(): void
@@ -3300,6 +3305,11 @@ final class LlmTextServiceChatTest extends Unit
         $this->assertSame(6, substr_count($user, 'реплика '));
         $this->assertStringContainsString('реплика 00', $user);
         $this->assertStringContainsString('реплика 05', $user);
+        $this->assertStringContainsString(
+            "Модель: реплика 03\nВы: реплика 04",
+            $user,
+            'Реплики идут в порядке разговора, а не группами по говорящим.',
+        );
     }
 
     public function testOnlyTheLastTwelveRepliesOfTheWindowGoIn(): void
