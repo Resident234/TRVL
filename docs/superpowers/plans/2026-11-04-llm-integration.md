@@ -2019,7 +2019,6 @@ final class OpenAiCompatibleClient implements LlmClientInterface
     {
         $status = 0;
         $statusText = '';
-        $response = '';
         $handle = curl_init($url);
         if ($handle === false) {
             throw new LlmRequestException('cURL не инициализирован для вызова прокси.');
@@ -2093,23 +2092,44 @@ docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 
 Ключ берётся из строки `llmApiKey` базы (Task 17 его заполнит словом заказчика); в скрипте его нет.
 Переменные внутри `php -r "…"` экранированы (`\$`): двойные кавычки достались оболочке, и без слэшей
-`$settings`, `$client`, `$reply` и `$app` развернулись бы в пустоту ещё до `php`.
+`$settings`, `$client` и `$reply` развернулись бы в пустоту ещё до `php`. Двойные кавычки самого PHP
+кода экранируются ОДНИМ слэшем (`\"`) — в первой записи шага стояло `\\"`, и замер показал, что это и
+был дефект: `\\"` закрывает кавычку оболочки, PHP получает голый слэш и падает на
+`Parse error: syntax error, unexpected token "\", expecting "]"`, не доходя до прокси. Проба в три
+формы (`\$a = 5` с `\"a=\"`, тот же массив с `\"` и с `\\"`) даёт `a=5`, `b=1 r=user` и тот парсинг
+ошибкой соответственно. Вторым в команде значился `config/bootstrap_console.php`, которого в проекте
+нет: в `app/config/` лежат `console.php`, `web.php`, `db.php`, `test.php`, `test_db.php`, `params.php`
+и `__autocomplete.php`. Третьим — статичный `PublicationSettingsService::instance()`, которого тоже
+нет: сервис стоит в `config/console.php` секцией `container.singletons`, оттуда его и брать через
+`Yii::$container->get()`. Бутстрап консоли собирается вручную, как в `app/yii`.
+
+Рабочая форма (обращается к прокси реально, поэтому выполняется один раз):
 
 ```sh
-docker compose exec -T -u appuser app sh -lc 'DB_DSN="pgsql:host=postgres;port=5432;dbname=yii_dev" php -r "
+docker compose exec -T -u appuser app sh -lc 'php -r "
 require \"vendor/autoload.php\";
-$app = require \"config/bootstrap_console.php\";
-\$settings = app\shared\Settings\Service\PublicationSettingsService::instance();
+require \"vendor/yiisoft/yii2/Yii.php\";
+new yii\console\Application(require \"config/console.php\");
+\$settings = Yii::\$container->get(app\shared\Settings\Service\PublicationSettingsService::class);
 \$client = new app\shared\Llm\Infrastructure\OpenAiCompatibleClient(\$settings);
-\$reply = \$client->chat([[\\"role\\" => \\"user\\", \\"content\\" => \\"Ответь одним словом: готово\\"]], 30);
+\$reply = \$client->chat([[\"role\" => \"user\", \"content\" => \"Ответь одним словом: готово\"]], 30);
 echo strlen(\$reply->text), PHP_EOL, \$reply->finishReason, PHP_EOL;
 "'
 ```
 
-Ожидаем короткие две строки: ненулевую длину ответа и `stop`. `LLM не настроен` — ключ или адрес ещё
-не записаны в базу; `cURL error … host.docker.internal` — `extra_hosts` ещё нет в `app` (его Task 12);
-`Прокси не принял ключ` — 401/403, дальше не идти. Команда обращается к прокси реально, поэтому
-выполняется один раз и её вывод пересылается заказчику, а не перепробуется.
+Замер при пустом ключе (`rc=1`, первая строка трейса):
+
+```
+PHP Fatal error:  Uncaught app\shared\Llm\Infrastructure\LlmRequestException: LLM не настроен: адрес или ключ не заданы. in /var/www/html/shared/Llm/Infrastructure/OpenAiCompatibleClient.php:55
+```
+
+Это ровно названная ветка `LLM не настроен`: ключ в базу ещё не записан, а его дефолт пуст. Замер
+`psql -U yii` по `publications_setting`: строк `llm%` нет ни в `yii_dev`, ни в `yii_test`, поэтому
+адрес и модель пришли бы из схемы, а не из базы. Дальше не идти: живой ответ снимает Task 17, когда в
+базу ляжет слово заказчика, и та же команда отдаст короткие две строки — ненулевую длину ответа и
+`stop`. `cURL error … host.docker.internal` означает, что адрес уже записан, а `extra_hosts` в `app`
+ещё нет (его Task 12); `Прокси не принял ключ` — 401/403, дальше не идти. Вывод команды пересылается
+заказчику как есть, а не перепробуется.
 
 - [ ] **Step 6: Закоммитить**
 

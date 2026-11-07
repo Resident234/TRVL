@@ -111,7 +111,6 @@ final class OpenAiCompatibleClient implements LlmClientInterface
     {
         $status = 0;
         $statusText = '';
-        $response = '';
         $handle = curl_init($url);
         if ($handle === false) {
             throw new LlmRequestException('cURL не инициализирован для вызова прокси.');
