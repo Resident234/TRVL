@@ -30,6 +30,10 @@ services:
       # Empty keeps the mounted catalog above; a path here moves where the
       # settings page finds its text styles.
       STYLES_PATH: ${STYLES_PATH:-}
+    # The text tools of the publication form call the proxy of the customer,
+    # which runs on the machine that hosts the containers.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "9000"
     depends_on:
@@ -103,6 +107,43 @@ services:
       FORUM_LOGIN_USERNAME: ${FORUM_LOGIN_USERNAME:-}
       FORUM_LOGIN_PASSWORD: ${FORUM_LOGIN_PASSWORD:-}
       STYLES_PATH: ${STYLES_PATH:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - appnet
+
+  llm:
+    build:
+      context: ./docker/php-cli
+      args:
+        UID: ${APP_UID:-1000}
+        GID: ${APP_GID:-1000}
+    volumes:
+      - ./app:/var/www/html
+      - ./styles:/var/www/styles:ro
+      - composer-cache:/tmp/composer-cache
+    environment:
+      COMPOSER_CACHE_DIR: /tmp/composer-cache
+      YII_ENV: ${YII_ENV:-dev}
+      YII_DEBUG: ${YII_DEBUG:-1}
+      DB_DSN: pgsql:host=postgres;port=5432;dbname=${POSTGRES_DB:-yii_dev}
+      DB_USERNAME: ${POSTGRES_USER:-yii}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
+      # The queue of stylization jobs: what is queued goes to the proxy, what a
+      # killed container left in running goes back to the queue, and what
+      # finished three days ago leaves the table. The key it calls with is not
+      # here — it lives in the llmApiKey row the settings page writes.
+      CRON_ROLE: llm
+      LLM_JOB_CRON_SCHEDULE: ${LLM_JOB_CRON_SCHEDULE:-* * * * *}
+      # The style folder named by a job row is read from the same mount the
+      # settings page lists.
+      STYLES_PATH: ${STYLES_PATH:-}
+    # The proxy of the customer runs on the machine that hosts the containers.
+    # On a Linux host the name does not resolve without this line; on Docker
+    # Desktop it is already there, and the line changes nothing.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy

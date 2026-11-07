@@ -55,6 +55,9 @@ $config = [
         'telegram' => [
             'class' => \app\commands\TelegramController::class,
         ],
+        'llm' => [
+            'class' => \app\commands\LlmController::class,
+        ],
     ],
     'container' => [
         'singletons' => [
@@ -67,6 +70,30 @@ $config = [
             \app\shared\Forum\Service\ParserSettingsService::class => static fn (): \app\shared\Forum\Service\ParserSettingsService =>
                 new \app\shared\Forum\Service\ParserSettingsService(
                     new \app\shared\Forum\Infrastructure\ForumRepository(\Yii::$app->getDb()),
+                ),
+            \app\shared\Llm\Contract\LlmClientInterface::class => static fn (): \app\shared\Llm\Infrastructure\OpenAiCompatibleClient =>
+                new \app\shared\Llm\Infrastructure\OpenAiCompatibleClient(
+                    \Yii::createObject(\app\shared\Settings\Service\PublicationSettingsService::class),
+                ),
+            \app\shared\Llm\Service\TextStyleSampleReader::class => static fn (): \app\shared\Llm\Service\TextStyleSampleReader =>
+                new \app\shared\Llm\Service\TextStyleSampleReader(
+                    \app\shared\Settings\Infrastructure\DirectoryTextStyleCatalog::fromEnvironment()->path,
+                ),
+            \app\shared\Llm\Service\LlmTextService::class => static fn (): \app\shared\Llm\Service\LlmTextService =>
+                new \app\shared\Llm\Service\LlmTextService(
+                    \Yii::createObject(\app\shared\Llm\Contract\LlmClientInterface::class),
+                    \Yii::createObject(\app\shared\Settings\Service\PublicationSettingsService::class),
+                    \Yii::createObject(\app\shared\Llm\Service\TextStyleSampleReader::class),
+                ),
+            \app\shared\Llm\Contract\LlmJobQueueInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmJobRepository =>
+                new \app\shared\Llm\Infrastructure\LlmJobRepository(\Yii::$app->getDb()),
+            \app\shared\Llm\Contract\LlmChatRepositoryInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmChatRepository =>
+                new \app\shared\Llm\Infrastructure\LlmChatRepository(\Yii::$app->getDb()),
+            \app\shared\Llm\Service\LlmJobProcessor::class => static fn (): \app\shared\Llm\Service\LlmJobProcessor =>
+                new \app\shared\Llm\Service\LlmJobProcessor(
+                    \Yii::createObject(\app\shared\Llm\Contract\LlmJobQueueInterface::class),
+                    \Yii::createObject(\app\shared\Llm\Service\LlmTextService::class),
+                    \Yii::createObject(\app\shared\Settings\Service\PublicationSettingsService::class),
                 ),
         ],
         'definitions' => [
