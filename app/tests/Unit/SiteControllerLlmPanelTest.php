@@ -40,8 +40,11 @@ final class SiteControllerLlmPanelTest extends Unit
     private const GROUP = '0123456789abcdef0123456789abcdef';
 
     // One hex digit more than the group form allows: it holds both anchors and
-    // the exact length, since a row of 33 passes /[a-f0-9]{32}/ and {33} alike.
+    // the exact length, since a value of 33 passes /[a-f0-9]{32}/ and {33} alike.
     private const NEAR_GROUP = '0123456789abcdef0123456789abcdef0';
+
+    // It passes the length and both anchors; only the [a-f0-9] alphabet refuses it.
+    private const NON_HEX = '0123456789abcdeg0123456789abcdeg';
 
     private const STYLE = 'Ватник в Америке';
 
@@ -350,6 +353,28 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertSame([], $this->_queue->calls);
     }
 
+    public function testStyleRefusesAGroupOutsideTheHexAlphabet(): void
+    {
+        $body = $this->part();
+        $body['llmPartGroupId'] = self::NON_HEX;
+
+        $data = $this->data($this->controller([], [], $body)->actionLlmStyle());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Группа частей не названа.', $data['error']);
+        $this->assertSame([], $this->_queue->calls);
+    }
+
+    public function testStyleRefusesTheMissingKeyBeforeTheMissingWiring(): void
+    {
+        $controller = $this->controller([], ['llmApiKey' => ''], $this->part(), [], false);
+
+        $data = $this->data($controller->actionLlmStyle());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Нет ключа или адреса прокси — ИИ не настроен.', $data['error']);
+    }
+
     public function testStatusAnswersTheRowOfTheQueue(): void
     {
         $this->_queue->queued[] = new LlmJobData(
@@ -403,7 +428,7 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertNull($data['formatting']);
     }
 
-    public function testStatusSaysNothingAboutAMarkupTheRowHasNotGot(): void
+    public function testStatusSaysNothingTheRowHasNotYetProduced(): void
     {
         $this->_queue->queued[] = new LlmJobData(
             9,
@@ -487,6 +512,10 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertNull($this->_history->rows[0]->replacementText);
         $this->assertSame('Ну здравствуй, братишка.', $this->_history->rows[1]->replacementText);
         $this->assertSame(self::MARKS, $this->_history->rows[1]->replacementFormatting);
+        $this->assertSame(self::GROUP, $this->_history->rows[0]->partGroupId);
+        $this->assertSame(3, $this->_history->rows[0]->partOrder);
+        $this->assertSame(self::GROUP, $this->_history->rows[1]->partGroupId);
+        $this->assertSame(3, $this->_history->rows[1]->partOrder);
     }
 
     public function testChatReadsTheWindowBeforeItWritesTheCommand(): void
@@ -558,6 +587,17 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertFalse($data['ok']);
         $this->assertSame('Группа частей не названа.', $data['error']);
         $this->assertSame([], $this->_history->calls);
+    }
+
+    public function testChatRefusesTheMissingKeyBeforeTheMissingWiring(): void
+    {
+        $body = array_merge($this->part('Привет мир.', '[]', 3), ['llmCommand' => 'сократи текст']);
+        $controller = $this->controller([self::ANSWER], ['llmApiKey' => ''], $body, [], false);
+
+        $data = $this->data($controller->actionLlmChat());
+
+        $this->assertFalse($data['ok']);
+        $this->assertSame('Нет ключа или адреса прокси — ИИ не настроен.', $data['error']);
     }
 
     public function testHistoryAnswersTheRowsOfThePart(): void
@@ -633,5 +673,6 @@ final class SiteControllerLlmPanelTest extends Unit
 
         $this->assertFalse($data['ok']);
         $this->assertSame('Группа частей не названа.', $data['error']);
+        $this->assertSame([], $this->_history->calls);
     }
 }
