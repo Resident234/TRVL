@@ -1665,8 +1665,8 @@ CSS
                                             chase a handle that moved while «Проверяю…» became
                                             «Готово». Both handles work on the part whose editor stood
                                             last on the page — the same rule the handle of the seam
-                                            keeps — and both go out of use while the storage holds
-                                            neither a key nor an address, which is what the state of
+                                            keeps — and both go out of use while the storage lacks
+                                            a key or an address, which is what the state of
                                             the panel says. The handle of the style goes out of use
                                             twice more: while no style is chosen, and while the chosen
                                             style has no folder to read. A handle that is out of use
