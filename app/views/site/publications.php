@@ -69,7 +69,7 @@ $llmStyleOff = $llmSpellingOff || $llmPanel['style'] === '' || $llmPanel['readab
 $llmSpellingTitle = 'Исправить опечатки, орфографию и пунктуацию в той части, где последним стоял редактор';
 $llmStyleTitle = 'Переписать часть в манере выбранного стиля: задача встаёт в очередь, а очередь шагает раз в минуту';
 if ($llmSpellingOff) {
-    $llmSpellingTitle = 'Нет ключа и адреса прокси — ИИ не настроен на странице настроек';
+    $llmSpellingTitle = 'Нет ключа или адреса прокси — ИИ не настроен на странице настроек';
     $llmStyleTitle = $llmSpellingTitle;
 } elseif ($llmPanel['style'] === '') {
     $llmStyleTitle = 'Стиль не выбран — стилизовать нечем';
