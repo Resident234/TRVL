@@ -58,6 +58,24 @@ $keyboardMaxRows = LinkButtons::MAX_ROWS;
 // reader holds the same words the two rows would have written.
 $headingNumberPlace = PublicationSettingsService::headingNumberPlaceOf($headingNumberTemplate);
 $headingNumberStyle = PublicationSettingsService::headingNumberStyleOf($headingNumberTemplate);
+// The panel of the AI answers to what the storage holds, never to what the fields of
+// the settings page show: an empty key there means «not changed», so the only honest
+// reading of «is a key kept» is the stored row. The controller gives that reading out as
+// three facts — see llmPanelState() — and the words a disabled handle carries are made
+// here, where the reader can read them.
+$llmPanel = $this->context->llmPanelState();
+$llmSpellingOff = $llmPanel['configured'] === false;
+$llmStyleOff = $llmSpellingOff || $llmPanel['style'] === '' || $llmPanel['readable'] === false;
+$llmSpellingTitle = 'Исправить опечатки, орфографию и пунктуацию в той части, где последним стоял редактор';
+$llmStyleTitle = 'Переписать часть в манере выбранного стиля: задача встаёт в очередь, а очередь шагает раз в минуту';
+if ($llmSpellingOff) {
+    $llmSpellingTitle = 'Нет ключа и адреса прокси — ИИ не настроен на странице настроек';
+    $llmStyleTitle = $llmSpellingTitle;
+} elseif ($llmPanel['style'] === '') {
+    $llmStyleTitle = 'Стиль не выбран — стилизовать нечем';
+} elseif ($llmPanel['readable'] === false) {
+    $llmStyleTitle = 'Папки стиля «' . $llmPanel['style'] . '» с образцом нет — стилизовать нечем';
+}
 
 $this->registerCss(
     <<<CSS
@@ -953,6 +971,35 @@ $this->registerCss(
     height: auto;
     min-height: 0;
 }
+
+/* The block of the dialog is a card of the ui-kit, so the sheet gives it its line, its
+   corners and its header, and the scroller of 350px it gives to `.scroll350`. Two things
+   are left to this page. The rows of the conversation are written by the page itself, out
+   of what the server answers, and a row has to hold a long text of the channel without
+   widening the card — which is what the first rule says, and what the vendored sheet does
+   not: the `.thread` of the ui-kit carries no rule of its own at all, it is made of
+   Bootstrap utilities written into its markup, and a page that builds a row in code has no
+   markup to write them into. The second rule puts the round handle of the field inside the
+   field it sends; the wrapper that holds both is drawn by the markup, and `pe-5` is the
+   room the field keeps clear for it. Neither rule draws in a colour: the two handles of the
+   AI wear info as a button, from the class the theme already ships, and the frame of the
+   heading stays the one box on this page that info is drawn round. */
+.publication-llm-panel .threads .thread p {
+    white-space: pre-line;
+    word-break: break-word;
+}
+
+.publication-llm-send-key {
+    position: absolute;
+    right: .5rem;
+    bottom: .5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+}
 CSS
 );
 ?>
@@ -1608,6 +1655,40 @@ CSS
                                             <i class="bi bi-chat-left-text me-1"></i>По предложениям
                                         </button>
                                     </div>
+                                    <?php /* Two handles of the AI, the word they answer with and
+                                            the room the word stands in. They get a row of their own,
+                                            under the row of the split and above the box of the
+                                            numbering, inside the same green box: the reader is asking
+                                            about the text of a part, and that is what the box holds.
+                                            The word of the state goes before both buttons, so the two
+                                            keep the right edge of the row and the mouse never has to
+                                            chase a handle that moved while «Проверяю…» became
+                                            «Готово». Both handles work on the part whose editor stood
+                                            last on the page — the same rule the handle of the seam
+                                            keeps — and both go out of use while the storage holds
+                                            neither a key nor an address, which is what the state of
+                                            the panel says. The handle of the style goes out of use
+                                            twice more: while no style is chosen, and while the chosen
+                                            style has no folder to read. A handle that is out of use
+                                            says why in its title and stays on the page, because a
+                                            door the reader cannot open through is still a door he is
+                                            allowed to see. */ ?>
+                                    <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationLlmControls">
+                                        <span class="small text-muted align-self-center"
+                                              id="publicationLlmStatus" role="status"></span>
+                                        <button type="button" class="btn btn-outline-info btn-sm"
+                                                id="publicationLlmSpelling"
+                                                title="<?= Html::encode($llmSpellingTitle) ?>"
+                                                <?= $llmSpellingOff ? 'disabled' : '' ?>>
+                                            <i class="bi bi-spellcheck me-1"></i>Проверить орфографию
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info btn-sm"
+                                                id="publicationLlmStyle"
+                                                title="<?= Html::encode($llmStyleTitle) ?>"
+                                                <?= $llmStyleOff ? 'disabled' : '' ?>>
+                                            <i class="bi bi-brush me-1"></i>Стилизовать
+                                        </button>
+                                    </div>
                                     <?php /* The options of the number are one functional of their own, and the reader
                                             asked them boxed the way the split is boxed: the same green line, the same
                                             room, the same corners. The box of the controls of the split stops drawing
@@ -1763,6 +1844,53 @@ CSS
                                         <label class="form-check-label" for="publicationDistributeImages">
                                             <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
                                         </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <?php /* The free dialog with the model. The card stands outside the
+                                   group the parts are rebuilt in, for the same reason the box of the
+                                   heading below it does: a split, a merge or a move of the parts must
+                                   not take the conversation with it. Its rows are the
+                                   notification-center of the ui-kit — the scroller of 350px, the
+                                   threads, one row per message — and the page paints them itself out
+                                   of the history the server keeps, so a reload brings the
+                                   conversation back and the reader finds what he already asked.
+                                   Nothing in this card has a `name`: the form of a publication is a
+                                   real form, and a control that names itself would travel out in
+                                   `publicationText[]` with the texts of the parts. The round handle
+                                   inside the field sends on Enter, the button under it sends on a
+                                   click, and Shift+Enter only breaks a line — which is the whole of
+                                   the keyboard the field answers to. The two words of an answer,
+                                   «Принять» and «Отклонить», belong to a row of the conversation
+                                   and never to a field of the form: the reader decides what an answer is
+                                   worth, and the page writes his decision into the part he asked
+                                   about. */ ?>
+                            <div class="publication-llm-panel card mb-3">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">Диалог с ИИ</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="scroll350">
+                                        <div class="notification-center">
+                                            <div class="threads" id="publicationLlmThreads"></div>
+                                        </div>
+                                    </div>
+                                    <div class="position-relative mt-3">
+                                        <textarea class="form-control pe-5" rows="2"
+                                                  id="publicationLlmCommand"
+                                                  placeholder="Перепиши этот абзац, сократи текст, убери упоминания"></textarea>
+                                        <button type="button"
+                                                class="btn btn-primary btn-sm rounded-circle publication-llm-send-key"
+                                                id="publicationLlmSendKey" aria-label="Отправить"
+                                                title="Отправить команду модели">
+                                            <i class="bi bi-arrow-up"></i>
+                                        </button>
+                                    </div>
+                                    <div class="d-flex justify-content-end mt-2">
+                                        <button type="button" class="btn btn-primary btn-sm"
+                                                id="publicationLlmSend"
+                                                title="Спросить модель о той части, где последним стоял редактор">Отправить</button>
                                     </div>
                                 </div>
                             </div>
