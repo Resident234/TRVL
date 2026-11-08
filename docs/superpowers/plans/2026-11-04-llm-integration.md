@@ -6035,7 +6035,7 @@ final class SiteControllerLlmPanelTest extends Unit
             new InMemorySettingsRepository(
                 $values + ['llmApiKey' => self::KEY, 'activeTextStyle' => self::STYLE],
             ),
-            new ListedStylesStub([self::STYLE]),
+            new ListedStylesStub([self::STYLE, 'Совсем другой']),
         );
 
         $request = new Request();
@@ -6420,9 +6420,10 @@ final class SiteControllerLlmPanelTest extends Unit
 docker compose exec -T -u appuser -e DB_DSN='pgsql:host=postgres;port=5432;dbname=yii_test' app sh -lc 'vendor/bin/codecept run Unit tests/Unit/SiteControllerLlmPanelTest.php'
 ```
 
-Ожидаем красный на всех 23 тестах: `Call to undefined method
-app\controllers\SiteController::llmPanelState()` у первых шести и те же вызовы по именам глаголов
-дальше. Красный именно такой — класс контроллера существует, методов в нём нет.
+Ожидаем красный на всех 23 тестах: `[yii\base\UnknownMethodException] Calling unknown method:
+app\controllers\SiteController::llmPanelState()` у первых шести — обещанной формулировки `Call to
+undefined method` в выводе нет, это исключение Yii. Красный именно такой — класс контроллера
+существует, методов в нём нет.
 
 - [ ] **Step 4: Конструктор, `use` и `verbs`**
 
@@ -6855,9 +6856,11 @@ docker compose exec -T app vendor/bin/phpcs --standard=PSR12 --report=source con
 docker compose exec -T app vendor/bin/phpstan analyse --memory-limit=1G
 ```
 
-Ожидаем `OK (23 tests, …)` на новый файл, `OK (20 tests, …)` на проверки блока заголовка и по
-`OK (1 test, …)` на вход и выход: конструктор дополнен, а трое, кто собирает его позиционными
-аргументами, этого не заметили. phpcs по `controllers/SiteController.php` — прежняя база из 4
+Ожидаем `OK (35 tests, 127 assertions)` на новый файл (на посадке было 23/82, фикс-раунды дали
++9/+33 и +3/+12), `OK (20 tests, 21 assertions)` на проверки блока заголовка, `OK (1 test, 1
+assertion)` и `OK (1 test, 5 assertions)` на вход и выход: конструктор дополнен, а трое, кто
+собирает его позиционными аргументами, этого не заметили. phpcs по
+`controllers/SiteController.php` — прежняя база из 4
 нарушений в 2 источниках: 1 ошибка `Generic.Files.LineEndings` (CRLF первой строки) и 3
 предупреждения `Generic.Files.LineLength`; phpstan — прежние 5. База меряется этой таблицей
 источников, а не номерами строк: три длинных строки лежат ниже вставок задания и их номера
@@ -6891,13 +6894,14 @@ docker compose exec -T app sh -lc 'php -l config/web.php'
 
 ```
 Пять глаголов в `SiteController`: `actionLlmSpelling`, `actionLlmStyle`, `actionLlmStyleStatus`,
-`actionLlmChat`, `actionLlmChatHistory`; все в список `verbs` ([SiteController.php:147](file:///E:/SERVER/Work_awd/app/controllers/SiteController.php#L147)) с `POST`, кроме `llm-style-status` и `llm-chat-history` (GET). Отдают они `$this->asJson()` — как `actionHeadingFormattingSave()` (:1594) и `actionPublicationPartGroup()` (:2545), а не `finishPublicationsRequest()` (:922): тот метод на любом исходе перерисовывает `publicationsData()` и четыре блока, а форма опрашивает статус задачи раз в три секунды.
+`actionLlmChat`, `actionLlmChatHistory`; все в список `verbs` ([SiteController.php:158](file:///E:/SERVER/Work_awd/app/controllers/SiteController.php#L158)) с `POST`, кроме `llm-style-status` и `llm-chat-history` (GET). Отдают они `$this->asJson()` — как `actionHeadingFormattingSave()` (:1610) и `actionPublicationPartGroup()` (:2561), а не `finishPublicationsRequest()` (:938): тот метод на любом исходе перерисовывает `publicationsData()` и четыре блока, а форма опрашивает статус задачи раз в три секунды.
 ```
 
 - [ ] **Step 11: Живой гейт проводки**
 
-Стек поднят тем, что осталось от шага 10 Task 12 (`postgres app nginx llm`). Порт nginx — из `.env`,
-по умолчанию 8081. `access` в `behaviors()` закрывает только `logout` (:138), поэтому глаголы
+Стек поднят тем, что осталось от шага 10 Task 12, но без `llm`: `postgres app nginx` — рабочий
+очереди для этих трёх адресов не вызывается. Порт nginx — из `.env`, по умолчанию 8081. `access`
+в `behaviors()` закрывает только `logout` (:149), поэтому глаголы
 страницы доступны и без входа; POST всё равно упрётся в CSRF.
 
 ```sh
@@ -6907,15 +6911,16 @@ curl -s http://127.0.0.1:8081/llm-chat-history > "$TEMP/llm-history.json"
 ```
 
 Ожидаем `400` на POST: адрес разобран, глагол найден, до тела запроса не дошло только потому, что
-токена CSRF в `curl` нет. Оба GET отдают `200`, и доказывает это их **тело** — Yii кодирует JSON без
-`JSON_UNESCAPED_UNICODE`, поэтому кириллица в ответе экранирована и разбор её даёт только `Read`
-файла, а не консоль (`$TEMP` Git Bash — папка Temp профиля Windows). В `$TEMP/llm-status.json`
+токена CSRF в `curl` нет. Оба GET отдают `200`, и доказывает это их **тело** — Yii отдаёт JSON
+сырым UTF-8 (замер `od -c` на теле: `320 227` в первых байтах слова, не `\u0437`), поэтому
+тело читает `Read` файла, а не консоль (`$TEMP` Git Bash — папка Temp профиля Windows, а консоль
+Windows кириллицу печатает неразбираемо). В `$TEMP/llm-status.json`
 ожидаем «Задача очереди не названа.», в `$TEMP/llm-history.json` — «Группа частей не названа.»:
 параметры не переданы, и до прокси оба глагола не дошли.
 
-Тот же `200`, но со словами «За ИИ ничего не заведено.» (в экранированном виде их выдаёт `\u0418\u0418`
-в середине строки), означал бы обратное: определения DI из Task 12 в контейнер не легли и контроллер
-получил `null` вместо сервиса. `500` означал бы, что глагол вообще не собрался. Ни того, ни другого
+Тот же `200`, но со словами «За ИИ ничего не заведено.» в поле `error`, означал бы обратное:
+определения DI из Task 12 в контейнер не легли и контроллер получил `null` вместо сервиса.
+`500` означал бы, что глагол вообще не собрался. Ни того, ни другого
 юнит не поймает: там контроллер собирается руками и о проводке контейнера ничего не знает.
 
 - [ ] **Step 12: Закоммитить**
@@ -8933,8 +8938,8 @@ curl -s http://127.0.0.1:8081/llm-chat-history > "$TEMP/llm-history.json"
 ```
 
 Ожидаем `400` на POST (токена CSRF в `curl` нет) и `200` на оба GET. Тела читает `Read`, не консоль:
-Yii кодирует JSON без `JSON_UNESCAPED_UNICODE`, и «Задача очереди не названа.» приходит экранированной
-последовательностью. Оба GET обязаны сказать именно это, а не «За ИИ ничего не заведено.» — второе
+Yii отдаёт JSON сырым UTF-8 (замер `od -c`: `320 227` в начале слова), и консоль Windows его не
+разбирает. Оба GET обязаны сказать именно это, а не «За ИИ ничего не заведено.» — второе
 означало бы `null` вместо сервиса в контейнере и было бы провалом шага 6 DI, который юнит ловить не
 умеет.
 
