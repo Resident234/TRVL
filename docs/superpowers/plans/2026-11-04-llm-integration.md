@@ -7299,8 +7299,8 @@ if ($llmSpellingOff) {
    of what the server answers, and a row has to hold a long text of the channel without
    widening the card — which is what the first rule says, and what the vendored sheet does
    not: the `.thread` of the ui-kit carries no rule of its own at all, it is made of
-   Bootstrap utilities written into its markup, and a page that builds a row in code has no
-   markup to write them into. The second rule puts the round handle of the field inside the
+   Bootstrap utilities written into its markup; the row this page builds in code writes them
+   into its own class names. The second rule puts the round handle of the field inside the
    field it sends; the wrapper that holds both is drawn by the markup, and `pe-5` is the
    room the field keeps clear for it. Neither rule draws in a colour: the two handles of the
    AI wear info as a button, from the class the theme already ships, and the frame of the
@@ -7500,7 +7500,7 @@ git commit -F .git/COMMIT_MSG
 feat(llm): ряд двух ручек и карточка диалога ложатся в вьюху публикаций
 ```
 
-Размер правки снимается до коммита и идёт в доку Task 18: `+129` строк во вьюхе (10 604 → 10 733),
+Размер правки снимается до коммита и идёт в доку Task 18: `+128` строк во вьюхе (10 603 → 10 731),
 и дельта строк длиннее 120 байт — `252 → 259`, то есть семь (четыре в подготовке имён, одна в
 теге ряда, две в разметке карточки; кириллица считается двумя байтами). phpcs этого файла в
 Task 16 переснимает то и другое живым прогоном, а не этим числом.
@@ -7544,15 +7544,15 @@ ever lights a handle the server put out of use») и ломает мутанто
 - Modify: `app/runtime/pubjs/llmpanel.js` — к частям A–D дописывается часть E (вне git:
   `app/runtime/` не индексируется).
 - Create: `app/runtime/pubjs/llmpanel-mutants.js` — драйвер мутантов той же части E (вне git).
-- Modify: `app/views/site/publications.php:2623` — пять адресов после `$partDraftUrl = …`
-- Modify: `app/views/site/publications.php:2670` — пять переменных после `var __PART_DRAFT_URL`
-- Modify: `app/views/site/publications.php:3903` — читатель JSON перед комментарием зеркала адреса
+- Modify: `app/views/site/publications.php:2622` — пять адресов после `$partDraftUrl = …`
+- Modify: `app/views/site/publications.php:2669` — пять переменных после `var __PART_DRAFT_URL`
+- Modify: `app/views/site/publications.php:3902` — читатель JSON перед комментарием зеркала адреса
 - Modify: `app/views/site/publications.php:7612` и `:9510` — по одной строке
   `updateLlmControls();` после `updateMergeRows();`
-- Modify: `app/views/site/publications.php:10718` — скрипт панели перед `renderUtcTimes(document);`
+- Modify: `app/views/site/publications.php:10717` — скрипт панели перед `renderUtcTimes(document);`
 - Reference: `app/runtime/pubjs/dateframe-mutants.js` — форма драйвера мутантов;
   `app/views/site/publications.php:7612-7620` — ряд глаголов, перестраивающих части, в который
-  вставляется строка панели; `app/views/site/publications.php:10718` — последняя команда `initAll`,
+  вставляется строка панели; `app/views/site/publications.php:10717` — последняя команда `initAll`,
   перед которой панель и встаёт.
 
 **Interfaces:**
@@ -7565,8 +7565,8 @@ ever lights a handle the server put out of use») и ломает мутанто
   `llmOffer()`, `llmHistory()` и `applyLlmAnswer()` — и рядом `updateLlmControls()`, которую
   вставляют два существующих ряда. PHP-интерфейсов это задание не заводит ни одного.
 
-Номера строк сняты с вьюхи такой, какой её оставляет Task 14, — до этой правки файл 10 733
-строки, после — 11 252.
+Номера строк сняты с вьюхи такой, какой её оставляет Task 14, — до этой правки файл 10 731
+строку, после шага 14 — 11 247, а после двух фикс-раундов этого задания — 11 276.
 
 - [ ] **Step 1: Красный харнесс**
 
@@ -7801,7 +7801,7 @@ ok('the reason the page has is written into the handle and the word of the serve
         && /var llmSpellingWord = llmSpellingBtn \? llmSpellingBtn\.title : '';/.test(page)
         && /var llmStyleWord = llmStyleBtn \? llmStyleBtn\.title : '';/.test(page)
         && /: llmSpellingWord\);/.test(RESTATE) && /: llmStyleWord\);/.test(RESTATE)
-        && /: llmSendWord\)\);/.test(RESTATE),
+        && count(RESTATE, /llm(?:Spelling|Style|Send)Word\b/g) === 3,
     [page.indexOf('Проверка уже идёт.'), RESTATE.slice(0, 200)]);
 ok('a handle the server darkened keeps the word the server gave it',
     count(RESTATE, /&& !llm(?:Spelling|Style|Chat)Off \? 'Часть пуста/g) === 3
@@ -7856,6 +7856,55 @@ ok('the handles and the dialog are set once when the page is drawn',
 ok('the script of the panel paints no colour of the heading anywhere in the page',
     count(view, /--bs-info-rgb/g) === 3, count(view, /--bs-info-rgb/g));
 
+// --- part F: the reason of a dark sender and the read of a stale dialog ---
+
+ok('the two senders share the one reason the page built for them',
+    /var chatWord = llmChatBusy \? 'Модель уже отвечает\.'/.test(RESTATE)
+        && /llmSendKeyBtn\.title = chatWord === '' \? llmSendKeyWord : chatWord;/.test(RESTATE)
+        && /llmSendBtn\.title = chatWord === '' \? llmSendWord : chatWord;/.test(RESTATE),
+    [RESTATE.indexOf('var chatWord'), RESTATE.indexOf('llmSendKeyBtn.title'),
+        RESTATE.indexOf('llmSendBtn.title')]);
+ok('the round handle keeps the word its own markup wrote',
+    /var llmSendKeyWord = llmSendKeyBtn \? llmSendKeyBtn\.title : '';/.test(page),
+    (page.match(/var llmSend\w*Word = .*/g) || []));
+ok('the two reasons the senders answer to are said once in the whole view',
+    count(view, /'Модель уже отвечает\.'/g) === 1 && count(view, /'Команда не написана\.'/g) === 1,
+    [count(view, /'Модель уже отвечает\.'/g), count(view, /'Команда не написана\.'/g)]);
+ok('a rebuild of the parts drops the memory of which dialog is on the screen',
+    count(page, /llmHistoryPart = -1;\n            updatePartSchedules\(\);/g) === 1
+        && count(page, /updatePartSchedules\(\);/g) === 7,
+    [count(page, /llmHistoryPart = -1;\n            updatePartSchedules\(\);/g),
+        count(page, /updatePartSchedules\(\);/g)]);
+ok('the reader of the dialog is asked under a token of its own',
+    /var llmHistoryToken = 0;/.test(page)
+        && /llmHistoryToken \+= 1;\n            var token = llmHistoryToken;/.test(HISTORY),
+    [/var llmHistoryToken = 0;/.test(page),
+        (HISTORY.match(/llmHistoryToken \+= 1;[\s\S]{0,50}/) || [''])[0]]);
+ok('an answer that came back after a newer one was asked is dropped before it is read',
+    HISTORY.indexOf('if (token !== llmHistoryToken) {') >= 0
+        && HISTORY.indexOf('if (token !== llmHistoryToken) {') < HISTORY.indexOf('payload.ok !== true')
+        && count(HISTORY, /if \(token !== llmHistoryToken\) \{/g) === 1,
+    [HISTORY.indexOf('if (token !== llmHistoryToken) {'), HISTORY.indexOf('payload.ok !== true'),
+        count(HISTORY, /if \(token !== llmHistoryToken\) \{/g)]);
+ok('only the read still current is allowed to say that nothing came of it',
+    /\.catch\(function \(\) \{\n\s+if \(token === llmHistoryToken\) \{\n\s+llmHistoryPart = -1;\n\s+\}\n\s+\}\);/
+        .test(HISTORY),
+    (HISTORY.match(/\.catch\([\s\S]*/) || [''])[0]);
+const SENDKEY_TAG = controlOf(card, 'publicationLlmSendKey');
+const SEND_TAG = controlOf(card, 'publicationLlmSend');
+
+ok('the two senders wear the reason the server writes in their own title',
+    /title="<\?= Html::encode\(\$llmSendKeyTitle\) \?>"/.test(SENDKEY_TAG)
+        && /title="<\?= Html::encode\(\$llmSendTitle\) \?>"/.test(SEND_TAG),
+    [SENDKEY_TAG, SEND_TAG]);
+ok('the word of a missing connection is handed to all four handles',
+    count(view, /= \$llmOffTitle;/g) === 4 && count(view, /'Нет ключа или адреса прокси/g) === 1,
+    [count(view, /= \$llmOffTitle;/g), count(view, /'Нет ключа или адреса прокси/g)]);
+ok('the markup of the two senders holds no hint of its own',
+    count(before, /title="Отправить команду модели"/g) === 0
+        && count(before, /title="Спросить модель/g) === 0,
+    [count(before, /title="Отправить команду модели"/g), count(before, /title="Спросить модель/g)]);
+
 stop();
 ```
 
@@ -7864,6 +7913,10 @@ cd /e/SERVER/Work_awd/app/runtime/pubjs && node llmpanel.js
 ```
 
 Ожидаем `llm panel: 32 passed, 40 failed`.
+
+Листинг снят с живого файла после двух фикс-раундов этого задания: к части E дописана часть F —
+десять проверок, семь из них про причину тёмной отправки и опоздавшее чтение диалога, три про
+причину подключения у отправителей.
 
 - [ ] **Step 2: Пять адресов**
 
@@ -7971,12 +8024,14 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
         var llmSpellingWord = llmSpellingBtn ? llmSpellingBtn.title : '';
         var llmStyleWord = llmStyleBtn ? llmStyleBtn.title : '';
         var llmSendWord = llmSendBtn ? llmSendBtn.title : '';
+        var llmSendKeyWord = llmSendKeyBtn ? llmSendKeyBtn.title : '';
         var llmSpellingBusy = false;
         var llmStyleBusy = false;
         var llmChatBusy = false;
         var llmPollTimer = null;
         var llmWaitUntil = 0;
         var llmHistoryPart = -1;
+        var llmHistoryToken = 0;
         // The queue of Task 12 is stepped once a minute, so the page asks it three
         // seconds at a time and stops asking after three minutes: one minute for the
         // step to reach the row, two more for the pair of calls a stylization is
@@ -8034,6 +8089,12 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
             var target = llmTarget();
             var empty = target === null;
             var asked = !!(llmCommandField && llmCommandField.value.trim() !== '');
+            // The two senders answer to the same four reasons, so the word they both
+            // hand back is built once here; a handle with no reason of its own keeps
+            // the word its markup wrote.
+            var chatWord = llmChatBusy ? 'Модель уже отвечает.'
+                : (empty && !llmChatOff ? 'Часть пуста — править нечего.'
+                    : (!asked && !llmChatOff ? 'Команда не написана.' : ''));
 
             if (llmSpellingBtn) {
                 llmSpellingBtn.disabled = llmSpellingOff || empty || llmSpellingBusy;
@@ -8054,13 +8115,12 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
 
             if (llmSendKeyBtn) {
                 llmSendKeyBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;
+                llmSendKeyBtn.title = chatWord === '' ? llmSendKeyWord : chatWord;
             }
 
             if (llmSendBtn) {
                 llmSendBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;
-                llmSendBtn.title = llmChatBusy ? 'Модель уже отвечает.'
-                    : (empty && !llmChatOff ? 'Часть пуста — править нечего.'
-                        : (!asked && !llmChatOff ? 'Команда не написана.' : llmSendWord));
+                llmSendBtn.title = chatWord === '' ? llmSendWord : chatWord;
             }
         }
 
@@ -8343,7 +8403,6 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
 - [ ] **Step 9: Скрипт панели — диалог**
 
 ```javascript
-
         // One call per question. The reader's sentence is put on the screen the moment
         // it is sent, before the answer, because the wait of a rewrite is longer than
         // the patience of a page: a dialog that shows nothing while the model thinks
@@ -8406,8 +8465,18 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
             }
 
             llmHistoryPart = target.index;
+
+            // A read of the dialog that comes back after a newer one has been asked
+            // for is an answer about a part the caret has already left: it is dropped,
+            // and only the read still current may say that nothing came of it.
+            llmHistoryToken += 1;
+            var token = llmHistoryToken;
             getForJson(__LLM_HISTORY_URL, { llmPartGroupId: groupId, llmPartOrder: target.index })
                 .then(function (payload) {
+                    if (token !== llmHistoryToken) {
+                        return;
+                    }
+
                     if (payload.ok !== true || !Array.isArray(payload.messages)) {
                         return;
                     }
@@ -8418,7 +8487,9 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
                     });
                 })
                 .catch(function () {
-                    llmHistoryPart = -1;
+                    if (token === llmHistoryToken) {
+                        llmHistoryPart = -1;
+                    }
                 });
         }
 
@@ -8460,7 +8531,7 @@ var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
 cd /e/SERVER/Work_awd/app/runtime/pubjs && node extract.js && node --check page.js
 ```
 
-Ожидаем `page.js: 8541 lines` и молчание `node --check`.
+Ожидаем `page.js: 8563 lines` и молчание `node --check`.
 
 - [ ] **Step 11: Зелёный прогон и нулевая коллапсия**
 
@@ -8472,7 +8543,7 @@ node partsgroup.js; node seamsplit.js; node albumrowsblank.js
 node numbertemplate.js; node titleeditor.js; node partnumber.js
 ```
 
-Ожидаем `llm panel: 72 passed, 0 failed` и — по каждому из десяти соседей — ровно те же числа,
+Ожидаем `llm panel: 82 passed, 0 failed` и — по каждому из десяти соседей — ровно те же числа,
 что и до правки:
 
 | Харнесс | Ожидаем |
@@ -8496,8 +8567,9 @@ node numbertemplate.js; node titleeditor.js; node partnumber.js
 
 Файл `app/runtime/pubjs/llmpanel-mutants.js` — та же форма, что у `dateframe-mutants.js`: список
 [надпись, что сломать, чем сломать], прогон харнесса по копии вьюхи, «killed» или «SURVIVED».
-Тридцать восемь мутантов лежат семью группами — адреса, часть и метки, три глагола, руки ответа,
-ожидание очереди, ряд offer'а, диалог и причины гашения:
+Сорок семь мутантов лежат десятью группами — адреса, часть и метки, три глагола, руки ответа,
+ожидание очереди, ряд offer'а, диалог, причины гашения ручки, причина тёмной отправки вместе с
+опоздавшим чтением диалога и причина подключения у двух отправителей:
 
 ```javascript
 // The red half of the panel of the AI: every fact llmpanel.js part E claims to read is broken
@@ -8622,8 +8694,8 @@ const mutants = [
     ['Shift-Enter sent the command like Enter',
         'if (event.key === \'Enter\' && !event.shiftKey) {', 'if (event.key === \'Enter\') {'],
     ['a rebuild of the parts left the panel its old reason',
-        '            updateMergeRows();\n            updateLlmControls();\n            updatePartSchedules();',
-        '            updateMergeRows();\n            updatePartSchedules();'],
+        '            clearNotices();\n\n            updateMergeRows();\n            updateLlmControls();',
+        '            clearNotices();\n\n            updateMergeRows();'],
     ['a keystroke in a part left the panel its old reason',
         '            updateMergeRows();\n            updateLlmControls();\n            update();',
         '            updateMergeRows();\n            update();'],
@@ -8631,6 +8703,31 @@ const mutants = [
         '            llmChatBusy = true;\n            updateLlmControls();', '            llmChatBusy = true;'],
     ['the panel was never set when the page was drawn',
         '        updateLlmControls();\n        llmHistory();\n', ''],
+
+    // The reason a sender goes dark, and the read of a dialog that came too late.
+    ['the round handle went dark with no word of its own',
+        "                llmSendKeyBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;\n                llmSendKeyBtn.title = chatWord === '' ? llmSendKeyWord : chatWord;",
+        '                llmSendKeyBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;'],
+    ['the round handle repeated the word the other sender was given',
+        "chatWord === '' ? llmSendKeyWord : chatWord", 'chatWord'],
+    ['the word the markup wrote for the round handle was thrown away',
+        "var llmSendKeyWord = llmSendKeyBtn ? llmSendKeyBtn.title : '';", "var llmSendKeyWord = '';"],
+    ['a rebuild of the parts kept the dialog of the part that stood here before',
+        '            llmHistoryPart = -1;\n            updatePartSchedules();', '            updatePartSchedules();'],
+    ['an answer that came back after a newer one was still read as current',
+        'if (token !== llmHistoryToken) {', 'if (false) {'],
+    ['a read the page had dropped reset the memory of the one still flying',
+        "                .catch(function () {\n                    if (token === llmHistoryToken) {\n                        llmHistoryPart = -1;\n                    }\n                });",
+        "                .catch(function () {\n                    llmHistoryPart = -1;\n                });"],
+
+    // The reason two senders wear when it is the connection that dims them.
+    ['the round handle was handed back a hint instead of a reason',
+        'title="<?= Html::encode($llmSendKeyTitle) ?>"', 'title="Отправить команду модели"'],
+    ['the send button kept its hint when the connection was missing',
+        '    $llmSendTitle = $llmOffTitle;\n', ''],
+    ['the word of the connection was written into the page twice',
+        '    $llmStyleTitle = $llmOffTitle;',
+        "    $llmStyleTitle = 'Нет ключа или адреса прокси — ИИ не настроен на странице настроек';"],
 ];
 
 let surviving = 0;
@@ -8687,7 +8784,7 @@ process.exit(surviving === 0 ? 0 : 1);
 cd /e/SERVER/Work_awd/app/runtime/pubjs && node llmpanel-mutants.js
 ```
 
-Ожидаем `all 38 mutants killed`.
+Ожидаем `all 47 mutants killed`.
 
 Драйвер отказывается ломать слово, которое встречается в файле дважды («TWICE MUTANT»): первый
 раз такой мутант перекрашивал шов между частями вместо панели, оставался «killed» чужой проверкой
@@ -8706,9 +8803,10 @@ cd /e/SERVER/Work_awd/app/runtime/pubjs && node llmpanel-mutants.js
 cd /e/SERVER/Work_awd/app/runtime/pubjs && node run-all.js; tail -3 run-all.txt
 ```
 
-Ожидаем в отчёте строку `ok    llmpanel-mutants.js  all 38 mutants killed` и прежний вердикт
-`PROBLEMS: 5` — базовая линия песочницы красна по праву (четыре харнесса с устаревшими якорями и
-один драйвер мутантов) и от этой правки не растёт. Числа снимаются этим прогоном, а не из памяти.
+Ожидаем в отчёте строки `ok    llmpanel.js  82 passed, 0 failed` и
+`ok    llmpanel-mutants.js  47 mutants killed` и прежний вердикт `PROBLEMS: 5` — базовая линия
+песочницы красна по праву (четыре харнесса с устаревшими якорями и один драйвер мутантов) и от
+этой правки не растёт. Числа снимаются этим прогоном, а не из памяти.
 
 - [ ] **Step 14: Закоммитить**
 
@@ -8724,10 +8822,12 @@ git commit -F .git/COMMIT_MSG
 feat(llm): скрипт панели идёт по пяти адресам и держит окно диалога за кареткой
 ```
 
-Размер правки снимается до коммита и идёт в доку Task 18: `+519` строк во вьюхе (10 733 → 11 252),
-и дельта строк длиннее 120 байт — `259 → 259`, то есть ноль: блоки переписаны так, что ни одна их
-строка не перешагнула рамку, а перенос рядом с `llmSay` в очереди стоил того, чтобы разбить
-строку. phpcs этого файла в Task 16 переснимает то и другое живым прогоном, а не этим числом.
+Размер правки снимается до коммита и идёт в доку Task 18: `+518` строк во вьюхе при двух снятых
+(10 731 → 11 247), и дельта строк длиннее 120 байт — `259 → 259`, то есть ноль: блоки переписаны
+так, что ни одна их строка не перешагнула рамку, а перенос рядом с `llmSay` в очереди стоил того,
+чтобы разбить строку. Два фикс-раунда этого задания добавили `+28/−4` и `+9/−4` — ещё 24 и 5
+строк, вьюха стоит на 11 276, и рамка в 120 байт за ними не двинулась. phpcs этого файла в Task 16
+переснимает то и другое живым прогоном, а не этим числом.
 
 ---
 
