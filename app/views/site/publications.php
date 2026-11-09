@@ -978,8 +978,8 @@ $this->registerCss(
    of what the server answers, and a row has to hold a long text of the channel without
    widening the card — which is what the first rule says, and what the vendored sheet does
    not: the `.thread` of the ui-kit carries no rule of its own at all, it is made of
-   Bootstrap utilities written into its markup, and a page that builds a row in code has no
-   markup to write them into. The second rule puts the round handle of the field inside the
+   Bootstrap utilities written into its markup; the row this page builds in code writes them
+   into its own class names. The second rule puts the round handle of the field inside the
    field it sends; the wrapper that holds both is drawn by the markup, and `pe-5` is the
    room the field keeps clear for it. Neither rule draws in a colour: the two handles of the
    AI wear info as a button, from the class the theme already ships, and the frame of the
@@ -2620,6 +2620,16 @@ $partGroupUrl = \yii\helpers\Url::to(['site/publication-part-group']);
 $toDraftUrl = \yii\helpers\Url::to(['site/publication-to-draft']);
 $deleteUrl = \yii\helpers\Url::to(['site/publication-delete']);
 $partDraftUrl = \yii\helpers\Url::to(['site/publication-part-draft']);
+
+// The five addresses the panel of the AI asks: two of them take the text of a part
+// and answer with a text of their own, one puts a stylization into the queue of
+// Task 12, and the two that stay are read — the queue is asked how one of its rows
+// stands, and the dialog is asked what was said of this part before.
+$llmSpellingUrl = \yii\helpers\Url::to(['site/llm-spelling']);
+$llmStyleUrl = \yii\helpers\Url::to(['site/llm-style']);
+$llmStyleStatusUrl = \yii\helpers\Url::to(['site/llm-style-status']);
+$llmChatUrl = \yii\helpers\Url::to(['site/llm-chat']);
+$llmHistoryUrl = \yii\helpers\Url::to(['site/llm-chat-history']);
 $blockTotals = json_encode($totals);
 // The six shapes of a numbered heading reach the page the same way the totals of the block
 // do: held once by the service, encoded once, interpolated once. The page mirrors the
@@ -2667,6 +2677,11 @@ var __PART_GROUP_URL = '{$partGroupUrl}';
 var __TO_DRAFT_URL = '{$toDraftUrl}';
 var __DELETE_URL = '{$deleteUrl}';
 var __PART_DRAFT_URL = '{$partDraftUrl}';
+var __LLM_SPELLING_URL = '{$llmSpellingUrl}';
+var __LLM_STYLE_URL = '{$llmStyleUrl}';
+var __LLM_STYLE_STATUS_URL = '{$llmStyleStatusUrl}';
+var __LLM_CHAT_URL = '{$llmChatUrl}';
+var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
 var __BLOCK_TOTALS = {$blockTotals};
 var __NUMBER_PRESETS = {$headingNumberPresetsJson};
 var __CSRF_PARAM = '{$csrfParam}';
@@ -3895,6 +3910,33 @@ jQuery(document).ready(function () {
             if (!payload || typeof payload !== 'object') {
                 throw new Error('некорректный ответ сервера');
             }
+            return payload;
+        });
+    }
+
+    // The two reads of the panel — how one row of the queue stands, and what the
+    // dialog of one part holds — carry no body and name themselves in the address.
+    // The token every write of this page wraps along belongs to a request that
+    // changes something, and neither of these two changes anything, so the query is
+    // built from the words and nothing else is added to it.
+    function getForJson(url, params) {
+        var query = new URLSearchParams(params || {}).toString();
+
+        return fetch(url + (query === '' ? '' : '?' + query), {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        }).then(function (response) {
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+
+            return response.json();
+        }).then(function (payload) {
+            if (!payload || typeof payload !== 'object') {
+                throw new Error('некорректный ответ сервера');
+            }
+
             return payload;
         });
     }
@@ -7609,6 +7651,7 @@ jQuery(document).ready(function () {
             clearNotices();
 
             updateMergeRows();
+            updateLlmControls();
             updatePartSchedules();
             updateAlbumMoves();
             updatePartMoves();
@@ -9507,6 +9550,7 @@ jQuery(document).ready(function () {
             // The text of a part is what its seam answers to, so the scissors of that
             // seam are re-asked by the same keystroke that moves the counters.
             updateMergeRows();
+            updateLlmControls();
             update();
             armLinksToButtons();
             if (textParts().length === 1) {
@@ -10714,6 +10758,478 @@ jQuery(document).ready(function () {
             loadNextPage(name);
         }, true);
 
+        // --- the panel of the AI -----------------------------------------------
+
+        // Three of the reasons a handle of the panel goes dark belong to the page and
+        // not to the storage: which part the caret was written in last, whether that
+        // part holds a word, and whether the same question is already on its way. The
+        // two the server knows — no key of the proxy, no style to rewrite in — are
+        // drawn into the markup by the preparation of the view, so they are read off
+        // the drawn handle once here and never asked again: a handle the page drew
+        // disabled stays disabled whatever the caret does after it.
+        var llmStatusBox = document.getElementById('publicationLlmStatus');
+        var llmSpellingBtn = document.getElementById('publicationLlmSpelling');
+        var llmStyleBtn = document.getElementById('publicationLlmStyle');
+        var llmThreadsBox = document.getElementById('publicationLlmThreads');
+        var llmCommandField = document.getElementById('publicationLlmCommand');
+        var llmSendKeyBtn = document.getElementById('publicationLlmSendKey');
+        var llmSendBtn = document.getElementById('publicationLlmSend');
+        var llmSpellingOff = !!(llmSpellingBtn && llmSpellingBtn.disabled);
+        var llmStyleOff = !!(llmStyleBtn && llmStyleBtn.disabled);
+        var llmChatOff = llmSpellingOff;
+        var llmSpellingWord = llmSpellingBtn ? llmSpellingBtn.title : '';
+        var llmStyleWord = llmStyleBtn ? llmStyleBtn.title : '';
+        var llmSendWord = llmSendBtn ? llmSendBtn.title : '';
+        var llmSpellingBusy = false;
+        var llmStyleBusy = false;
+        var llmChatBusy = false;
+        var llmPollTimer = null;
+        var llmWaitUntil = 0;
+        var llmHistoryPart = -1;
+        // The queue of Task 12 is stepped once a minute, so the page asks it three
+        // seconds at a time and stops asking after three minutes: one minute for the
+        // step to reach the row, two more for the pair of calls a stylization is
+        // made of, and the rest is the time the reader was never meant to watch.
+        var LLM_POLL_MS = 3000;
+        var LLM_WAIT_MS = 180000;
+
+        function llmSay(words) {
+            if (llmStatusBox) {
+                llmStatusBox.textContent = words;
+            }
+        }
+
+        // The part an answer of the panel belongs to: the field the caret was written
+        // in last, and without a caret the longest of them — the same two words the
+        // handle under the list of parts splits by, so the sentence the reader was
+        // editing is the sentence the model is asked about. The text and its marks
+        // come out bare, without the number of the part in front of them, because
+        // that is the text the server is told to rewrite and the coordinates the
+        // marks of its answer are counted in.
+        function llmTarget() {
+            var bare = bareParts();
+            var index = splitTarget(bare.fields, bare.values);
+
+            if (index === -1) {
+                return null;
+            }
+
+            return {
+                index: index,
+                field: bare.fields[index],
+                text: bare.values[index],
+                formatting: bare.formats[index],
+            };
+        }
+
+        // The queue and the dialog hang their rows on the group of the parts, and a
+        // publication nothing was saved under has no group until its submit invents
+        // one. The panel asks for the same thirty-two words the submit would have
+        // written, so a part stylized before the first save is found again after it.
+        function llmGroupId() {
+            if (!partGroupIdInput) {
+                return '';
+            }
+
+            if (partGroupIdInput.value === '') {
+                setPartGroupId(Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                    .map(function (byte) { return byte.toString(16).padStart(2, '0'); }).join(''));
+            }
+
+            return partGroupIdInput.value;
+        }
+
+        function updateLlmControls() {
+            var target = llmTarget();
+            var empty = target === null;
+            var asked = !!(llmCommandField && llmCommandField.value.trim() !== '');
+
+            if (llmSpellingBtn) {
+                llmSpellingBtn.disabled = llmSpellingOff || empty || llmSpellingBusy;
+                llmSpellingBtn.title = llmSpellingBusy ? 'Проверка уже идёт.'
+                    : (empty && !llmSpellingOff ? 'Часть пуста — править нечего.'
+                        : llmSpellingWord);
+            }
+
+            if (llmStyleBtn) {
+                llmStyleBtn.disabled = llmStyleOff || empty || llmStyleBusy;
+                llmStyleBtn.title = llmStyleBusy ? 'Стилизация уже стоит в очереди.'
+                    : (empty && !llmStyleOff ? 'Часть пуста — править нечего.' : llmStyleWord);
+            }
+
+            if (llmCommandField) {
+                llmCommandField.disabled = llmChatOff;
+            }
+
+            if (llmSendKeyBtn) {
+                llmSendKeyBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;
+            }
+
+            if (llmSendBtn) {
+                llmSendBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;
+                llmSendBtn.title = llmChatBusy ? 'Модель уже отвечает.'
+                    : (empty && !llmChatOff ? 'Часть пуста — править нечего.'
+                        : (!asked && !llmChatOff ? 'Команда не написана.' : llmSendWord));
+            }
+        }
+
+        // The text a model answered goes through the same hands a fill of the forum
+        // uses: the value and its marks are written bare, the number of the part is put
+        // back by the switch that owns it — into the text and into the heading in one
+        // breath, the way every other hand that renumbers does — and only then the
+        // counters, the fields the form submits and the preview are restated. Written in
+        // the other order the answer would reach the channel as «Часть 3» over the body
+        // of a part the reader had told to wear its number in the heading.
+        function applyLlmAnswer(field, text, formatting) {
+            seedPart(field, text, Array.isArray(formatting) ? formatting : []);
+            applyPartNumbers();
+            applyHeadingNumbers();
+            updateCounters();
+            writeFormattingFields();
+            update();
+        }
+
+        // A row of the dialog is the row of the ui-kit: the glyph of who spoke, the
+        // words under it, the line under those. They are written as words and never
+        // as markup, because an answer of the model is a text nobody vouched for, and
+        // a bracket that reached it has to stay a bracket on the screen.
+        function llmAddRow(role, words) {
+            var row = document.createElement('div');
+            var line = document.createElement('div');
+            var mark = document.createElement('i');
+            var body = document.createElement('div');
+
+            row.className = 'thread mb-3 pb-3 border-bottom';
+            line.className = 'd-flex align-items-start gap-2';
+            mark.className = 'bi ' + (role === 'user' ? 'bi-person' : 'bi-cpu');
+            body.className = 'flex-grow-1';
+
+            if (words !== '') {
+                var text = document.createElement('p');
+                text.className = 'mb-1';
+                text.textContent = words;
+                body.appendChild(text);
+            }
+
+            line.appendChild(mark);
+            line.appendChild(body);
+            row.appendChild(line);
+
+            if (llmThreadsBox) {
+                llmThreadsBox.appendChild(row);
+                llmScrollDown();
+            }
+
+            return { row: row, body: body };
+        }
+
+        function llmScrollDown() {
+            var scroller = llmThreadsBox ? llmThreadsBox.closest('.scroll350') : null;
+
+            if (!scroller) {
+                return;
+            }
+            var viewport = scroller.querySelector('.os-viewport') || scroller;
+            viewport.scrollTop = viewport.scrollHeight;
+        }
+
+        // The two words an answer that rewrites a part ends with. The part of the form
+        // changes only when the reader says so, and the row of the answer stays either
+        // way: a rewrite he refused is still a thing that was said, and the dialog of
+        // the part keeps it beside the ones he took. The index is carried instead of
+        // the field, because a queue that answers a minute later meets a form the
+        // reader may have cut in two since the press.
+        function llmOffer(index, text, formatting, words) {
+            var added = llmAddRow('assistant', words);
+            var answer = document.createElement('p');
+            var box = document.createElement('div');
+            var take = document.createElement('button');
+            var drop = document.createElement('button');
+
+            answer.className = 'mb-0';
+            answer.textContent = text;
+            box.className = 'd-flex justify-content-end gap-2 mt-2';
+            take.type = 'button';
+            take.className = 'btn btn-outline-info btn-sm';
+            take.textContent = 'Принять';
+            drop.type = 'button';
+            drop.className = 'btn btn-outline-secondary btn-sm';
+            drop.textContent = 'Отклонить';
+
+            take.addEventListener('click', function () {
+                var fields = textParts();
+
+                if (index >= fields.length) {
+                    showFlash('error', 'Часть ' + (index + 1)
+                        + ' ушла из формы — принять нечего.');
+
+                    return;
+                }
+                applyLlmAnswer(fields[index], text, formatting);
+                box.remove();
+                llmSay('Часть ' + (index + 1) + ' переписана.');
+            });
+            drop.addEventListener('click', function () {
+                box.remove();
+                llmSay('Отклонено — часть осталась как была.');
+            });
+            box.appendChild(take);
+            box.appendChild(drop);
+            added.body.appendChild(answer);
+            added.body.appendChild(box);
+        }
+
+        // One call, and no row behind it: a check of the orthography answers into the
+        // part itself, so the only word the dialog gets is the one beside the handles.
+        function llmSpelling() {
+            var target = llmTarget();
+
+            if (target === null || llmSpellingBusy) {
+                return;
+            }
+
+            llmSpellingBusy = true;
+            updateLlmControls();
+            llmSay('Проверяю часть ' + (target.index + 1) + '…');
+
+            postForJson(__LLM_SPELLING_URL, {
+                llmPartOrder: target.index,
+                llmText: target.text,
+                llmFormatting: JSON.stringify(target.formatting),
+            }).then(function (payload) {
+                if (payload.ok !== true) {
+                    throw new Error(payload.error || 'ИИ не ответил.');
+                }
+
+                applyLlmAnswer(target.field, payload.text, JSON.parse(payload.formatting));
+                llmSay('Часть ' + (target.index + 1) + ' проверена — правки внесены.');
+            }).catch(function (error) {
+                llmSay('');
+                showFlash('error', 'Орфография не проверена: '
+                    + (error && error.message ? error.message : error));
+            }).then(function () {
+                llmSpellingBusy = false;
+                updateLlmControls();
+            });
+        }
+
+        if (llmSpellingBtn) {
+            llmSpellingBtn.addEventListener('click', llmSpelling);
+        }
+
+        // Stylization is the one operation of the panel that does not answer on the
+        // spot: a pair of calls of the model and a worker that steps once a minute
+        // stand behind it, so the press only puts a row into the queue and the asking
+        // of that row is what brings the text back. The name of the style is taken
+        // from the answer of the press, not from the setting as it stands a minute
+        // later: the row of the queue froze the style the reader meant.
+        function llmStyle() {
+            var target = llmTarget();
+
+            if (target === null || llmStyleBusy) {
+                return;
+            }
+
+            llmStyleBusy = true;
+            updateLlmControls();
+            llmSay('Ставлю часть ' + (target.index + 1) + ' в очередь…');
+
+            postForJson(__LLM_STYLE_URL, {
+                llmPartGroupId: llmGroupId(),
+                llmPartOrder: target.index,
+                llmText: target.text,
+                llmFormatting: JSON.stringify(target.formatting),
+            }).then(function (payload) {
+                if (payload.ok !== true) {
+                    throw new Error(payload.error || 'ИИ не ответил.');
+                }
+                llmWaitUntil = Date.now() + LLM_WAIT_MS;
+                llmSay('Часть ' + (target.index + 1)
+                    + ' в очереди — она шагает раз в минуту.');
+                llmPollStyle(payload.jobId, target.index, payload.style || '');
+            }).catch(function (error) {
+                llmStopPolling();
+                llmStyleBusy = false;
+                updateLlmControls();
+                llmSay('');
+                showFlash('error', 'Стилизация не поставлена в очередь: '
+                    + (error && error.message ? error.message : error));
+            });
+        }
+
+        // One ask of one row of the queue. The clock of the worker and the clock of the
+        // page are two different clocks, so the row may be answered long before the next
+        // of these asks comes — and the wait ends the moment it is. Three minutes of
+        // asking is the end of the patience of the page, not of the queue: the row stays
+        // where it is, and a reader who presses the handle again finds the same answer
+        // standing there.
+        function llmPollStyle(jobId, index, style) {
+            if (Date.now() > llmWaitUntil) {
+                llmStopPolling();
+                llmStyleBusy = false;
+                updateLlmControls();
+                llmSay('');
+                showFlash('error', 'Очередь не ответила за три минуты.');
+
+                return;
+            }
+
+            getForJson(__LLM_STYLE_STATUS_URL, { llmJobId: jobId }).then(function (payload) {
+                if (payload.ok !== true) {
+                    throw new Error(payload.error || 'Очередь не ответила.');
+                }
+
+                if (payload.status === 'done') {
+                    llmStopPolling();
+                    llmStyleBusy = false;
+                    updateLlmControls();
+                    llmSay('');
+                    llmOffer(index, payload.text, JSON.parse(payload.formatting),
+                        'Стилизовано в манере «' + style + '».');
+
+                    return;
+                }
+
+                if (payload.status === 'failed') {
+                    llmStopPolling();
+                    llmStyleBusy = false;
+                    updateLlmControls();
+                    llmSay('');
+                    showFlash('error', 'Стилизация не удалась: '
+                        + (payload.error || 'ИИ не ответил.'));
+
+                    return;
+                }
+                llmPollTimer = setTimeout(function () {
+                    llmPollStyle(jobId, index, style);
+                }, LLM_POLL_MS);
+            }).catch(function (error) {
+                llmStopPolling();
+                llmStyleBusy = false;
+                updateLlmControls();
+                llmSay('');
+                showFlash('error', 'Очередь не отвечает: '
+                    + (error && error.message ? error.message : error));
+            });
+        }
+
+        // The timer of one wait: a queue that answered, a queue that refused and a
+        // queue the reader is no longer waiting for are all the same thing to the page,
+        // and none of them leaves a second ask running behind the first.
+        function llmStopPolling() {
+            if (llmPollTimer !== null) {
+                clearTimeout(llmPollTimer);
+                llmPollTimer = null;
+            }
+        }
+
+        if (llmStyleBtn) {
+            llmStyleBtn.addEventListener('click', llmStyle);
+        }
+
+        // One call per question. The reader's sentence is put on the screen the moment
+        // it is sent, before the answer, because the wait of a rewrite is longer than
+        // the patience of a page: a dialog that shows nothing while the model thinks
+        // reads as a handle that did not take the click.
+        function llmChat() {
+            var target = llmTarget();
+            var command = llmCommandField ? llmCommandField.value.trim() : '';
+
+            if (target === null || command === '' || llmChatBusy) {
+                return;
+            }
+
+            llmChatBusy = true;
+            updateLlmControls();
+            llmSay('Спрашиваю часть ' + (target.index + 1) + '…');
+            llmAddRow('user', command);
+            llmCommandField.value = '';
+
+            postForJson(__LLM_CHAT_URL, {
+                llmPartGroupId: llmGroupId(),
+                llmPartOrder: target.index,
+                llmCommand: command,
+                llmText: target.text,
+                llmFormatting: JSON.stringify(target.formatting),
+            }).then(function (payload) {
+                if (payload.ok !== true) {
+                    throw new Error(payload.error || 'ИИ не ответил.');
+                }
+
+                llmOffer(target.index, payload.text, JSON.parse(payload.formatting), '');
+            }).catch(function (error) {
+                // The row of the reader is already in the storage by the time a call of
+                // the model fails, so the sentence that is on the screen here is the
+                // sentence the next read of the dialog will bring back.
+                showFlash('error', 'Диалог не задался: '
+                    + (error && error.message ? error.message : error));
+            }).then(function () {
+                llmChatBusy = false;
+                updateLlmControls();
+                llmSay('');
+            });
+        }
+
+        // The dialog of the part the caret stands in, oldest first. It is read as words
+        // and not as offers: a rewrite the reader left two hours ago is a thing that was
+        // said, and the two words that take it belong to the answer that has just come.
+        // A part with no group behind it has no dialog either — the rows hang on the
+        // group, and inventing one to read nothing about would only make the field of
+        // the form hold a word nobody meant.
+        function llmHistory() {
+            var target = llmTarget();
+            var groupId = partGroupIdInput ? partGroupIdInput.value : '';
+
+            if (!llmThreadsBox || target === null || target.index === llmHistoryPart) {
+                return;
+            }
+
+            if (!/^[a-f0-9]{32}$/.test(groupId)) {
+                return;
+            }
+
+            llmHistoryPart = target.index;
+            getForJson(__LLM_HISTORY_URL, { llmPartGroupId: groupId, llmPartOrder: target.index })
+                .then(function (payload) {
+                    if (payload.ok !== true || !Array.isArray(payload.messages)) {
+                        return;
+                    }
+
+                    llmThreadsBox.textContent = '';
+                    payload.messages.forEach(function (message) {
+                        llmAddRow(message.role === 'user' ? 'user' : 'assistant', message.content);
+                    });
+                })
+                .catch(function () {
+                    llmHistoryPart = -1;
+                });
+        }
+
+        if (llmCommandField) {
+            llmCommandField.addEventListener('keydown', function (event) {
+                // Enter asks, Shift-Enter breaks the line: a command is three words as
+                // often as it is one, and the field that holds it has to keep both.
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    llmChat();
+                }
+            });
+            // The two senders answer to the field: they light up with its first word and
+            // go out again with its last.
+            llmCommandField.addEventListener('input', updateLlmControls);
+        }
+        if (llmSendKeyBtn) {
+            llmSendKeyBtn.addEventListener('click', llmChat);
+        }
+        if (llmSendBtn) {
+            llmSendBtn.addEventListener('click', llmChat);
+        }
+        // The caret moves between the parts by a click, and the dialog follows it: the
+        // conversation the reader sees is the conversation of the part he is looking at.
+        partsBox.addEventListener('focusin', llmHistory);
+
+        updateLlmControls();
+        llmHistory();
         renderUtcTimes(document);
     }
     setTimeout(initAll, 0);
