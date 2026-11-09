@@ -66,11 +66,16 @@ $headingNumberStyle = PublicationSettingsService::headingNumberStyleOf($headingN
 $llmPanel = $this->context->llmPanelState();
 $llmSpellingOff = $llmPanel['configured'] === false;
 $llmStyleOff = $llmSpellingOff || $llmPanel['style'] === '' || $llmPanel['readable'] === false;
+$llmOffTitle = 'Нет ключа или адреса прокси — ИИ не настроен на странице настроек';
 $llmSpellingTitle = 'Исправить опечатки, орфографию и пунктуацию в той части, где последним стоял редактор';
 $llmStyleTitle = 'Переписать часть в манере выбранного стиля: задача встаёт в очередь, а очередь шагает раз в минуту';
+$llmSendTitle = 'Спросить модель о той части, где последним стоял редактор';
+$llmSendKeyTitle = 'Отправить команду модели';
 if ($llmSpellingOff) {
-    $llmSpellingTitle = 'Нет ключа или адреса прокси — ИИ не настроен на странице настроек';
-    $llmStyleTitle = $llmSpellingTitle;
+    $llmSpellingTitle = $llmOffTitle;
+    $llmStyleTitle = $llmOffTitle;
+    $llmSendTitle = $llmOffTitle;
+    $llmSendKeyTitle = $llmOffTitle;
 } elseif ($llmPanel['style'] === '') {
     $llmStyleTitle = 'Стиль не выбран — стилизовать нечем';
 } elseif ($llmPanel['readable'] === false) {
@@ -1883,14 +1888,14 @@ CSS
                                         <button type="button"
                                                 class="btn btn-primary btn-sm rounded-circle publication-llm-send-key"
                                                 id="publicationLlmSendKey" aria-label="Отправить"
-                                                title="Отправить команду модели">
+                                                title="<?= Html::encode($llmSendKeyTitle) ?>">
                                             <i class="bi bi-arrow-up"></i>
                                         </button>
                                     </div>
                                     <div class="d-flex justify-content-end mt-2">
                                         <button type="button" class="btn btn-primary btn-sm"
                                                 id="publicationLlmSend"
-                                                title="Спросить модель о той части, где последним стоял редактор">Отправить</button>
+                                                title="<?= Html::encode($llmSendTitle) ?>">Отправить</button>
                                     </div>
                                 </div>
                             </div>
