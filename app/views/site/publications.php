@@ -7652,6 +7652,11 @@ jQuery(document).ready(function () {
 
             updateMergeRows();
             updateLlmControls();
+            // A rebuild moves the text of a part out from under the number its dialog
+            // was read by: the rows on the screen belong to the part that stood here
+            // before, so the memory of which part they were asked of is dropped, and the
+            // next caret that lands reads them again.
+            llmHistoryPart = -1;
             updatePartSchedules();
             updateAlbumMoves();
             updatePartMoves();
@@ -10780,12 +10785,14 @@ jQuery(document).ready(function () {
         var llmSpellingWord = llmSpellingBtn ? llmSpellingBtn.title : '';
         var llmStyleWord = llmStyleBtn ? llmStyleBtn.title : '';
         var llmSendWord = llmSendBtn ? llmSendBtn.title : '';
+        var llmSendKeyWord = llmSendKeyBtn ? llmSendKeyBtn.title : '';
         var llmSpellingBusy = false;
         var llmStyleBusy = false;
         var llmChatBusy = false;
         var llmPollTimer = null;
         var llmWaitUntil = 0;
         var llmHistoryPart = -1;
+        var llmHistoryToken = 0;
         // The queue of Task 12 is stepped once a minute, so the page asks it three
         // seconds at a time and stops asking after three minutes: one minute for the
         // step to reach the row, two more for the pair of calls a stylization is
@@ -10843,6 +10850,12 @@ jQuery(document).ready(function () {
             var target = llmTarget();
             var empty = target === null;
             var asked = !!(llmCommandField && llmCommandField.value.trim() !== '');
+            // The two senders answer to the same four reasons, so the word they both
+            // hand back is built once here; a handle with no reason of its own keeps
+            // the word its markup wrote.
+            var chatWord = llmChatBusy ? 'Модель уже отвечает.'
+                : (empty && !llmChatOff ? 'Часть пуста — править нечего.'
+                    : (!asked && !llmChatOff ? 'Команда не написана.' : ''));
 
             if (llmSpellingBtn) {
                 llmSpellingBtn.disabled = llmSpellingOff || empty || llmSpellingBusy;
@@ -10863,13 +10876,12 @@ jQuery(document).ready(function () {
 
             if (llmSendKeyBtn) {
                 llmSendKeyBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;
+                llmSendKeyBtn.title = chatWord === '' ? llmSendKeyWord : chatWord;
             }
 
             if (llmSendBtn) {
                 llmSendBtn.disabled = llmChatOff || empty || llmChatBusy || !asked;
-                llmSendBtn.title = llmChatBusy ? 'Модель уже отвечает.'
-                    : (empty && !llmChatOff ? 'Часть пуста — править нечего.'
-                        : (!asked && !llmChatOff ? 'Команда не написана.' : llmSendWord));
+                llmSendBtn.title = chatWord === '' ? llmSendWord : chatWord;
             }
         }
 
@@ -11189,8 +11201,18 @@ jQuery(document).ready(function () {
             }
 
             llmHistoryPart = target.index;
+
+            // A read of the dialog that comes back after a newer one has been asked
+            // for is an answer about a part the caret has already left: it is dropped,
+            // and only the read still current may say that nothing came of it.
+            llmHistoryToken += 1;
+            var token = llmHistoryToken;
             getForJson(__LLM_HISTORY_URL, { llmPartGroupId: groupId, llmPartOrder: target.index })
                 .then(function (payload) {
+                    if (token !== llmHistoryToken) {
+                        return;
+                    }
+
                     if (payload.ok !== true || !Array.isArray(payload.messages)) {
                         return;
                     }
@@ -11201,7 +11223,9 @@ jQuery(document).ready(function () {
                     });
                 })
                 .catch(function () {
-                    llmHistoryPart = -1;
+                    if (token === llmHistoryToken) {
+                        llmHistoryPart = -1;
+                    }
                 });
         }
 
