@@ -1,10 +1,10 @@
 # Парсер форума awd.ru
 
-Описание реализации парсинга тем форума `forum.awd.ru` (phpBB) в PostgreSQL: модель данных, настройки парсера, слои, обход диапазона, парсинг постов тем, периодический запуск.
+Описание реализации парсинга тем форума `forum.awd.ru` (phpBB) в PostgreSQL: модель данных, настройки парсера, слои, обход диапазона, парсинг постов тем, разделов форума, простановка тегов, периодический запуск.
 
 ## Модель данных
 
-Миграции: `app/migrations/m260828_000001_create_forum_parser_tables.php`, `app/migrations/m260904_000002_add_topic_login_required.php`, `app/migrations/m260906_000003_create_post_table.php`, `app/migrations/m260907_000004_create_gallery_tables.php`, `app/migrations/m260907_000005_extend_member_for_profiles.php`, `app/migrations/m260925_000002_add_parser_tunables_to_parser_config.php`, `app/migrations/m260930_000001_add_links_count_to_forum_tables.php`, `app/migrations/m261001_000001_add_text_length_to_topic.php`.
+Миграции: `app/migrations/m260828_000001_create_forum_parser_tables.php`, `app/migrations/m260904_000002_add_topic_login_required.php`, `app/migrations/m260906_000003_create_post_table.php`, `app/migrations/m260907_000004_create_gallery_tables.php`, `app/migrations/m260907_000005_extend_member_for_profiles.php`, `app/migrations/m260925_000002_add_parser_tunables_to_parser_config.php`, `app/migrations/m260930_000001_add_links_count_to_forum_tables.php`, `app/migrations/m261001_000001_add_text_length_to_topic.php`, `app/migrations/m261106_000001_create_forum_and_tag_tables.php`.
 
 ### parser_config
 
@@ -55,6 +55,43 @@
 Миграции: `m260904_000002_add_topic_login_required` добавляет столбец `login_required`, `m260930_000001_add_links_count_to_forum_tables` — `links_count` (одновременно у `topic` и `post`), `m261001_000001_add_text_length_to_topic` — `text_length`. Миграция только заводит столбец и считает им тот текст, что уже лежит в таблице; дальше число пишет парсер на каждой записи строки (`ForumRepository::saveTopic()` / `savePost()`), база над ним ничего не вычисляет.
 
 **Login-required темы**: страницы с текстом «вы должны быть авторизованы» тоже сохраняются в `topic` — только `id` и `source_url`, все остальные поля пустые (`title` = `''`), `login_required = true`. Если тема позже становится доступной, обычный upsert обновляет запись полными данными и сбрасывает флаг. Заглушки не создают записей в `member`.
+
+### forum
+
+Раздел форума. `id` = значение параметра `f` (например, `158`), `title` — заголовок страницы из `h1`.
+
+| Поле | Тип | Назначение |
+|---|---|---|
+| `id` | PK | Параметр `f` |
+| `source_url` | string(1000) | Полная ссылка `https://forum.awd.ru/viewforum.php?f=158` |
+| `title` | string(1000) | Название из `h1` (`ИСПАНИЯ форум — отдых, путешествия, города и пляжи Испании`) |
+| `created_at` / `updated_at` | datetime | Метки времени |
+
+### tag
+
+Тег. Пока заполняется только из названий разделов форума, позже будет привязываться и к темам/постам.
+
+| Поле | Тип | Назначение |
+|---|---|---|
+| `id` | PK, serial | — |
+| `name` | string(255), UNIQUE | Каноническое имя тега в нижнем регистре (`испания`) |
+| `created_at` / `updated_at` | datetime | Метки времени |
+
+### forum_tag
+
+Связь раздела форума с тегом. Составной первичный ключ `(forum_id, tag_id)`, обе ссылки с `CASCADE`.
+
+| Поле | Тип | Назначение |
+|---|---|---|
+| `forum_id` | FK → forum.id | Раздел форума |
+| `tag_id` | FK → tag.id | Тег |
+| `created_at` | datetime | Когда связь появилась |
+
+Индекс `idx_forum_tag_tag_id` ускоряет выборку разделов по тегу. Повторный проход тегов удаляет связи, которые заголовок больше не порождает, поэтому таблица отражает текущее название раздела, а не историю.
+
+### parser_config для форумов
+
+Миграция `m261106_000001` вставляет сид `awd_forum_sections` с диапазоном `1–2000` и `base_url` `https://forum.awd.ru/viewforum.php?f=`. Верхняя граница 2000 покрывает все 1152 раздела, найденные на индексной странице форума (максимальный id — 1736); диапазон меняется на странице `/parser-settings`.
 
 ### member
 
@@ -184,9 +221,11 @@
 ```
 app/
 ├── commands/ForumParserController.php          # Application: тонкая команда (темы)
+├── commands/ForumSectionParserController.php   # Application: тонкая команда (разделы форума)
 ├── commands/ForumPostParserController.php      # Application: тонкая команда (посты)
 ├── commands/GalleryParserController.php        # Application: тонкая команда (альбомы галереи)
 ├── commands/MemberParserController.php         # Application: тонкая команда (профили пользователей)
+├── commands/TagParserController.php            # Application: тонкая команда (теги)
 ├── config/console.php                          # composition root
 ├── migrations/m260828_000001_...php            # модель данных (parser_config, member, topic)
 ├── migrations/m260906_000003_...php            # таблица post + сид awd_forum_posts
@@ -195,13 +234,16 @@ app/
 ├── migrations/m260925_000002_...php            # parser_config: HTTP-настройки
 ├── migrations/m260930_000001_...php            # links_count для тем и постов
 ├── migrations/m261001_000001_...php            # text_length для тем
+├── migrations/m261106_000001_...php            # forum, tag, forum_tag + сид awd_forum_sections
 ├── views/site/parser-settings.php              # Application: страница «Настройки парсера»
 ├── shared/Forum/                               # Shared-модуль
 │   ├── Contract/
 │   │   ├── ForumHttpClientInterface.php        # граница HTTP
-│   │   └── ForumRepositoryInterface.php        # граница хранения (upsert тем, постов, профилей, lock)
+│   │   ├── ForumRepositoryInterface.php        # граница хранения (upsert тем, разделов, постов, профилей, lock)
+│   │   └── TagRepositoryInterface.php          # граница хранения тегов и связей forum_tag
 │   ├── Dto/
 │   │   ├── TopicData.php
+│   │   ├── ForumData.php
 │   │   ├── PostData.php
 │   │   └── MemberData.php
 │   ├── Infrastructure/
@@ -209,15 +251,20 @@ app/
 │   │   ├── ForumPageNotFoundException.php      # 404
 │   │   ├── ForumLoginRequiredException.php     # раздел для авторизованных
 │   │   ├── ForumRepository.php                 # SQL (PostgreSQL)
+│   │   ├── TagRepository.php                   # SQL тегов (PostgreSQL)
 │   │   └── YiiPsrLoggerAdapter.php            # PSR-3 над yii-логгером
 │   └── Service/
 │       ├── ForumPageDomParser.php              # базовые хелперы DOM/даты/URL
 │       ├── ForumHtmlParser.php                 # DOMDocument/XPath (тема)
+│       ├── ForumSectionPageParser.php          # DOMDocument/XPath (раздел форума)
 │       ├── ForumPostPageParser.php            # DOMDocument/XPath (посты + пагинация)
 │       ├── MemberProfilePageParser.php        # DOMDocument/XPath (профиль + вкладка статистики)
 │       ├── ForumScanService.php                # обход диапазона тем
+│       ├── ForumSectionScanService.php         # обход диапазона разделов форума
 │       ├── ForumPostScanService.php            # обход топиков и страниц постов
 │       ├── MemberScanService.php                # обход диапазона пользователей
+│       ├── CountryTagExtractor.php             # страна из заголовка раздела → тег
+│       ├── ForumTagScanService.php             # простановка тегов разделам
 │       └── ParserSettingsService.php           # чтение и проверка настроек из parser_config
 ├── shared/Gallery/                             # Shared-модуль галереи
 │   ├── Contract/
@@ -232,7 +279,7 @@ app/
 │       └── GalleryScanService.php              # обход диапазона альбомов
 ```
 
-- **Application**: команды `yii forum-parser/scan`, `yii forum-post-parser/scan`, `yii gallery-parser/scan` и `yii member-parser/scan` принимают `--from`, `--to`, `--limit` (посты и галерея: ещё `--pageLimit`), выводят статистику. Логики парсинга не содержат. Страница `/parser-settings` — тоже Application: она показывает и отправляет форму, а проверяет и пишет сервис Shared-модуля.
+- **Application**: команды `yii forum-parser/scan`, `yii forum-section-parser/scan`, `yii forum-post-parser/scan`, `yii gallery-parser/scan`, `yii member-parser/scan` и `yii tag-parser/scan` принимают `--from`, `--to`, `--limit` (посты и галерея: ещё `--pageLimit`), выводят статистику. Логики парсинга не содержат. Страница `/parser-settings` — тоже Application: она показывает и отправляет форму, а проверяет и пишет сервис Shared-модуля.
 - **Shared**: сервисы, парсеры и DTO. SQL и HTTP скрыты за контрактами; замена хранилища или HTTP-адаптера не требует изменений в командах и сервисах.
 - **Composition root**: `config/console.php` связывает реализации через `controllerMap` и `container.definitions`, `config/web.php` — через `container.singletons` и `container.definitions`; оба собирают HTTP-клиент и парсеры по числам из `parser_config`, поэтому одно и то же поведение у прогона из cron и у страницы публикаций.
 
@@ -251,6 +298,35 @@ app/
 
 - `ForumPageNotFoundException` — тема не существует (HTTP 404)
 - `ForumLoginRequiredException` — раздел доступен только авторизованным («вы должны быть авторизованы»); страница сохраняется в `topic` как заглушка: только `id` и `source_url`, `login_required = true` (см. модель `topic`)
+
+## Парсинг разделов форума
+
+`ForumSectionScanService::run(from, to, limit)` перебирает диапазон параметра `f` и сохраняет разделы в таблицу `forum`:
+
+1. Захватывает advisory lock по коду конфига `awd_forum_sections` (независимый от остальных сканеров)
+2. Читает активный `parser_config`; диапазон задают `t_from`/`t_to`, переданные `from`/`to` могут только сузить его
+3. Для каждого `f` запрашивает `viewforum.php?f=<id>` и берёт название из `h1` (`ИСПАНИЯ форум — отдых, путешествия, города и пляжи Испании`)
+4. `saveForum()` делает upsert по `id`; повторный проход обновляет название и `updated_at`
+5. HTTP 404 (`Запрошенного форума не существует`) считается `not_found`, а не ошибкой; остальные сбои одного раздела не останавливают проход
+6. Статистика: `processed`, `saved`, `updated`, `not_found`, `login_required`, `failed`
+
+Команда: `yii forum-section-parser/scan [--from=...] [--to=...] [--limit=N]`. Индексная страница форума перечисляет 1152 раздела в диапазоне id 2–1736; полный проход `--from=1 --to=2000` сохраняет их, а несуществующие id учитывает как `not_found`.
+
+## Простановка тегов
+
+`ForumTagScanService::run(from, to, limit)` читает сохранённые разделы и проставляет им теги:
+
+1. Захватывает advisory lock `awd_forum_tags` — отдельный от локов парсеров
+2. Читает `id` и `title` из `forum` (можно сузить `--from`/`--to`, ограничить `--limit`)
+3. `CountryTagExtractor` выделяет из заголовка название страны: `ИСПАНИЯ форум — ...` → `испания`. Правило пока одно — страна из словаря стран; регионы (`ЕВРОПА форум`) и обычные слова тегом не становятся
+4. Название приводится к нижнему регистру, `ё` → `е`, дефисы и пунктуация нормализуются (`Коста Рика` и `Коста-Рика` — один тег); поддерживаются синонимы (`Белоруссия` → `беларусь`, `Англия` → `великобритания`)
+5. `TagRepository::saveForumTags()` в одной транзакции заводит недостающие строки `tag`, привязывает их к разделу в `forum_tag` и удаляет связи, которых в текущем заголовке больше нет
+6. Повторный проход идемпотентен: существующие теги и связи не дублируются
+7. Статистика: `processed`, `tagged`, `untagged`, `tags_created`, `links_created`, `failed`
+
+Команда: `yii tag-parser/scan [--from=...] [--to=...] [--limit=N]`.
+
+Разбор идёт по той части заголовка, которая стоит до тире или двоеточия: описание после них может упоминать десяток стран, к которым раздел не относится. Поэтому `АВСТРАЛИЯ форум — путешествия по Новой Зеландии` получает только тег `австралия`.
 
 ## Парсинг постов тем
 
@@ -298,13 +374,15 @@ app/
 
 Команда: `yii member-parser/scan [--from=...] [--to=...] [--limit=N]`. Пример: `u=125072` (SergeiKa) — 1399 сообщений, 0 фото, регистрация 2011-12-24; диапазон 125070–125075 — 2 saved, 4 updated, 0 failed.
 
-Контейнер `parser` запускает все четыре сканера по отдельным расписаниям. Значения из `.env.example` приведены ниже; при отсутствии `.env` Compose использует резервное расписание `0 4 * * *` для сканера тем и `*/10 * * * *` для остальных трёх. Любое значение можно изменить через `.env`:
+Контейнер `parser` запускает пять сканеров форума и проход тегов по отдельным расписаниям. Значения по умолчанию (`.env.example` и резервные значения Compose) приведены ниже; при отсутствии `.env` Compose использует `0 4 * * *` для сканера тем и разделов и `*/10 * * * *` для остальных задач. Любое значение можно изменить через `.env`:
 
 ```
 PARSER_CRON_SCHEDULE=*/10 * * * *                  # forum-parser/scan (темы)
-FORUM_POST_PARSER_CRON_SCHEDULE=*/10 * * * *      # forum-post-parser/scan (посты)
-GALLERY_PARSER_CRON_SCHEDULE=*/10 * * * *         # gallery-parser/scan (альбомы)
+FORUM_SECTION_PARSER_CRON_SCHEDULE=0 4 * * *       # forum-section-parser/scan (разделы форума)
+FORUM_POST_PARSER_CRON_SCHEDULE=*/10 * * * *       # forum-post-parser/scan (посты)
+GALLERY_PARSER_CRON_SCHEDULE=*/10 * * * *          # gallery-parser/scan (альбомы)
 MEMBER_PARSER_CRON_SCHEDULE=*/10 * * * *           # member-parser/scan (профили)
+TAG_PARSER_CRON_SCHEDULE=*/10 * * * *              # tag-parser/scan (теги разделов)
 ```
 
 ## Обход и сохранение
@@ -342,42 +420,44 @@ HTTP-адаптер (cURL): редиректы, retry с нарастающей 
 
 ## Параллельная работа парсеров
 
-Сканер тем (`forum-parser/scan`, конфиг `awd_forum_topics`), парсер постов (`forum-post-parser/scan`, конфиг `awd_forum_posts`), парсер галереи (`gallery-parser/scan`, конфиг `awd_gallery_albums`) и парсер профилей (`member-parser/scan`, конфиг `awd_forum_members`) работают одновременно и не мешают друг другу:
+Сканер тем (`forum-parser/scan`, конфиг `awd_forum_topics`), сканер разделов (`forum-section-parser/scan`, конфиг `awd_forum_sections`), парсер постов (`forum-post-parser/scan`, конфиг `awd_forum_posts`), парсер галереи (`gallery-parser/scan`, конфиг `awd_gallery_albums`), парсер профилей (`member-parser/scan`, конфиг `awd_forum_members`) и проход тегов (`tag-parser/scan`, лок `awd_forum_tags`) работают одновременно и не мешают друг другу:
 
-- **Независимые локи**: ключ advisory lock вычисляется из кода конфигурации (`crc32`), у каждого парсера свой ключ. Лок защищает только от повторного запуска *того же* парсера, другой парсер не блокируется
-- **Независимые cron-задачи**: supercronic запускает все четыре прохода по своим расписаниям (`PARSER_CRON_SCHEDULE`, `FORUM_POST_PARSER_CRON_SCHEDULE`, `GALLERY_PARSER_CRON_SCHEDULE`, `MEMBER_PARSER_CRON_SCHEDULE`)
-- **Безопасная конкуренция за данные**: парсеры пишут в свои таблицы короткими транзакциями (один топик / одна страница постов / один альбом / один профиль) через upsert. Конкуренция за строки `member` между парсером постов и парсером профилей безопасна: `saveMember()` пишет все поля блока поста, `saveMemberProfile()` мержит поля memberlist и не трогает thanks/countries/reports; PostgreSQL разрешает коллизии на уровне строк — вторая транзакция кратко ждёт первую
-- **Логическая связка**: парсер постов берёт только топики, уже существующие в `topic`, поэтому он двигается по диапазону вслед за сканером тем; парсер галереи независим — работает только с таблицами `gallery_album` / `gallery_image`; парсер профилей перебирает `u` независимо и обновляет `member`
+- **Независимые локи**: ключ advisory lock вычисляется через `crc32` из кода конфигурации сканера (у прохода тегов — из лок-кода `awd_forum_tags`), поэтому у каждого процесса свой ключ. Лок защищает только от повторного запуска *того же* процесса, другой процесс не блокируется
+- **Независимые cron-задачи**: supercronic запускает все шесть проходов по своим расписаниям (`PARSER_CRON_SCHEDULE`, `FORUM_SECTION_PARSER_CRON_SCHEDULE`, `FORUM_POST_PARSER_CRON_SCHEDULE`, `GALLERY_PARSER_CRON_SCHEDULE`, `MEMBER_PARSER_CRON_SCHEDULE`, `TAG_PARSER_CRON_SCHEDULE`)
+- **Безопасная конкуренция за данные**: парсеры пишут в свои таблицы короткими транзакциями (один топик / один раздел / одна страница постов / один альбом / один профиль / один раздел с тегами) через upsert. Конкуренция за строки `member` между парсером постов и парсером профилей безопасна: `saveMember()` пишет все поля блока поста, `saveMemberProfile()` мержит поля memberlist и не трогает thanks/countries/reports; PostgreSQL разрешает коллизии на уровне строк — вторая транзакция кратко ждёт первую
+- **Логическая связка**: парсер постов берёт только топики, уже существующие в `topic`, поэтому он двигается по диапазону вслед за сканером тем; парсер разделов заполняет `forum`; проход тегов читает `forum` и пишет `tag` / `forum_tag`, поэтому до первого прохода разделов ему нечего тегировать. Парсер галереи независим — работает только с таблицами `gallery_album` / `gallery_image`; парсер профилей перебирает `u` независимо и обновляет `member`
 
-Проверено на живой БД: оба процесса работали одновременно (каждый держал свой advisory lock в отдельной сессии), за 90 секунд пост-парсер добавил ~2700 постов, сканер тем параллельно обновлял топики.
+Проверено на живой БД: сканер тем и парсер постов работали одновременно (каждый держал свой advisory lock в отдельной сессии), за 90 секунд пост-парсер добавил ~2700 постов, сканер тем параллельно обновлял топики.
 
 ## Наблюдаемость прогресса
 
-`updated_at` у записей пишется **на каждую тему / каждую страницу постов / каждый альбом / каждый профиль**, а не временем старта прохода — иначе все строки прохода получали одну метку и прогресс был не виден (`updated_at` застыл на времени запуска). Текущую позицию сканера тем можно оценить так:
+`updated_at` у записей пишется **на каждую тему / каждый раздел / каждую страницу постов / каждый альбом / каждый профиль**, а не временем старта прохода — иначе все строки прохода получали одну метку и прогресс был не виден (`updated_at` застыл на времени запуска). Текущую позицию сканера тем можно оценить так:
 
 ```sql
 SELECT max(id) FROM topic WHERE updated_at > now() - interval '2 minutes';
 ```
 
-Для галереи и профилей — аналогично по `gallery_album` и `member`.
+Для разделов, галереи и профилей — аналогично по `forum`, `gallery_album` и `member`.
 
-Замечание: сканеры тем, галереи и профилей перебирают все id диапазона подряд, включая несуществующие (404), поэтому «сколько осталось» — это доля пройденного диапазона, а не доля существующих элементов.
+Замечание: сканеры тем, разделов, галереи и профилей перебирают все id диапазона подряд, включая несуществующие (404), поэтому «сколько осталось» — это доля пройденного диапазона, а не доля существующих элементов.
 
 ## Периодический запуск
 
-Периодические задачи живут в двух контейнерах, собранных из одного образа: `parser` делает только парсинг форума, `telegram` — только очередь публикаций (см. «Cron Scheduling» в [PUBLICATIONS.md](PUBLICATIONS.md)).
+Периодические задачи живут в двух контейнерах, собранных из одного образа: `parser` делает только парсинг форума и простановку тегов, `telegram` — только очередь публикаций (см. «Cron Scheduling» в [PUBLICATIONS.md](PUBLICATIONS.md)).
 
 - `docker/php-cli/Dockerfile` — PHP 8.4-cli, расширения intl/mbstring/pdo_pgsql/zip, supercronic v0.2.29
-- `docker/php-cli/entrypoint.sh` — собирает crontab по переменной `CRON_ROLE` (`parser` — четыре скана форума, `telegram` — publish-due / delete-due / edit-due / clean-temp) и запускает supercronic; любое другое значение роли завершает контейнер ошибкой
+- `docker/php-cli/entrypoint.sh` — собирает crontab по переменной `CRON_ROLE` (`parser` — пять сканов форума и простановка тегов, `telegram` — publish-due / delete-due / edit-due / clean-temp) и запускает supercronic; любое другое значение роли завершает контейнер ошибкой
 - `docker-compose.yml` — оба сервиса монтируют тот же volume `./app`, читают те же `DB_*` и зависят от healthcheck postgres; `TELEGRAM_BOT_TOKEN` и расписания очереди передаются только сервису `telegram`, а `FORUM_LOGIN_*` нужны обоим: публикация, собранная из топика, читает форум тем же HTTP-клиентом
 
 Расписание задаётся в `.env`:
 
 ```
 PARSER_CRON_SCHEDULE=*/10 * * * *
+FORUM_SECTION_PARSER_CRON_SCHEDULE=0 4 * * *
 FORUM_POST_PARSER_CRON_SCHEDULE=*/10 * * * *
 GALLERY_PARSER_CRON_SCHEDULE=*/10 * * * *
 MEMBER_PARSER_CRON_SCHEDULE=*/10 * * * *
+TAG_PARSER_CRON_SCHEDULE=*/10 * * * *
 ```
 
 Учётные данные для авторизации на форуме (профили видны только авторизованным):
@@ -391,9 +471,11 @@ FORUM_LOGIN_PASSWORD=...
 
 ```
 docker compose exec app php yii forum-parser/scan --from=441000 --to=441025
+docker compose exec app php yii forum-section-parser/scan --from=158 --to=158
 docker compose exec app php yii forum-post-parser/scan --from=415949 --to=415949
 docker compose exec app php yii gallery-parser/scan --from=54900 --to=54910
 docker compose exec app php yii member-parser/scan --from=125070 --to=125075
+docker compose exec app php yii tag-parser/scan --from=158 --to=158
 ```
 
 ## Логи
@@ -432,6 +514,8 @@ docker compose exec app sh -c "grep forum-parser runtime/logs/app.log | tail -20
 - Тема 441019: заголовок, дата `2026-08-27 19:42:00`, 26 изображений, текст 8442 символа, автор 23071 со всеми полями профиля
 - Защита от параллельного запуска: второй запуск во время активного прохода пропущен, лок снят после завершения
 - Login-required темы 441013/441014: сохранены с `login_required = true`, пустым `title` и корректным `source_url`; повторный проход обновляет заглушки
+- Реальный проход сканера разделов по живой БД: `forum-section-parser/scan --from=158 --to=158` — 1 processed, 1 saved, 0 failed; повторный проход — 0 saved / 1 updated. В `forum` записаны id 158, `source_url` и название `ИСПАНИЯ форум — отдых, путешествия, города и пляжи Испании`
+- `tag-parser/scan --from=158 --to=158` — 1 processed, 1 tagged, tags created 1, links created 1; в `tag` появился `испания`, в `forum_tag` — связь `(158, 1)`. Повторный проход — 0 tags created / 0 links created (идемпотентно)
 - Парсер постов, тема 415949 (189 страниц): 9447 постов сохранено, 0 обновлено, 0 ошибок; непрерывная нумерация 1–9448, 1401 уникальный автор; повторный проход — 0 saved / 9447 updated (идемпотентно)
 - Пост из примера `p11861699`/`p11860687`: заголовок, дата `2024-07-04 17:50:00`, номер #4495, автор 394702 (@nnet., все поля профиля) — совпадают с требованиями
 - Парсер галереи, альбом 54903 (Metallica): id, название, username `8008` (4-й элемент навигации), 4 изображения с id (2048750–2048754), названиями и абсолютными ссылками — совпадают с требованиями; повторный проход — 0 saved / 1 updated / 4 images updated (идемпотентно)
@@ -440,15 +524,19 @@ docker compose exec app sh -c "grep forum-parser runtime/logs/app.log | tail -20
 - Парсер профилей, `u=125072` (SergeiKa): имя, звание «путешественник», Москва, 50 лет, 1399 сообщений, 0 фото, регистрация 2011-12-24, последнее посещение обновляется при каждом проходе (относительное время «N минут назад» нормализуется); повторный проход — 0 saved / 1 updated (идемпотентно)
 - Парсер профилей, `u=23071` (Jo): звание «новичок», Пол «Мужской», 37 сообщений, 152 фото, регистрация 2007-07-10, посещение 2026-08-27 20:10:00
 - Парсер профилей, диапазон 125070–125075: 6 обработано, 2 saved, 4 updated, 0 not found, 0 failed; авторизация под учётной записью из `.env` — профили гостю недоступны, клиент логинится автоматически и держит сессию
-- `vendor/bin/phpstan` — 0 ошибок
-- `vendor/bin/phpcs` — 0 ошибок
-- `vendor/bin/codecept run Unit` — 72 теста зелёные, включая нормализацию «Вчера»/«Сегодня»/относительных дат, статистику сервисов, блокировку, заглушки login-required, пагинацию, дедупликацию открывающего поста и все сценарии галереи и профилей
+- `vendor/bin/phpstan` — 0 ошибок в новых файлах разделов и тегов; общий прогон по `phpstan.neon` даёт прежние ошибки вне этой задачи
+- `vendor/bin/phpcs` — 0 замечаний в новых файлах (`commands`, `shared`, `tests`); миграции в проверяемый набор `phpcs.xml.dist` не входят
+- `vendor/bin/codecept run Unit` на `yii_test` — `OK (392 tests, 1284 assertions)`; в набор входят 20 новых тестов (56 проверок) разбора раздела, извлечения стран, сканера разделов и прохода тегов
 
 ## Тесты
 
 - `tests/Unit/shared/Forum/Service/ForumHtmlParserTest.php` — парсинг темы с автором и изображениями, относительные даты, невалидный HTML, удаление `sid` из ссылок профиля
+- `tests/Unit/shared/Forum/Service/ForumSectionPageParserTest.php` — парсинг раздела форума (`h1` → id и название), нормализация пробелов, несуществующий раздел, страница без заголовка
+- `tests/Unit/shared/Forum/Service/CountryTagExtractorTest.php` — страна из заголовка раздела, несколько стран в одном названии, синонимы и регистр, дефисные названия, отсутствие тега у регионов, чтение только части до тире/двоеточия
 - `tests/Unit/shared/Forum/Service/ForumPostPageParserTest.php` — парсинг всех постов страницы (заголовок, номер, дата, текст, автор), пагинация (`start=N`), последняя страница, блок «Похожие темы» отфильтровывается
 - `tests/Unit/ForumScanServiceTest.php` — upsert-статистика, счётчики not found / login required / failed, сохранение login-required заглушки (id + url + флаг), лимит, отсутствие конфига, пропуск при удерживаемой блокировке
+- `tests/Unit/ForumSectionScanServiceTest.php` — upsert-статистика разделов, счётчики not found / login required / failed, id + url + title, лимит, отсутствие конфига, пропуск при удерживаемой блокировке
+- `tests/Unit/ForumTagScanServiceTest.php` — теги разделов, счётчики tagged/untagged/tags_created/links_created, передача диапазона и лимита, продолжение после ошибки, пропуск при удерживаемой блокировке
 - `tests/Unit/ForumPostScanServiceTest.php` — обход всех страниц топика, обновление существующих постов, login-required, лимиты топиков и страниц, дедупликация повторяющегося открывающего поста, блокировка
 - `tests/Unit/shared/Gallery/Service/GalleryAlbumPageParserTest.php` — парсинг альбома (название, username из навигации, изображения: id/название/ссылки), общие альбомы без username, несуществующий альбом (текст «Запрошенный альбом не существует»), пагинация (`start=N`), последняя страница
 - `tests/Unit/GalleryScanServiceTest.php` — upsert-статистика альбомов и изображений, счётчики not found / login required / failed, заглушка login-required, обход пагинации альбома, лимит, отсутствие конфига, пропуск при удерживаемой блокировке
@@ -458,8 +546,9 @@ docker compose exec app sh -c "grep forum-parser runtime/logs/app.log | tail -20
 ## Известные ограничения
 
 - Темы закрытых разделов не парсятся полностью (нужна авторизация) — сохраняются заглушки с `login_required = true`
-- Начальные диапазоны тем, альбомов и пользователей равны 0–500000 и проходят целиком при каждом запуске; диапазоны настраиваются через `/parser-settings`. Оптимизация «пропускать неизменённые» — отдельная задача (см. «Направления развития» в README)
-- Парсер постов обходит только топики, уже существующие в таблице `topic` (кроме login-required заглушек), и двигается по диапазону вслед за сканером тем; все четыре парсера работают параллельно по независимым блокировкам (см. «Параллельная работа парсеров»)
+- Начальные диапазоны тем, альбомов и пользователей — 0–500000, разделов — 1–2000; они проходят целиком при каждом запуске и настраиваются через `/parser-settings`. Оптимизация «пропускать неизменённые» — отдельная задача (см. «Направления развития» в README)
+- Парсер постов обходит только топики, уже существующие в таблице `topic` (кроме login-required заглушек), и двигается по диапазону вслед за сканером тем; проход тегов обрабатывает только уже сохранённые разделы `forum`. Все сканеры и проход тегов работают параллельно по независимым блокировкам (см. «Параллельная работа парсеров»)
 - Альбомы закрытых разделов галереи могут требовать авторизацию — сохраняются заглушки; ссылка на изображение ведёт на файл в `images/upload` — при удалении изображения из галереи ссылка устареет до следующего прохода
 - Профили пользователей без авторизации недоступны: при отсутствии учётных данных в `.env` все профили сохраняются заглушками `profile_login_required = true`; при неверных учётных данных проход упадёт на первом профиле с ошибкой в логе
-- Все 23 миграции `app/migrations` применены к PostgreSQL `yii_dev`, а 20 миграций без production-сидов — к `yii_test`. Изменение настроек парсера через UI и полный скан с пользовательскими диапазонами отдельно здесь не описываются как end-to-end проверка
+- Правило тегов пока одно — страна из названия раздела; тематические теги, теги тем и постов не реализованы
+- Миграция `m261106_000001` применена к PostgreSQL `yii_dev` и `yii_test`; сканер разделов и проход тегов проверены на живой БД на примере раздела 158 (см. «Проверено»). Полный диапазон разделов `1–2000` и cron-запуск в контейнере `parser` отдельно не прогонялись: подняты только `postgres` и `app`, контейнеры `parser` и `telegram` не запускались. Изменение настроек парсера через UI и полный скан с пользовательскими диапазонами отдельно здесь не описываются как end-to-end проверка
