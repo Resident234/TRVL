@@ -35,6 +35,15 @@ $config = [
                     // in app.log. The failure reasons are in the messages.
                     'logVars' => [],
                 ],
+                [
+                    'class' => \yii\log\FileTarget::class,
+                    'levels' => ['info', 'warning', 'error'],
+                    'categories' => ['llm.*'],
+                    'logFile' => '@runtime/logs/llm.log',
+                    'logVars' => [],
+                    'maxFileSize' => 10240,
+                    'maxLogFiles' => 10,
+                ],
             ],
         ],
         'db' => $db,

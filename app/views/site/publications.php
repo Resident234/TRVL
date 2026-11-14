@@ -10841,11 +10841,11 @@ jQuery(document).ready(function () {
         var llmHistoryPart = -1;
         var llmHistoryToken = 0;
         // The queue of Task 12 is stepped once a minute, so the page asks it three
-        // seconds at a time and stops asking after three minutes: one minute for the
+        // seconds at a time and stops asking after ten minutes: one minute for the
         // step to reach the row, two more for the pair of calls a stylization is
-        // made of, and the rest is the time the reader was never meant to watch.
+        // made of, and the rest is additional time for a slow model or worker.
         var LLM_POLL_MS = 3000;
-        var LLM_WAIT_MS = 180000;
+        var LLM_WAIT_MS = 600000;
 
         function llmSay(words) {
             if (llmStatusBox) {
@@ -11162,12 +11162,12 @@ jQuery(document).ready(function () {
         // standing there.
         function llmPollStyle(jobId, index, style) {
             if (Date.now() > llmWaitUntil) {
-                console.warn('[LLM] Таймаут ожидания очереди (3 мин)');
+                console.warn('[LLM] Таймаут ожидания очереди (10 мин)');
                 llmStopPolling();
                 llmStyleBusy = false;
                 updateLlmControls();
                 llmSay('');
-                showFlash('error', 'Очередь не ответила за три минуты.');
+                showFlash('error', 'Очередь не ответила за десять минут.');
 
                 return;
             }

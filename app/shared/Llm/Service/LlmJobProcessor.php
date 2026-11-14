@@ -69,11 +69,31 @@ final class LlmJobProcessor
                 $processed++;
 
                 try {
+                    \Yii::info((string) json_encode([
+                        'event' => 'job_started',
+                        'jobId' => $job->id,
+                        'kind' => $job->kind,
+                        'style' => $job->styleName,
+                        'textLength' => mb_strlen($job->sourceText),
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'llm.queue');
                     $answer = $this->text->stylizeIn($job->styleName, $job->sourceText, $job->sourceFormatting);
                     $this->queue->markDone($job->id, $answer->text, $answer->formattingJson(), $this->now());
+                    \Yii::info((string) json_encode([
+                        'event' => 'job_done',
+                        'jobId' => $job->id,
+                        'resultLength' => mb_strlen($answer->text),
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'llm.queue');
                     $done++;
                 } catch (LlmRequestException | StyleSampleUnavailableException $e) {
                     $this->queue->markFailed($job->id, $e->getMessage(), $this->now());
+                    \Yii::error((string) json_encode([
+                        'event' => 'job_failed',
+                        'jobId' => $job->id,
+                        'style' => $job->styleName,
+                        'statusCode' => $e instanceof LlmRequestException ? $e->statusCode() : null,
+                        'retryable' => $e instanceof LlmRequestException ? $e->isRetryable() : false,
+                        'error' => $e->getMessage(),
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'llm.queue');
                     $failed++;
                 }
             }

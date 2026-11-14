@@ -180,7 +180,7 @@ final class PublicationSettingsServiceLlmTest extends Unit
         $defaults = PublicationSettingsService::defaults();
 
         $this->assertSame('40000', $defaults['llmStyleSampleChars']);
-        $this->assertSame('90', $defaults['llmTimeoutSeconds']);
+        $this->assertSame('210', $defaults['llmTimeoutSeconds']);
     }
 
     public function testSampleCeilingIsClampedOnARead(): void
@@ -192,20 +192,19 @@ final class PublicationSettingsServiceLlmTest extends Unit
         $this->assertSame(200000, $high->intValue('llmStyleSampleChars'));
     }
 
-    public function testFormRefusesATimeoutOverTheWebBudget(): void
+    public function testStoredTimeoutBelowTheProviderFloorIsClamped(): void
+    {
+        $service = $this->service(new InMemorySettingsRepository(['llmTimeoutSeconds' => '26']));
+
+        $this->assertSame(180, $service->intValue('llmTimeoutSeconds'));
+    }
+
+    public function testFormAcceptsTheExtendedTimeoutCeiling(): void
     {
         $repository = new InMemorySettingsRepository();
 
-        try {
-            $this->service($repository)->save($this->submitted(['llmTimeoutSeconds' => '180']));
-            $this->fail('Отказ не прозвучал.');
-        } catch (InvalidArgumentException $e) {
-            $this->assertSame(
-                '«Таймаут запроса к LLM» принимает значения от 10 до 110, передано 180.',
-                $e->getMessage(),
-            );
-        }
+        $this->service($repository)->save($this->submitted(['llmTimeoutSeconds' => '600']));
 
-        $this->assertSame(0, $repository->saves);
+        $this->assertSame('600', $repository->values['llmTimeoutSeconds']);
     }
 }

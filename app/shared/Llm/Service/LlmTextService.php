@@ -42,6 +42,18 @@ final class LlmTextService
         Если выделения нет, entities — пустой массив.
         TEXT;
 
+    /**
+     * Appended to the style prompt only: the rewriter must not drop any
+     * text_link that the source entities carry. Spelling and chat do not need
+     * this rule — spelling never rewrites content, and chat already says "keep
+     * facts unchanged".
+     */
+    private const STYLE_LINK_RULE = <<<'TEXT'
+
+        Все text_link из присланных меток обязательно перенеси в ответ с тем же "url" —
+        ни одну ссылку нельзя убирать или заменять словами без сохранения URL.
+        TEXT;
+
     public function __construct(
         private readonly LlmClientInterface $client,
         private readonly PublicationSettingsService $settings,
@@ -210,7 +222,7 @@ final class LlmTextService
         $block = "Разбор образца стиля «{$styleName}»:\n" . $portrait . "\n\n--- конец разбора ---\n\n";
 
         return $this->ask([
-            ['role' => 'system', 'content' => $prompt . self::ANSWER_CONTRACT],
+            ['role' => 'system', 'content' => $prompt . self::STYLE_LINK_RULE . self::ANSWER_CONTRACT],
             ['role' => 'user', 'content' => $block . $this->sourceBlock($text, $formattingJson)],
         ]);
     }
