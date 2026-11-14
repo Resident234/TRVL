@@ -200,7 +200,9 @@ final class LlmTextServiceChatTest extends Unit
 
     public function testAnUnparseableAnswerIsRefused(): void
     {
-        $this->service(['llmBaseUrl' => 'http://host.docker.internal:31415/v1'], ['Я подумал и вот что скажу.']);
+        // 1 primary + 3 fallback models — all return the same bad answer.
+        $bad = 'Я подумал и вот что скажу.';
+        $this->service(['llmBaseUrl' => 'http://host.docker.internal:31415/v1'], array_fill(0, 4, $bad));
 
         $this->expectException(LlmRequestException::class);
         $this->_service->chat('убери упоминания', 'Братишка, мы в Америке.', '', []);

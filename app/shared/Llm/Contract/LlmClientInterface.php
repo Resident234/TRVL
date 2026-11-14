@@ -17,7 +17,8 @@ interface LlmClientInterface
 {
     /**
      * @param array<int, array{role: string, content: string}> $messages
+     * @param string|null $modelOverride when non-null, overrides the model from settings for this call
      * @throws LlmRequestException when the proxy refused, timed out or answered nonsense
      */
-    public function chat(array $messages, int $timeout): LlmReply;
+    public function chat(array $messages, int $timeout, ?string $modelOverride = null): LlmReply;
 }

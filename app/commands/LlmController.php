@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\commands;
 
 use app\shared\Llm\Service\LlmJobProcessor;
+use app\shared\Llm\Service\LlmModelProbeService;
 use yii\console\Controller;
 use yii\console\ExitCode;
 
@@ -18,6 +19,7 @@ final class LlmController extends Controller
         $id,
         $module,
         private readonly LlmJobProcessor $jobs,
+        private readonly LlmModelProbeService $probe,
         $config = [],
     ) {
         parent::__construct($id, $module, $config);
@@ -47,5 +49,23 @@ final class LlmController extends Controller
         ));
 
         return $stats['failed'] > 0 ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK;
+    }
+
+    /**
+     * Probe every model the proxy exposes and update the fallback list.
+     * Run this once an hour from the llm cron container.
+     */
+    public function actionProbeModels(): int
+    {
+        $result = $this->probe->run();
+
+        $this->stdout(sprintf(
+            "Probe done: probed=%d, ok=%d, skipped=%d\n",
+            $result['probed'],
+            $result['ok'],
+            $result['skipped'],
+        ));
+
+        return ExitCode::OK;
     }
 }

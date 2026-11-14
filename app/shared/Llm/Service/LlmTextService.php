@@ -7,6 +7,7 @@ namespace app\shared\Llm\Service;
 use app\shared\Llm\Contract\LlmClientInterface;
 use app\shared\Llm\Dto\LlmAnswer;
 use app\shared\Llm\Dto\StyleSampleData;
+use app\shared\Llm\Infrastructure\LlmModelProbeRepository;
 use app\shared\Llm\Infrastructure\LlmRequestException;
 use app\shared\Llm\Infrastructure\StyleSampleUnavailableException;
 use app\shared\Settings\Service\PublicationSettingsService;
@@ -45,6 +46,7 @@ final class LlmTextService
         private readonly LlmClientInterface $client,
         private readonly PublicationSettingsService $settings,
         private readonly TextStyleSampleReader $reader,
+        private readonly ?LlmModelProbeRepository $probeRepo = null,
     ) {
     }
 
@@ -214,6 +216,36 @@ final class LlmTextService
     }
 
     /**
+     * Hard-coded fallback list used when the probe table is empty (first deploy
+     * or probe has never run). Once `llm/probe-models` runs, the table takes
+     * over and this list is never consulted again.
+     */
+    private const FORMAT_FALLBACK_MODELS = [
+        'mistral-small-3.2-24b',
+        'gemini-3.8-flash',
+        'qwen-3.8-27b',
+    ];
+
+    /**
+     * The ordered list of fallback models to try when `auto` returns a response
+     * that does not parse. Reads from the probe table when available; falls back
+     * to the hard-coded list when the table is empty (first deploy).
+     *
+     * @return string[]
+     */
+    private function fallbackModels(): array
+    {
+        if ($this->probeRepo !== null) {
+            $models = $this->probeRepo->okModels(20);
+            if ($models !== []) {
+                return $models;
+            }
+        }
+
+        return self::FORMAT_FALLBACK_MODELS;
+    }
+
+    /**
      * The budget of one call, read from the setting every time: it is the number
      * that keeps a synchronous request inside `fastcgi_read_timeout`.
      */
@@ -225,17 +257,60 @@ final class LlmTextService
     /**
      * @param array<int, array{role: string, content: string}> $messages
      */
-    private function call(array $messages): string
+    private function call(array $messages, ?string $modelOverride = null): string
     {
-        return $this->client->chat($messages, $this->timeout())->text;
+        return $this->client->chat($messages, $this->timeout(), $modelOverride)->text;
     }
 
     /**
+     * Sends the messages and parses the JSON contract, retrying with fallback
+     * models when the configured model returns a response that does not parse.
+     * Network errors and timeouts are not retried here — the client already
+     * retries those inside its own budget.
+     *
      * @param array<int, array{role: string, content: string}> $messages
      */
     private function ask(array $messages): LlmAnswer
     {
-        return $this->answerOf($this->call($messages));
+        // First attempt: the model from settings (null = use the setting).
+        try {
+            return $this->answerOf($this->call($messages));
+        } catch (LlmRequestException $first) {
+            if (!$this->isFormatError($first)) {
+                throw $first;
+            }
+
+            $lastError = $first;
+        }
+
+        // Fallback: try each known-good model until one returns valid JSON.
+        foreach ($this->fallbackModels() as $fallbackModel) {
+            try {
+                return $this->answerOf($this->call($messages, $fallbackModel));
+            } catch (LlmRequestException $e) {
+                $lastError = $e;
+                // If a fallback itself times out or is refused, skip to the next.
+            }
+        }
+
+        throw new LlmRequestException(
+            'Ни одна из доступных моделей не вернула ответ в правильном формате: '
+            . $lastError->getMessage(),
+        );
+    }
+
+    /**
+     * A format error is one where the model answered but the response did not
+     * parse as the JSON contract: no text field, marks that do not fit the text.
+     * Network errors, timeouts and refused keys are not format errors — retrying
+     * them with a different model would not help and would only waste time.
+     */
+    private function isFormatError(LlmRequestException $e): bool
+    {
+        $msg = $e->getMessage();
+        return str_contains($msg, 'не разбирается')
+            || str_contains($msg, 'нет текста')
+            || str_contains($msg, 'не сходятся');
     }
 
     /**

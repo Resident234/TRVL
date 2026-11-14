@@ -35,11 +35,15 @@ final class LlmClientStub implements LlmClientInterface
         $this->answers = $answers;
     }
 
-    public function chat(array $messages, int $timeout): LlmReply
+    /** @var list<string|null> */
+    public array $models = [];
+
+    public function chat(array $messages, int $timeout, ?string $modelOverride = null): LlmReply
     {
         $this->calls++;
         $this->seen[] = $messages;
         $this->timeouts[] = $timeout;
+        $this->models[] = $modelOverride;
 
         if ($this->answers === []) {
             throw new RuntimeException('Вызовов к прокси больше, чем ответов в фикстуре.');

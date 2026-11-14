@@ -45,11 +45,11 @@ final class OpenAiCompatibleClient implements LlmClientInterface
         return rtrim($baseUrl, '/') . '/chat/completions';
     }
 
-    public function chat(array $messages, int $timeout): LlmReply
+    public function chat(array $messages, int $timeout, ?string $modelOverride = null): LlmReply
     {
         $baseUrl = (string) $this->settings->value('llmBaseUrl');
         $apiKey = (string) $this->settings->value('llmApiKey');
-        $model = (string) $this->settings->value('llmModel');
+        $model = $modelOverride ?? (string) $this->settings->value('llmModel');
 
         if ($baseUrl === '' || $apiKey === '') {
             throw new LlmRequestException('LLM не настроен: адрес или ключ не заданы.');

@@ -135,7 +135,8 @@ final class LlmTextServiceTest extends Unit
 
     public function testAnAnswerThatIsNotJsonIsRefused(): void
     {
-        [$service] = $this->service(['Я подумал и вот что скажу.']);
+        // 1 primary + 3 fallback models — all return the same bad answer.
+        [$service] = $this->service(array_fill(0, 4, 'Я подумал и вот что скажу.'));
 
         $this->expectException(LlmRequestException::class);
         $service->spelling('Привет мир.', '[]');
@@ -143,7 +144,8 @@ final class LlmTextServiceTest extends Unit
 
     public function testAnAnswerWithoutTextIsRefused(): void
     {
-        [$service] = $this->service(['{"entities":[]}']);
+        // 1 primary + 3 fallback models — all return the same bad answer.
+        [$service] = $this->service(array_fill(0, 4, '{"entities":[]}'));
 
         $this->expectException(LlmRequestException::class);
         $service->spelling('Привет мир.', '[]');
@@ -151,7 +153,9 @@ final class LlmTextServiceTest extends Unit
 
     public function testMarksThatDoNotFitTheAnsweredTextAreRefused(): void
     {
-        [$service] = $this->service(['{"text":"Коротко.","entities":[{"type":"bold","offset":0,"length":90}]}']);
+        $bad = '{"text":"Коротко.","entities":[{"type":"bold","offset":0,"length":90}]}';
+        // 1 primary + 3 fallback models — all return the same bad answer.
+        [$service] = $this->service(array_fill(0, 4, $bad));
 
         try {
             $service->spelling('Привет мир.', '[]');
