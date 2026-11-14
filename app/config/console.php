@@ -64,6 +64,9 @@ $config = [
         'llm' => [
             'class' => \app\commands\LlmController::class,
         ],
+        'llm-measure-timeout' => [
+            'class' => \app\commands\LlmMeasureTimeoutController::class,
+        ],
     ],
     'container' => [
         'singletons' => [
