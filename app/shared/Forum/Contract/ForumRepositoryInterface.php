@@ -48,6 +48,12 @@ interface ForumRepositoryInterface extends ForumPublicationMapGatewayInterface
     public function save(\app\shared\Forum\Dto\TopicData $topic, string $now): bool;
 
     /**
+     * Upserts a forum section parsed from viewforum.php. Returns true when a
+     * new row was inserted.
+     */
+    public function saveForum(\app\shared\Forum\Dto\ForumData $forum, string $now): bool;
+
+    /**
      * Upserts the posts of one topic page together with their authors.
      * Returns the number of newly inserted post rows.
      */

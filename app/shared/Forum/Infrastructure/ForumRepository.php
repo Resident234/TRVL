@@ -6,6 +6,7 @@ namespace app\shared\Forum\Infrastructure;
 
 use app\shared\Forum\Contract\ForumPublicationMapGatewayInterface;
 use app\shared\Forum\Contract\ForumRepositoryInterface;
+use app\shared\Forum\Dto\ForumData;
 use app\shared\Forum\Dto\MemberData;
 use app\shared\Forum\Dto\PostData;
 use app\shared\Forum\Dto\TopicData;
@@ -163,6 +164,36 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
             $transaction->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Upserts a forum section parsed from viewforum.php. Returns true when a
+     * new row was inserted.
+     */
+    public function saveForum(ForumData $forum, string $now): bool
+    {
+        $exists = $this->db
+            ->createCommand('SELECT 1 FROM {{%forum}} WHERE id = :id')
+            ->bindValue(':id', $forum->id)
+            ->queryScalar() !== false;
+
+        $this->db->createCommand()->upsert(
+            '{{%forum}}',
+            [
+                'id' => $forum->id,
+                'source_url' => $forum->sourceUrl,
+                'title' => $forum->title,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'source_url' => $forum->sourceUrl,
+                'title' => $forum->title,
+                'updated_at' => $now,
+            ]
+        )->execute();
+
+        return !$exists;
     }
 
     /**

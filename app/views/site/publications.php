@@ -989,22 +989,81 @@ $this->registerCss(
    room the field keeps clear for it. Neither rule draws in a colour: the two handles of the
    AI wear info as a button, from the class the theme already ships, and the frame of the
    heading stays the one box on this page that info is drawn round. */
+.publication-llm-panel {
+    border: none;
+    background: transparent;
+    margin-bottom: 0 !important;
+}
+
+.publication-llm-panel .card-header {
+    padding: 0.25rem 0;
+    background: transparent;
+    border-bottom: none;
+}
+
+.publication-llm-panel .card-body {
+    padding: 0.5rem 0 0 0;
+}
+
 .publication-llm-panel .threads .thread p {
     white-space: pre-line;
     word-break: break-word;
 }
 
+.publication-llm-panel .scroll350 {
+    height: auto;
+    max-height: 350px;
+}
+
+.publication-llm-panel .scroll350:has(#publicationLlmThreads:empty) {
+    display: none;
+}
+
+.publication-llm-panel .scroll350:has(#publicationLlmThreads:empty) + .publication-llm-input-wrap {
+    margin-top: 0 !important;
+}
+
+.publication-llm-input-wrap {
+    position: relative;
+}
+
+.publication-llm-input-wrap .form-control {
+    padding-right: 2.5rem;
+    border-radius: 20px;
+    resize: none;
+    overflow-y: hidden;
+    min-height: 38px;
+    max-height: 150px;
+    line-height: 1.5;
+}
+
 .publication-llm-send-key {
     position: absolute;
-    right: .5rem;
-    bottom: .5rem;
+    right: .6rem;
+    bottom: .45rem;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 1.1rem;
+    color: #64c1fe;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    padding: 0;
+    cursor: pointer;
+    line-height: 1;
 }
+
+.publication-llm-send-key:disabled {
+    opacity: .4;
+    cursor: default;
+}
+.publication-llm-box {
+    border: 1px solid #64c1fe;
+    padding: 1rem;
+    border-radius: .8rem;
+    margin-top: .5rem;
+}
+
 CSS
 );
 ?>
@@ -1618,6 +1677,70 @@ CSS
                                     </div>
                                 </div>
 
+                                <div class="publication-llm-box mb-3">
+                                    <div class="d-flex flex-wrap justify-content-start gap-2 mb-2" id="publicationLlmControls">
+                                        <button type="button" class="btn btn-outline-info btn-sm"
+                                                id="publicationLlmSpelling"
+                                                title="<?= Html::encode($llmSpellingTitle) ?>"
+                                                <?= $llmSpellingOff ? 'disabled' : '' ?>>
+                                            <i class="bi bi-spellcheck me-1"></i>Проверить орфографию
+                                        </button>
+                                        <button type="button" class="btn btn-outline-info btn-sm"
+                                                id="publicationLlmStyle"
+                                                title="<?= Html::encode($llmStyleTitle) ?>"
+                                                <?= $llmStyleOff ? 'disabled' : '' ?>>
+                                            <i class="bi bi-brush me-1"></i>Стилизовать
+                                        </button>
+                                        <span class="small text-muted align-self-center"
+                                              id="publicationLlmStatus" role="status"></span>
+                                    </div>
+
+                                <?php /* The free dialog with the model. The card stands outside the
+                                       group the parts are rebuilt in, for the same reason the box of the
+                                       heading below it does: a split, a merge or a move of the parts must
+                                       not take the conversation with it. Its rows are the
+                                       notification-center of the ui-kit — the scroller of 350px, the
+                                       threads, one row per message — and the page paints them itself out
+                                       of the history the server keeps, so a reload brings the
+                                       conversation back and the reader finds what he already asked.
+                                       Nothing in this card has a `name`: the form of a publication is a
+                                       real form, and a control that names itself would travel out in
+                                       `publicationText[]` with the texts of the parts. The round handle
+                                       inside the field sends on Enter, the button under it sends on a
+                                       click, and Shift+Enter only breaks a line — which is the whole of
+                                       the keyboard the field answers to. The two words of an answer,
+                                       «Принять» and «Отклонить», belong to a row of the conversation
+                                       and never to a field of the form: the reader decides what an answer is
+                                       worth, and the page writes his decision into the part he asked
+                                       about. */ ?>
+                                <div class="publication-llm-panel card mb-3">
+                                    <div class="card-header">
+                                        <h5 class="card-title mb-0">Диалог с ИИ</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="scroll350">
+                                            <div class="notification-center">
+                                                <div class="threads" id="publicationLlmThreads"></div>
+                                            </div>
+                                        </div>
+                                        <div class="publication-llm-input-wrap mt-3">
+                                            <textarea class="form-control border" rows="1"
+                                                      id="publicationLlmCommand"
+                                                      placeholder="Перепиши этот абзац, сократи текст, убери упоминания"></textarea>
+                                            <button type="button"
+                                                    class="publication-llm-send-key"
+                                                    id="publicationLlmSendKey" aria-label="Отправить"
+                                                    title="<?= Html::encode($llmSendKeyTitle) ?>">
+                                                <i class="bi bi-send"></i>
+                                            </button>
+                                        </div>
+                                        <button type="button" class="d-none"
+                                                id="publicationLlmSend"
+                                                title="<?= Html::encode($llmSendTitle) ?>">Отправить</button>
+                                    </div>
+                                </div>
+                                </div>
+
                                 <?php /* The last of the three places: under the bottom block, so a list of
                                        N parts always offers N + 1 of them. The row is outside the box the
                                        parts are rebuilt in, so the split, the merge and the moving of a
@@ -1658,40 +1781,6 @@ CSS
                                         <button type="button" class="btn btn-outline-success btn-sm" data-split-whole="sentences"
                                                 title="Разбить весь текст по предложениям: «.», «!», «?» и «…» начинают новую часть">
                                             <i class="bi bi-chat-left-text me-1"></i>По предложениям
-                                        </button>
-                                    </div>
-                                    <?php /* Two handles of the AI, the word they answer with and
-                                            the room the word stands in. They get a row of their own,
-                                            under the row of the split and above the box of the
-                                            numbering, inside the same green box: the reader is asking
-                                            about the text of a part, and that is what the box holds.
-                                            The word of the state goes before both buttons, so the two
-                                            keep the right edge of the row and the mouse never has to
-                                            chase a handle that moved while «Проверяю…» became
-                                            «Готово». Both handles work on the part whose editor stood
-                                            last on the page — the same rule the handle of the seam
-                                            keeps — and both go out of use while the storage lacks
-                                            a key or an address, which is what the state of
-                                            the panel says. The handle of the style goes out of use
-                                            twice more: while no style is chosen, and while the chosen
-                                            style has no folder to read. A handle that is out of use
-                                            says why in its title and stays on the page, because a
-                                            door the reader cannot open through is still a door he is
-                                            allowed to see. */ ?>
-                                    <div class="d-flex flex-wrap justify-content-end gap-2 mb-2" id="publicationLlmControls">
-                                        <span class="small text-muted align-self-center"
-                                              id="publicationLlmStatus" role="status"></span>
-                                        <button type="button" class="btn btn-outline-info btn-sm"
-                                                id="publicationLlmSpelling"
-                                                title="<?= Html::encode($llmSpellingTitle) ?>"
-                                                <?= $llmSpellingOff ? 'disabled' : '' ?>>
-                                            <i class="bi bi-spellcheck me-1"></i>Проверить орфографию
-                                        </button>
-                                        <button type="button" class="btn btn-outline-info btn-sm"
-                                                id="publicationLlmStyle"
-                                                title="<?= Html::encode($llmStyleTitle) ?>"
-                                                <?= $llmStyleOff ? 'disabled' : '' ?>>
-                                            <i class="bi bi-brush me-1"></i>Стилизовать
                                         </button>
                                     </div>
                                     <?php /* The options of the number are one functional of their own, and the reader
@@ -1849,53 +1938,6 @@ CSS
                                         <label class="form-check-label" for="publicationDistributeImages">
                                             <i class="bi bi-card-image me-1"></i>Равномерно распределить изображения между частями
                                         </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <?php /* The free dialog with the model. The card stands outside the
-                                   group the parts are rebuilt in, for the same reason the box of the
-                                   heading below it does: a split, a merge or a move of the parts must
-                                   not take the conversation with it. Its rows are the
-                                   notification-center of the ui-kit — the scroller of 350px, the
-                                   threads, one row per message — and the page paints them itself out
-                                   of the history the server keeps, so a reload brings the
-                                   conversation back and the reader finds what he already asked.
-                                   Nothing in this card has a `name`: the form of a publication is a
-                                   real form, and a control that names itself would travel out in
-                                   `publicationText[]` with the texts of the parts. The round handle
-                                   inside the field sends on Enter, the button under it sends on a
-                                   click, and Shift+Enter only breaks a line — which is the whole of
-                                   the keyboard the field answers to. The two words of an answer,
-                                   «Принять» and «Отклонить», belong to a row of the conversation
-                                   and never to a field of the form: the reader decides what an answer is
-                                   worth, and the page writes his decision into the part he asked
-                                   about. */ ?>
-                            <div class="publication-llm-panel card mb-3">
-                                <div class="card-header">
-                                    <h5 class="card-title mb-0">Диалог с ИИ</h5>
-                                </div>
-                                <div class="card-body">
-                                    <div class="scroll350">
-                                        <div class="notification-center">
-                                            <div class="threads" id="publicationLlmThreads"></div>
-                                        </div>
-                                    </div>
-                                    <div class="position-relative mt-3">
-                                        <textarea class="form-control pe-5" rows="2"
-                                                  id="publicationLlmCommand"
-                                                  placeholder="Перепиши этот абзац, сократи текст, убери упоминания"></textarea>
-                                        <button type="button"
-                                                class="btn btn-primary btn-sm rounded-circle publication-llm-send-key"
-                                                id="publicationLlmSendKey" aria-label="Отправить"
-                                                title="<?= Html::encode($llmSendKeyTitle) ?>">
-                                            <i class="bi bi-arrow-up"></i>
-                                        </button>
-                                    </div>
-                                    <div class="d-flex justify-content-end mt-2">
-                                        <button type="button" class="btn btn-primary btn-sm"
-                                                id="publicationLlmSend"
-                                                title="<?= Html::encode($llmSendTitle) ?>">Отправить</button>
                                     </div>
                                 </div>
                             </div>
@@ -10811,6 +10853,10 @@ jQuery(document).ready(function () {
             }
         }
 
+        function llmIsSplit() {
+            return textParts().length > 1;
+        }
+
         // The part an answer of the panel belongs to: the field the caret was written
         // in last, and without a caret the longest of them — the same two words the
         // handle under the list of parts splits by, so the sentence the reader was
@@ -10984,11 +11030,15 @@ jQuery(document).ready(function () {
                 }
                 applyLlmAnswer(fields[index], text, formatting);
                 box.remove();
-                llmSay('Часть ' + (index + 1) + ' переписана.');
+                llmSay(llmIsSplit()
+                    ? 'Часть ' + (index + 1) + ' переписана.'
+                    : 'Текст переписан.');
             });
             drop.addEventListener('click', function () {
                 box.remove();
-                llmSay('Отклонено — часть осталась как была.');
+                llmSay(llmIsSplit()
+                    ? 'Отклонено — часть осталась как была.'
+                    : 'Отклонено — текст остался как был.');
             });
             box.appendChild(take);
             box.appendChild(drop);
@@ -11007,7 +11057,15 @@ jQuery(document).ready(function () {
 
             llmSpellingBusy = true;
             updateLlmControls();
-            llmSay('Проверяю часть ' + (target.index + 1) + '…');
+            llmSay(llmIsSplit()
+                ? 'Проверяю часть ' + (target.index + 1) + '…'
+                : 'Проверяю текст…');
+
+            console.log('[LLM] Запрос на проверку орфографии:', {
+                order: target.index,
+                textLength: target.text.length,
+                fieldId: target.field ? target.field.id || target.field.name || '(no id)' : null,
+            });
 
             postForJson(__LLM_SPELLING_URL, {
                 llmPartOrder: target.index,
@@ -11018,9 +11076,19 @@ jQuery(document).ready(function () {
                     throw new Error(payload.error || 'ИИ не ответил.');
                 }
 
+                console.log('[LLM] Орфография проверена:', {
+                    order: target.index,
+                    textLength: (payload.text || '').length,
+                    model: payload.model || null,
+                    text: payload.text,
+                    formatting: payload.formatting,
+                });
                 applyLlmAnswer(target.field, payload.text, JSON.parse(payload.formatting));
-                llmSay('Часть ' + (target.index + 1) + ' проверена — правки внесены.');
+                llmSay(llmIsSplit()
+                    ? 'Часть ' + (target.index + 1) + ' проверена — правки внесены.'
+                    : 'Текст проверен — правки внесены.');
             }).catch(function (error) {
+                console.error('[LLM] Ошибка проверки орфографии:', error);
                 llmSay('');
                 showFlash('error', 'Орфография не проверена: '
                     + (error && error.message ? error.message : error));
@@ -11049,7 +11117,13 @@ jQuery(document).ready(function () {
 
             llmStyleBusy = true;
             updateLlmControls();
-            llmSay('Ставлю часть ' + (target.index + 1) + ' в очередь…');
+            llmSay(llmIsSplit()
+                ? 'Ставлю часть ' + (target.index + 1) + ' в очередь…'
+                : 'Ставлю в очередь…');
+            console.log('[LLM] Запрос на стилизацию:', {
+                order: target.index,
+                textLength: target.text.length
+            });
 
             postForJson(__LLM_STYLE_URL, {
                 llmPartGroupId: llmGroupId(),
@@ -11060,11 +11134,17 @@ jQuery(document).ready(function () {
                 if (payload.ok !== true) {
                     throw new Error(payload.error || 'ИИ не ответил.');
                 }
+                console.log('[LLM] Задача поставлена в очередь:', {
+                    jobId: payload.jobId,
+                    status: payload.status
+                });
                 llmWaitUntil = Date.now() + LLM_WAIT_MS;
-                llmSay('Часть ' + (target.index + 1)
-                    + ' в очереди — она шагает раз в минуту.');
+                llmSay(llmIsSplit()
+                    ? 'Часть ' + (target.index + 1) + ' в очереди — она шагает раз в минуту.'
+                    : 'В очереди — она шагает раз в минуту.');
                 llmPollStyle(payload.jobId, target.index, payload.style || '');
             }).catch(function (error) {
+                console.error('[LLM] Ошибка постановки в очередь:', error);
                 llmStopPolling();
                 llmStyleBusy = false;
                 updateLlmControls();
@@ -11082,6 +11162,7 @@ jQuery(document).ready(function () {
         // standing there.
         function llmPollStyle(jobId, index, style) {
             if (Date.now() > llmWaitUntil) {
+                console.warn('[LLM] Таймаут ожидания очереди (3 мин)');
                 llmStopPolling();
                 llmStyleBusy = false;
                 updateLlmControls();
@@ -11097,6 +11178,8 @@ jQuery(document).ready(function () {
                 }
 
                 if (payload.status === 'done') {
+                    console.log('[LLM] Стилизация завершена, ответ от LLM:', payload);
+                    console.log('[LLM] Текст ответа:', payload.text);
                     llmStopPolling();
                     llmStyleBusy = false;
                     updateLlmControls();
@@ -11108,6 +11191,7 @@ jQuery(document).ready(function () {
                 }
 
                 if (payload.status === 'failed') {
+                    console.error('[LLM] Стилизация не удалась:', payload.error || payload);
                     llmStopPolling();
                     llmStyleBusy = false;
                     updateLlmControls();
@@ -11117,10 +11201,12 @@ jQuery(document).ready(function () {
 
                     return;
                 }
+                console.log('[LLM] Статус задачи в очереди:', payload.status);
                 llmPollTimer = setTimeout(function () {
                     llmPollStyle(jobId, index, style);
                 }, LLM_POLL_MS);
             }).catch(function (error) {
+                console.error('[LLM] Ошибка при опросе очереди:', error);
                 llmStopPolling();
                 llmStyleBusy = false;
                 updateLlmControls();
@@ -11158,9 +11244,12 @@ jQuery(document).ready(function () {
 
             llmChatBusy = true;
             updateLlmControls();
-            llmSay('Спрашиваю часть ' + (target.index + 1) + '…');
+            llmSay(llmIsSplit()
+                ? 'Спрашиваю часть ' + (target.index + 1) + '…'
+                : 'Спрашиваю модель…');
             llmAddRow('user', command);
             llmCommandField.value = '';
+            resizeLlmCommand();
 
             postForJson(__LLM_CHAT_URL, {
                 llmPartGroupId: llmGroupId(),
@@ -11234,6 +11323,17 @@ jQuery(document).ready(function () {
                 });
         }
 
+        function resizeLlmCommand() {
+            if (!llmCommandField) {
+                return;
+            }
+            llmCommandField.style.height = 'auto';
+            var maxH = 160;
+            var newH = Math.min(llmCommandField.scrollHeight, maxH);
+            llmCommandField.style.height = newH + 'px';
+            llmCommandField.style.overflowY = llmCommandField.scrollHeight > maxH ? 'auto' : 'hidden';
+        }
+
         if (llmCommandField) {
             llmCommandField.addEventListener('keydown', function (event) {
                 // Enter asks, Shift-Enter breaks the line: a command is three words as
@@ -11245,6 +11345,7 @@ jQuery(document).ready(function () {
             });
             // The two senders answer to the field: they light up with its first word and
             // go out again with its last.
+            llmCommandField.addEventListener('input', resizeLlmCommand);
             llmCommandField.addEventListener('input', updateLlmControls);
         }
         if (llmSendKeyBtn) {
@@ -11259,6 +11360,7 @@ jQuery(document).ready(function () {
 
         updateLlmControls();
         llmHistory();
+        resizeLlmCommand();
         renderUtcTimes(document);
     }
     setTimeout(initAll, 0);
