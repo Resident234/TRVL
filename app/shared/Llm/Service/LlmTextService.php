@@ -191,7 +191,7 @@ final class LlmTextService
 
     private function portrait(StyleSampleData $sample, string $styleName): string
     {
-        $content = $this->call([
+        $content = $this->callWithFallback([
             ['role' => 'system', 'content' => self::PORTRAIT_INSTRUCTION],
             ['role' => 'user', 'content' => $sample->block],
         ]);
@@ -260,6 +260,36 @@ final class LlmTextService
     private function call(array $messages, ?string $modelOverride = null): string
     {
         return $this->client->chat($messages, $this->timeout(), $modelOverride)->text;
+    }
+
+    /**
+     * Like `call()` but retries with fallback models when the primary model
+     * returns an empty or whitespace-only response. Used for portrait() where
+     * the answer is free prose, not JSON — the only failure mode worth retrying
+     * is a blank reply from a router that picked an unusable model.
+     *
+     * @param array<int, array{role: string, content: string}> $messages
+     */
+    private function callWithFallback(array $messages): string
+    {
+        $result = $this->call($messages);
+        if (trim($result) !== '') {
+            return $result;
+        }
+
+        foreach ($this->fallbackModels() as $fallbackModel) {
+            try {
+                $result = $this->call($messages, $fallbackModel);
+                if (trim($result) !== '') {
+                    return $result;
+                }
+            } catch (LlmRequestException) {
+                // Skip to the next fallback.
+            }
+        }
+
+        // Return whatever we have — portrait() will check for empty and refuse.
+        return $result;
     }
 
     /**

@@ -156,13 +156,15 @@ final class LlmTextServiceStylizeTest extends Unit
 
     public function testAnEmptyPortraitRefusesBeforeTheSecondCall(): void
     {
-        $this->service(['', self::ANSWER]);
+        // 1 primary + 3 fallback attempts all return empty — callWithFallback
+        // exhausts all options and portrait() gets '' back, which stylizeIn refuses.
+        $this->service(array_fill(0, 4, ''));
 
         try {
             $this->_service->stylize('Привет мир.', '[]');
             $this->fail('Отказ на пустой разбор не прозвучал.');
         } catch (LlmRequestException $e) {
-            $this->assertSame(1, $this->_stub->calls, 'Второй вызов при пустом разборе не делается.');
+            $this->assertSame(4, $this->_stub->calls, 'Все fallback-вызовы были сделаны перед отказом.');
         }
     }
 

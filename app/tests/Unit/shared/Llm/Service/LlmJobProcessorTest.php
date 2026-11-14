@@ -167,7 +167,12 @@ final class LlmJobProcessorTest extends Unit
         $this->_queue->queued[] = $this->job(1);
         $this->_queue->queued[] = $this->job(2);
 
-        $stats = $this->processor(['', self::PORTRAIT, self::ANSWER])->drain();
+        // 1 primary + 3 fallback attempts all return empty portrait for job 1,
+        // then portrait + answer for job 2.
+        $stats = $this->processor([
+            '', '', '', '',
+            self::PORTRAIT, self::ANSWER,
+        ])->drain();
 
         $this->assertSame(2, $stats['processed']);
         $this->assertSame(1, $stats['done']);
