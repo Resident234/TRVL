@@ -7513,6 +7513,13 @@ jQuery(document).ready(function () {
 
         mainPublicationAt.form.addEventListener('submit', function () {
             partTimesEnforced = true;
+            if (llmThreadsBox) {
+                llmThreadsBox.textContent = '';
+            }
+            if (llmCommandField) {
+                llmCommandField.value = '';
+                resizeLlmCommand();
+            }
         });
 
         // Only the last part has no neighbour below it to hand its album to; the
