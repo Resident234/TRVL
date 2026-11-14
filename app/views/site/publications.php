@@ -11258,6 +11258,13 @@ jQuery(document).ready(function () {
                 llmText: target.text,
                 llmFormatting: JSON.stringify(target.formatting),
             }).then(function (payload) {
+            postForJson(__LLM_CHAT_URL, {
+                llmPartGroupId: llmGroupId(),
+                llmPartOrder: target.index,
+                llmCommand: command,
+                llmText: target.text,
+                llmFormatting: JSON.stringify(target.formatting),
+            }).then(function (payload) {
                 if (payload.ok !== true) {
                     throw new Error(payload.error || 'ИИ не ответил.');
                 }
