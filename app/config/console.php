@@ -43,6 +43,9 @@ $config = [
         'forum-parser' => [
             'class' => \app\commands\ForumParserController::class,
         ],
+        'forum-section-parser' => [
+            'class' => \app\commands\ForumSectionParserController::class,
+        ],
         'forum-post-parser' => [
             'class' => \app\commands\ForumPostParserController::class,
         ],
@@ -51,6 +54,9 @@ $config = [
         ],
         'member-parser' => [
             'class' => \app\commands\MemberParserController::class,
+        ],
+        'tag-parser' => [
+            'class' => \app\commands\TagParserController::class,
         ],
         'telegram' => [
             'class' => \app\commands\TelegramController::class,
@@ -84,11 +90,20 @@ $config = [
                     \Yii::createObject(\app\shared\Llm\Contract\LlmClientInterface::class),
                     \Yii::createObject(\app\shared\Settings\Service\PublicationSettingsService::class),
                     \Yii::createObject(\app\shared\Llm\Service\TextStyleSampleReader::class),
+                    \Yii::createObject(\app\shared\Llm\Infrastructure\LlmModelProbeRepository::class),
                 ),
             \app\shared\Llm\Contract\LlmJobQueueInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmJobRepository =>
                 new \app\shared\Llm\Infrastructure\LlmJobRepository(\Yii::$app->getDb()),
             \app\shared\Llm\Contract\LlmChatRepositoryInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmChatRepository =>
                 new \app\shared\Llm\Infrastructure\LlmChatRepository(\Yii::$app->getDb()),
+            \app\shared\Llm\Infrastructure\LlmModelProbeRepository::class => static fn (): \app\shared\Llm\Infrastructure\LlmModelProbeRepository =>
+                new \app\shared\Llm\Infrastructure\LlmModelProbeRepository(\Yii::$app->getDb()),
+            \app\shared\Llm\Service\LlmModelProbeService::class => static fn (): \app\shared\Llm\Service\LlmModelProbeService =>
+                new \app\shared\Llm\Service\LlmModelProbeService(
+                    \Yii::createObject(\app\shared\Llm\Contract\LlmClientInterface::class),
+                    \Yii::createObject(\app\shared\Llm\Infrastructure\LlmModelProbeRepository::class),
+                    \Yii::createObject(\app\shared\Settings\Service\PublicationSettingsService::class),
+                ),
             \app\shared\Llm\Service\LlmJobProcessor::class => static fn (): \app\shared\Llm\Service\LlmJobProcessor =>
                 new \app\shared\Llm\Service\LlmJobProcessor(
                     \Yii::createObject(\app\shared\Llm\Contract\LlmJobQueueInterface::class),
@@ -150,6 +165,22 @@ $config = [
                     new \app\shared\Forum\Infrastructure\YiiPsrLoggerAdapter(\Yii::$app->getLog()->getLogger()),
                 );
             },
+            \app\shared\Forum\Service\ForumSectionScanService::class => static function () use ($parserTunables): \app\shared\Forum\Service\ForumSectionScanService {
+                return new \app\shared\Forum\Service\ForumSectionScanService(
+                    new \app\shared\Forum\Infrastructure\ForumRepository(\Yii::$app->getDb()),
+                    \Yii::createObject(\app\shared\Forum\Contract\ForumHttpClientInterface::class),
+                    new \app\shared\Forum\Service\ForumSectionPageParser((string)$parserTunables()['source_timezone']),
+                    new \app\shared\Forum\Infrastructure\YiiPsrLoggerAdapter(\Yii::$app->getLog()->getLogger()),
+                );
+            },
+            \app\shared\Forum\Contract\TagRepositoryInterface::class => static fn (): \app\shared\Forum\Infrastructure\TagRepository =>
+                new \app\shared\Forum\Infrastructure\TagRepository(\Yii::$app->getDb()),
+            \app\shared\Forum\Service\ForumTagScanService::class => static fn (): \app\shared\Forum\Service\ForumTagScanService =>
+                new \app\shared\Forum\Service\ForumTagScanService(
+                    \Yii::createObject(\app\shared\Forum\Contract\TagRepositoryInterface::class),
+                    new \app\shared\Forum\Service\CountryTagExtractor(),
+                    new \app\shared\Forum\Infrastructure\YiiPsrLoggerAdapter(\Yii::$app->getLog()->getLogger()),
+                ),
             \app\shared\Forum\Service\ForumPostScanService::class => static function () use ($parserTunables): \app\shared\Forum\Service\ForumPostScanService {
                 $tunables = $parserTunables();
                 return new \app\shared\Forum\Service\ForumPostScanService(

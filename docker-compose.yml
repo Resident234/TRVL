@@ -61,13 +61,15 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-now}
       FORUM_LOGIN_USERNAME: ${FORUM_LOGIN_USERNAME:-}
       FORUM_LOGIN_PASSWORD: ${FORUM_LOGIN_PASSWORD:-}
-      # Only the four scans of the forum: the publications queue runs in the
-      # telegram service below, from the same image.
+      # Only the scans of the forum and the tag pass: the publications queue
+      # runs in the telegram service below, from the same image.
       CRON_ROLE: parser
       PARSER_CRON_SCHEDULE: ${PARSER_CRON_SCHEDULE:-0 4 * * *}
+      FORUM_SECTION_PARSER_CRON_SCHEDULE: ${FORUM_SECTION_PARSER_CRON_SCHEDULE:-0 4 * * *}
       FORUM_POST_PARSER_CRON_SCHEDULE: ${FORUM_POST_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       GALLERY_PARSER_CRON_SCHEDULE: ${GALLERY_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       MEMBER_PARSER_CRON_SCHEDULE: ${MEMBER_PARSER_CRON_SCHEDULE:-*/10 * * * *}
+      TAG_PARSER_CRON_SCHEDULE: ${TAG_PARSER_CRON_SCHEDULE:-*/10 * * * *}
       STYLES_PATH: ${STYLES_PATH:-}
     depends_on:
       postgres:

@@ -11,9 +11,11 @@ crontab_file="/tmp/cron-jobs"
 case "$role" in
     parser)
         printf '%s php /var/www/html/yii forum-parser/scan\n' "${PARSER_CRON_SCHEDULE:-0 4 * * *}" > "$crontab_file"
+        printf '%s php /var/www/html/yii forum-section-parser/scan\n' "${FORUM_SECTION_PARSER_CRON_SCHEDULE:-0 4 * * *}" >> "$crontab_file"
         printf '%s php /var/www/html/yii forum-post-parser/scan\n' "${FORUM_POST_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
         printf '%s php /var/www/html/yii gallery-parser/scan\n' "${GALLERY_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
         printf '%s php /var/www/html/yii member-parser/scan\n' "${MEMBER_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
+        printf '%s php /var/www/html/yii tag-parser/scan\n' "${TAG_PARSER_CRON_SCHEDULE:-*/10 * * * *}" >> "$crontab_file"
         ;;
     telegram)
         printf '%s php /var/www/html/yii telegram/publish-due\n' "${TELEGRAM_PUBLISH_CRON_SCHEDULE:-*/5 * * * *}" > "$crontab_file"
@@ -25,6 +27,7 @@ case "$role" in
         ;;
     llm)
         printf '%s php /var/www/html/yii llm/process-jobs\n' "${LLM_JOB_CRON_SCHEDULE:-* * * * *}" > "$crontab_file"
+        printf '%s php /var/www/html/yii llm/probe-models\n' "${LLM_PROBE_CRON_SCHEDULE:-0 * * * *}" >> "$crontab_file"
         ;;
     *)
         printf 'CRON_ROLE must be parser, telegram or llm, got: %s\n' "$role" >&2

@@ -61,11 +61,14 @@ $config = [
                     \Yii::createObject(\app\shared\Llm\Contract\LlmClientInterface::class),
                     \Yii::createObject(\app\shared\Settings\Service\PublicationSettingsService::class),
                     \Yii::createObject(\app\shared\Llm\Service\TextStyleSampleReader::class),
+                    \Yii::createObject(\app\shared\Llm\Infrastructure\LlmModelProbeRepository::class),
                 ),
             \app\shared\Llm\Contract\LlmJobQueueInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmJobRepository =>
                 new \app\shared\Llm\Infrastructure\LlmJobRepository(\Yii::$app->getDb()),
             \app\shared\Llm\Contract\LlmChatRepositoryInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmChatRepository =>
                 new \app\shared\Llm\Infrastructure\LlmChatRepository(\Yii::$app->getDb()),
+            \app\shared\Llm\Infrastructure\LlmModelProbeRepository::class => static fn (): \app\shared\Llm\Infrastructure\LlmModelProbeRepository =>
+                new \app\shared\Llm\Infrastructure\LlmModelProbeRepository(\Yii::$app->getDb()),
             \app\shared\Forum\Service\ParserSettingsService::class => static fn (): \app\shared\Forum\Service\ParserSettingsService =>
                 new \app\shared\Forum\Service\ParserSettingsService(
                     \Yii::createObject(\app\shared\Forum\Contract\ForumRepositoryInterface::class),
