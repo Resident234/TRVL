@@ -11251,13 +11251,13 @@ jQuery(document).ready(function () {
             llmCommandField.value = '';
             resizeLlmCommand();
 
-            postForJson(__LLM_CHAT_URL, {
-                llmPartGroupId: llmGroupId(),
-                llmPartOrder: target.index,
-                llmCommand: command,
-                llmText: target.text,
-                llmFormatting: JSON.stringify(target.formatting),
-            }).then(function (payload) {
+            console.log('[LLM] Запрос в диалог:', {
+                order: target.index,
+                command: command,
+                textLength: target.text.length,
+                formatting: target.formatting,
+                fieldId: target.field ? target.field.id || target.field.name || '(no id)' : null,
+            });
             postForJson(__LLM_CHAT_URL, {
                 llmPartGroupId: llmGroupId(),
                 llmPartOrder: target.index,
@@ -11269,11 +11269,18 @@ jQuery(document).ready(function () {
                     throw new Error(payload.error || 'ИИ не ответил.');
                 }
 
+                console.log('[LLM] Ответ диалога от LLM:', payload);
+                console.log('[LLM] Текст ответа:', payload.text);
+                console.log('[LLM] Статус диалога: ответ получен', {
+                    ok: payload.ok,
+                    model: payload.model || null,
+                });
                 llmOffer(target.index, payload.text, JSON.parse(payload.formatting), '');
             }).catch(function (error) {
                 // The row of the reader is already in the storage by the time a call of
                 // the model fails, so the sentence that is on the screen here is the
                 // sentence the next read of the dialog will bring back.
+                console.error('[LLM] Ошибка диалога:', error);
                 showFlash('error', 'Диалог не задался: '
                     + (error && error.message ? error.message : error));
             }).then(function () {
