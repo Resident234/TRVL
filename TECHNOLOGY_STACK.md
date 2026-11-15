@@ -1,7 +1,7 @@
 # Технологический стек TRVL
 
 **Ядро и фреймворки**
-- **PHP 8.2+** — язык приложения
+- **PHP 8.4** — язык приложения (Docker-образы на базе `php:8.4-fpm-bookworm` / `php:8.4-cli-bookworm`)
 - **Yii 2** — фреймворк приложения (`yiisoft/yii2`, `yii2-bootstrap5`, `yii2-symfonymailer`)
 - **Composer** — менеджер зависимостей
 
