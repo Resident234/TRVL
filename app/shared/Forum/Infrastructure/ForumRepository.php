@@ -471,9 +471,14 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * saying only in which order the posts of each discussion read. Any
      * other value leaves the topics in the order of their dates.
      *
+     * With $maxTextLength > 0 only a message that fits into one channel post
+     * reaches the list: the topic is judged by its own title and text — the
+     * same ones its publish button loads — and the posts of every discussion
+     * are cut to those whose title and text fit. Zero leaves it as it was.
+     *
      * @return array<int, array{topic: TopicData, posts: PostData[], postsTotal: int}>
      */
-    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0, string $textOrder = ''): array
+    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0, string $textOrder = '', int $maxTextLength = 0): array
     {
         $topicOrder = $oldestTopicFirst ? 'ASC' : 'DESC';
         $postOrder = $oldestPostFirst ? 'ASC' : 'DESC';
@@ -486,7 +491,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . ' FROM {{%topic}} t'
                 . ' LEFT JOIN {{%member}} m ON m.id = t.author_id'
                 . ' LEFT JOIN {{%publications_topic_map}} ptm ON ptm.topic_id = t.id'
-                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount)
+                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount, $maxTextLength)
                 . ' ORDER BY ' . $this->topicOrderSql($topicOrder, $textOrder)
                 . ' LIMIT :limit OFFSET :offset'
             )
@@ -514,6 +519,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . $this->unprocessedPostFilterSql($withPostsOnly)
                 . $this->postImageFilterSql($withImagesOnly, $imagesCount, 'bp')
                 . $this->postLinkFilterSql($withLinksOnly, $linksCount, 'bp')
+                . $this->messageFitsSql($maxTextLength, 'bp')
                 . ' ) p'
                 . ' LEFT JOIN {{%member}} m ON m.id = p.author_id'
                 . ' LEFT JOIN {{%publications_post_map}} ppm ON ppm.post_id = p.id'
@@ -549,13 +555,13 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * very selection latestTopicsWithPosts pages through, counted without its
      * limit, so the scroll knows when the list has run out.
      */
-    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0): int
+    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, int $maxTextLength = 0): int
     {
         return (int)$this->db
             ->createCommand(
                 'SELECT COUNT(*) FROM {{%topic}} t'
                 . ' LEFT JOIN {{%publications_topic_map}} ptm ON ptm.topic_id = t.id'
-                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount)
+                . ' WHERE t.login_required = FALSE' . $this->topicFilterSql($withImagesOnly, $withPostsOnly, $imagesCount, $withLinksOnly, $linksCount, $maxTextLength)
             )
             ->queryScalar();
     }
@@ -569,7 +575,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      *
      * @return array{posts: PostData[], total: int}
      */
-    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestPostFirst = false): array
+    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestPostFirst = false, int $maxTextLength = 0): array
     {
         $postOrder = $oldestPostFirst ? 'ASC' : 'DESC';
         $from = max(0, $offset);
@@ -588,6 +594,7 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
                 . $this->unprocessedPostFilterSql($withPostsOnly)
                 . $this->postImageFilterSql($withImagesOnly, $imagesCount, 'bp')
                 . $this->postLinkFilterSql($withLinksOnly, $linksCount, 'bp')
+                . $this->messageFitsSql($maxTextLength, 'bp')
                 . ' ) p'
                 . ' LEFT JOIN {{%member}} m ON m.id = p.author_id'
                 . ' LEFT JOIN {{%publications_post_map}} ppm ON ppm.post_id = p.id'
@@ -672,8 +679,15 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
      * reads is filtered by the very conditions the list of posts reads, so a
      * topic is never kept on the page by a post the page would hide.
      */
-    private function topicFilterSql(bool $withImagesOnly, bool $withPostsOnly, int $imagesCount, bool $withLinksOnly, int $linksCount): string
+    private function topicFilterSql(bool $withImagesOnly, bool $withPostsOnly, int $imagesCount, bool $withLinksOnly, int $linksCount, int $maxTextLength): string
     {
+        // The button of a topic loads the topic's own text, not its thread,
+        // so the length filter asks about that text together with its title
+        // first: a topic whose message would be too long must not reach the
+        // page by a short reply. Only then does the old "unviewed or has an
+        // unprocessed post" rule run.
+        $topicFits = $this->messageFitsSql($maxTextLength, 't', true);
+
         return ($withImagesOnly
             ? ' AND (t.image_urls != \'[]\'::jsonb OR EXISTS (SELECT 1 FROM {{%post}} fp WHERE fp.topic_id = t.id AND fp.image_urls != \'[]\'::jsonb))'
             : '')
@@ -689,12 +703,14 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
             . ($linksCount > 0
                 ? ' AND t.links_count = ' . $linksCount
                 : '')
+            . $topicFits
             . ' AND (ptm.topic_id IS NULL OR EXISTS ('
             . 'SELECT 1 FROM {{%post}} fp'
             . ' WHERE fp.topic_id = t.id'
             . ' AND NOT EXISTS (SELECT 1 FROM {{%publications_post_map}} fpm WHERE fpm.post_id = fp.id)'
             . $this->postImageFilterSql($withImagesOnly, $imagesCount, 'fp')
             . $this->postLinkFilterSql($withLinksOnly, $linksCount, 'fp')
+            . $this->messageFitsSql($maxTextLength, 'fp')
             . '))';
     }
 
@@ -733,6 +749,33 @@ final class ForumRepository implements ForumRepositoryInterface, ForumPublicatio
     {
         return ($withLinksOnly ? ' AND ' . $alias . '.links_count > 0' : '')
             . ($linksCount > 0 ? ' AND ' . $alias . '.links_count = ' . $linksCount : '');
+    }
+
+    /**
+     * The bound of one channel message as the editor builds it: the title,
+     * a blank line when the text has something behind that title, and the
+     * body. Pulling a forum row into the form prepends its title with "\n\n"
+     * and the switch of the first line only moves that line into the heading
+     * field, so either way the sender counts the same characters. Markups,
+     * albums and buttons travel in their own fields and are not counted.
+     *
+     * A topic carries the length of its body written by the parser beside
+     * it; a post does not, so its body is measured in the query.
+     */
+    private function messageFitsSql(int $maxTextLength, string $alias, bool $topic = false): string
+    {
+        if ($maxTextLength <= 0) {
+            return '';
+        }
+
+        $body = $topic
+            ? 'COALESCE(' . $alias . '.text_length, char_length(' . $alias . '.content_text), 0)'
+            : 'COALESCE(char_length(' . $alias . '.content_text), 0)';
+        $title = $alias . '.title';
+
+        return ' AND (COALESCE(char_length(' . $title . '), 0) + ' . $body
+            . ' + CASE WHEN COALESCE(' . $title . ", '') <> '' AND " . $body . ' > 0 THEN 2 ELSE 0 END'
+            . ' <= ' . $maxTextLength . ')';
     }
 
     /**

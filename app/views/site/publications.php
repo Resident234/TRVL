@@ -12,6 +12,7 @@ declare(strict_types=1);
 /** @var bool $withPostsOnly */
 /** @var bool $withLinksOnly */
 /** @var int $linksCount the exact number of addresses a record's text has to carry, 0 — без ограничения */
+/** @var bool $fitsOnePostOnly whether only texts that fit into one channel message are shown */
 /** @var array{posts: int, drafts: int, deleted: int, forum: int} $totals */
 /** @var array<string, bool> $oldestFirst the order of every switch of the page */
 /** @var string $forumTextOrder '' | 'asc' | 'desc' — the length order of the topics */
@@ -1074,7 +1075,7 @@ CSS
     // The badge of the filter card counts the filters that are on, the badge of
     // the forum card counts the topics those filters leave.
     $activeFilterCount = ($withImagesOnly ? 1 : 0) + ($withPostsOnly ? 1 : 0) + ($imagesCount > 0 ? 1 : 0)
-        + ($withLinksOnly ? 1 : 0) + ($linksCount > 0 ? 1 : 0);
+        + ($withLinksOnly ? 1 : 0) + ($linksCount > 0 ? 1 : 0) + ($fitsOnePostOnly ? 1 : 0);
 ?>
         <!-- Forum block: its filters and its topics in one white card -->
         <div class="card mb-4 p-3">
@@ -1105,6 +1106,13 @@ CSS
                         <input class="form-check-input" type="checkbox" role="switch" id="forumFilterWithLinks"
                             <?= $withLinksOnly ? 'checked' : '' ?>>
                         <label class="form-check-label" for="forumFilterWithLinks">С ссылками</label>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" role="switch" id="forumFilterFitsOnePost"
+                            <?= $fitsOnePostOnly ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="forumFilterFitsOnePost">
+                            В один пост Telegram (≤ <?= (int)$textLimit ?> симв.)
+                        </label>
                     </div>
                     <div class="mb-3">
                         <label for="forumFilterImagesCount" class="form-label small">
@@ -1693,6 +1701,11 @@ CSS
                                         </button>
                                         <span class="small text-muted align-self-center"
                                               id="publicationLlmStatus" role="status"></span>
+                                        <button type="button" class="btn btn-link btn-sm p-0 text-decoration-none align-self-center d-none"
+                                                id="publicationLlmCancelWait"
+                                                title="Прекратить ожидание ответа из очереди">
+                                            Прекратить ожидание
+                                        </button>
                                     </div>
 
                                 <?php /* The free dialog with the model. The card stands outside the
@@ -4599,7 +4612,7 @@ jQuery(document).ready(function () {
             makePopover(el);
         });
 
-        // The badge of the filter card counts how many of the five filters
+        // The badge of the filter card counts how many of the six filters
         // are on, the same number the page was rendered with.
         var filterCountBadge = document.getElementById('forumFilterCount');
         function updateFilterCount(count) {
@@ -4612,6 +4625,7 @@ jQuery(document).ready(function () {
             var imagesSwitch = document.getElementById('forumFilterWithImages');
             var postsSwitch = document.getElementById('forumFilterWithPosts');
             var linksSwitch = document.getElementById('forumFilterWithLinks');
+            var fitsSwitch = document.getElementById('forumFilterFitsOnePost');
             var imagesCountInput = document.getElementById('forumFilterImagesCount');
             var linksCountInput = document.getElementById('forumFilterLinksCount');
             var imagesCount = imagesCountInput ? (parseInt(imagesCountInput.value, 10) || 0) : 0;
@@ -4620,7 +4634,8 @@ jQuery(document).ready(function () {
                 + (postsSwitch && postsSwitch.checked ? 1 : 0)
                 + (imagesCount > 0 ? 1 : 0)
                 + (linksSwitch && linksSwitch.checked ? 1 : 0)
-                + (linksCount > 0 ? 1 : 0);
+                + (linksCount > 0 ? 1 : 0)
+                + (fitsSwitch && fitsSwitch.checked ? 1 : 0);
 
             updateFilterCount(active);
             postForBlocks(__FILTER_SAVE_URL, {
@@ -4628,11 +4643,12 @@ jQuery(document).ready(function () {
                 withPosts: postsSwitch && postsSwitch.checked ? 1 : 0,
                 imagesCount: imagesCount,
                 withLinks: linksSwitch && linksSwitch.checked ? 1 : 0,
-                linksCount: linksCount
+                linksCount: linksCount,
+                fitsOnePost: fitsSwitch && fitsSwitch.checked ? 1 : 0
             });
         };
 
-        ['forumFilterWithImages', 'forumFilterWithPosts', 'forumFilterWithLinks'].forEach(function (id) {
+        ['forumFilterWithImages', 'forumFilterWithPosts', 'forumFilterWithLinks', 'forumFilterFitsOnePost'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', applyFiltersDirect);
         });
@@ -10827,6 +10843,7 @@ jQuery(document).ready(function () {
         // the drawn handle once here and never asked again: a handle the page drew
         // disabled stays disabled whatever the caret does after it.
         var llmStatusBox = document.getElementById('publicationLlmStatus');
+        var llmCancelWaitBtn = document.getElementById('publicationLlmCancelWait');
         var llmSpellingBtn = document.getElementById('publicationLlmSpelling');
         var llmStyleBtn = document.getElementById('publicationLlmStyle');
         var llmThreadsBox = document.getElementById('publicationLlmThreads');
@@ -10844,20 +10861,45 @@ jQuery(document).ready(function () {
         var llmStyleBusy = false;
         var llmChatBusy = false;
         var llmPollTimer = null;
-        var llmWaitUntil = 0;
         var llmHistoryPart = -1;
         var llmHistoryToken = 0;
-        // The queue of Task 12 is stepped once a minute, so the page asks it three
-        // seconds at a time and stops asking after ten minutes: one minute for the
-        // step to reach the row, two more for the pair of calls a stylization is
-        // made of, and the rest is additional time for a slow model or worker.
+        // The queue is stepped once a minute and one stylization makes two calls
+        // of the model, each with its own retries and fallback models, so no
+        // fixed patience fits every job. The page asks every three seconds until
+        // the row reaches done/failed or the reader stops waiting by hand.
         var LLM_POLL_MS = 3000;
-        var LLM_WAIT_MS = 600000;
 
-        function llmSay(words) {
-            if (llmStatusBox) {
-                llmStatusBox.textContent = words;
+        // kind: 'pending' | 'ok' | 'error' | '' (neutral/clear)
+        function llmSay(words, kind) {
+            if (!llmStatusBox) {
+                return;
             }
+
+            llmStatusBox.textContent = '';
+            if (!words) {
+                llmStatusBox.className = 'small text-muted align-self-center';
+                return;
+            }
+
+            var icon = document.createElement('span');
+            var text = document.createElement('span');
+
+            if (kind === 'pending') {
+                icon.textContent = '⟳ ';
+                llmStatusBox.className = 'small text-secondary align-self-center';
+            } else if (kind === 'ok') {
+                icon.textContent = '✓ ';
+                llmStatusBox.className = 'small text-success align-self-center';
+            } else if (kind === 'error') {
+                icon.textContent = '✗ ';
+                llmStatusBox.className = 'small text-danger align-self-center';
+            } else {
+                llmStatusBox.className = 'small text-muted align-self-center';
+            }
+
+            text.textContent = words;
+            llmStatusBox.appendChild(icon);
+            llmStatusBox.appendChild(text);
         }
 
         function llmIsSplit() {
@@ -11038,14 +11080,14 @@ jQuery(document).ready(function () {
                 applyLlmAnswer(fields[index], text, formatting);
                 box.remove();
                 llmSay(llmIsSplit()
-                    ? 'Часть ' + (index + 1) + ' переписана.'
-                    : 'Текст переписан.');
+                    ? 'Принято — часть ' + (index + 1) + ' переписана.'
+                    : 'Принято — текст переписан.', 'ok');
             });
             drop.addEventListener('click', function () {
                 box.remove();
                 llmSay(llmIsSplit()
-                    ? 'Отклонено — часть осталась как была.'
-                    : 'Отклонено — текст остался как был.');
+                    ? 'Отклонено — часть ' + (index + 1) + ' осталась.'
+                    : 'Отклонено — текст остался.', '');
             });
             box.appendChild(take);
             box.appendChild(drop);
@@ -11065,8 +11107,8 @@ jQuery(document).ready(function () {
             llmSpellingBusy = true;
             updateLlmControls();
             llmSay(llmIsSplit()
-                ? 'Проверяю часть ' + (target.index + 1) + '…'
-                : 'Проверяю текст…');
+                ? 'Запрос — часть ' + (target.index + 1) + '…'
+                : 'Запрос…', 'pending');
 
             console.log('[LLM] Запрос на проверку орфографии:', {
                 order: target.index,
@@ -11092,11 +11134,11 @@ jQuery(document).ready(function () {
                 });
                 applyLlmAnswer(target.field, payload.text, JSON.parse(payload.formatting));
                 llmSay(llmIsSplit()
-                    ? 'Часть ' + (target.index + 1) + ' проверена — правки внесены.'
-                    : 'Текст проверен — правки внесены.');
+                    ? 'Правки внесены в часть ' + (target.index + 1) + '.'
+                    : 'Правки внесены.', 'ok');
             }).catch(function (error) {
                 console.error('[LLM] Ошибка проверки орфографии:', error);
-                llmSay('');
+                llmSay('Не удалось: ' + (error && error.message ? error.message : error), 'error');
                 showFlash('error', 'Орфография не проверена: '
                     + (error && error.message ? error.message : error));
             }).then(function () {
@@ -11125,8 +11167,8 @@ jQuery(document).ready(function () {
             llmStyleBusy = true;
             updateLlmControls();
             llmSay(llmIsSplit()
-                ? 'Ставлю часть ' + (target.index + 1) + ' в очередь…'
-                : 'Ставлю в очередь…');
+                ? 'Отправляю часть ' + (target.index + 1) + ' в очередь…'
+                : 'Отправляю в очередь…', 'pending');
             console.log('[LLM] Запрос на стилизацию:', {
                 order: target.index,
                 textLength: target.text.length
@@ -11145,17 +11187,19 @@ jQuery(document).ready(function () {
                     jobId: payload.jobId,
                     status: payload.status
                 });
-                llmWaitUntil = Date.now() + LLM_WAIT_MS;
+                if (llmCancelWaitBtn) {
+                    llmCancelWaitBtn.classList.remove('d-none');
+                }
                 llmSay(llmIsSplit()
-                    ? 'Часть ' + (target.index + 1) + ' в очереди — она шагает раз в минуту.'
-                    : 'В очереди — она шагает раз в минуту.');
+                    ? 'В очереди — часть ' + (target.index + 1) + '.'
+                    : 'В очереди.', 'pending');
                 llmPollStyle(payload.jobId, target.index, payload.style || '');
             }).catch(function (error) {
                 console.error('[LLM] Ошибка постановки в очередь:', error);
                 llmStopPolling();
                 llmStyleBusy = false;
                 updateLlmControls();
-                llmSay('');
+                llmSay('Не удалось: ' + (error && error.message ? error.message : error), 'error');
                 showFlash('error', 'Стилизация не поставлена в очередь: '
                     + (error && error.message ? error.message : error));
             });
@@ -11163,22 +11207,11 @@ jQuery(document).ready(function () {
 
         // One ask of one row of the queue. The clock of the worker and the clock of the
         // page are two different clocks, so the row may be answered long before the next
-        // of these asks comes — and the wait ends the moment it is. Three minutes of
-        // asking is the end of the patience of the page, not of the queue: the row stays
-        // where it is, and a reader who presses the handle again finds the same answer
-        // standing there.
+        // of these asks comes — and the wait ends the moment it is. There is no deadline
+        // here: a slow model or a worker that has not reached the row yet may answer at
+        // any time, and the reader can stop waiting by hand at any time. Stopping only
+        // ends the asking; the row itself stays in the queue with its result.
         function llmPollStyle(jobId, index, style) {
-            if (Date.now() > llmWaitUntil) {
-                console.warn('[LLM] Таймаут ожидания очереди (10 мин)');
-                llmStopPolling();
-                llmStyleBusy = false;
-                updateLlmControls();
-                llmSay('');
-                showFlash('error', 'Очередь не ответила за десять минут.');
-
-                return;
-            }
-
             getForJson(__LLM_STYLE_STATUS_URL, { llmJobId: jobId }).then(function (payload) {
                 if (payload.ok !== true) {
                     throw new Error(payload.error || 'Очередь не ответила.');
@@ -11202,11 +11235,21 @@ jQuery(document).ready(function () {
                     llmStopPolling();
                     llmStyleBusy = false;
                     updateLlmControls();
-                    llmSay('');
+                    llmSay('Не удалось: ' + (payload.error || 'ИИ не ответил.'), 'error');
                     showFlash('error', 'Стилизация не удалась: '
                         + (payload.error || 'ИИ не ответил.'));
 
                     return;
+                }
+
+                if (payload.status === 'running') {
+                    llmSay(llmIsSplit()
+                        ? 'Ответ — часть ' + (index + 1) + '…'
+                        : 'Ответ…', 'pending');
+                } else {
+                    llmSay(llmIsSplit()
+                        ? 'В очереди — часть ' + (index + 1) + '.'
+                        : 'В очереди.', 'pending');
                 }
                 console.log('[LLM] Статус задачи в очереди:', payload.status);
                 llmPollTimer = setTimeout(function () {
@@ -11217,7 +11260,7 @@ jQuery(document).ready(function () {
                 llmStopPolling();
                 llmStyleBusy = false;
                 updateLlmControls();
-                llmSay('');
+                llmSay('Очередь не отвечает.', 'error');
                 showFlash('error', 'Очередь не отвечает: '
                     + (error && error.message ? error.message : error));
             });
@@ -11231,10 +11274,25 @@ jQuery(document).ready(function () {
                 clearTimeout(llmPollTimer);
                 llmPollTimer = null;
             }
+            if (llmCancelWaitBtn) {
+                llmCancelWaitBtn.classList.add('d-none');
+            }
         }
 
         if (llmStyleBtn) {
             llmStyleBtn.addEventListener('click', llmStyle);
+        }
+
+        // The reader, not a stopwatch, decides when to stop asking. The row of
+        // the queue keeps its work, so pressing the brush again only starts
+        // another ask — it does not bring the old answer back by itself.
+        if (llmCancelWaitBtn) {
+            llmCancelWaitBtn.addEventListener('click', function () {
+                llmStopPolling();
+                llmStyleBusy = false;
+                updateLlmControls();
+                llmSay('Ожидание ответа прекращено.', '');
+            });
         }
 
         // One call per question. The reader's sentence is put on the screen the moment
@@ -11252,8 +11310,8 @@ jQuery(document).ready(function () {
             llmChatBusy = true;
             updateLlmControls();
             llmSay(llmIsSplit()
-                ? 'Спрашиваю часть ' + (target.index + 1) + '…'
-                : 'Спрашиваю модель…');
+                ? 'Запрос — часть ' + (target.index + 1) + '…'
+                : 'Запрос…', 'pending');
             llmAddRow('user', command);
             llmCommandField.value = '';
             resizeLlmCommand();
@@ -11293,7 +11351,7 @@ jQuery(document).ready(function () {
             }).then(function () {
                 llmChatBusy = false;
                 updateLlmControls();
-                llmSay('');
+                llmSay('Ответ получен.', 'ok');
             });
         }
 

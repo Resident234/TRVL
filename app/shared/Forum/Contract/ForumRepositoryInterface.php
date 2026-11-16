@@ -99,26 +99,34 @@ interface ForumRepositoryInterface extends ForumPublicationMapGatewayInterface
      * 'desc' the longest — and leaves the posts of each discussion in the
      * order they were asked for. Any other value keeps the date order.
      *
+     * With $maxTextLength > 0 a record reaches the list only when the
+     * message made of its own title, a blank line and its text fits: a topic
+     * is kept by what its own button loads, a short reply never brings in an
+     * overlong topic, and the post lists keep only posts whose message fits.
+     * Zero leaves this filter out.
+     *
      * @return array<int, array{topic: \app\shared\Forum\Dto\TopicData, posts: \app\shared\Forum\Dto\PostData[], postsTotal: int}>
      */
-    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0, string $textOrder = ''): array;
+    public function latestTopicsWithPosts(int $topicLimit, int $postLimit, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestTopicFirst = false, bool $oldestPostFirst = false, int $topicOffset = 0, string $textOrder = '', int $maxTextLength = 0): array;
 
     /**
      * How many topics the forum block of these filters is made of, which is
      * how far its scroll may keep loading.
      */
-    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0): int;
+    public function countTopics(bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, int $maxTextLength = 0): int;
 
     /**
      * The next page of one discussion: $limit posts read from $offset in the
      * order the block shows them, plus how many posts the topic has under
      * the filters of the page. The two queries of latestTopicsWithPosts cut
      * their first page from the same selection, so the pages of a discussion
-     * never repeat or skip a post the reader has already seen.
+     * never repeat or skip a post the reader has already seen. A positive
+     * $maxTextLength cuts the page down to posts whose title and text fit
+     * into one channel message, the total included.
      *
      * @return array{posts: \app\shared\Forum\Dto\PostData[], total: int}
      */
-    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestPostFirst = false): array;
+    public function topicPosts(int $topicId, int $limit, int $offset, bool $withImagesOnly = false, bool $withPostsOnly = false, int $imagesCount = 0, bool $withLinksOnly = false, int $linksCount = 0, bool $oldestPostFirst = false, int $maxTextLength = 0): array;
 
     /**
      * Every post the table holds for one topic, in the order the block shows

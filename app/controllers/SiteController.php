@@ -403,7 +403,7 @@ class SiteController extends Controller
 
     /**
      * @param array<string, mixed> $raw
-     * @return array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int}
+     * @return array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int, fitsOnePost: bool}
      */
     private function normalizeForumFilters(array $raw): array
     {
@@ -418,11 +418,12 @@ class SiteController extends Controller
             'imagesCount' => $imagesCount > 0 ? min($imagesCount, $ceiling) : 0,
             'withLinks' => (string)($raw['withLinks'] ?? '') === '1',
             'linksCount' => $linksCount > 0 ? min($linksCount, $linksCeiling) : 0,
+            'fitsOnePost' => (string)($raw['fitsOnePost'] ?? '') === '1',
         ];
     }
 
     /**
-     * @param array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int} $filters
+     * @param array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int, fitsOnePost: bool} $filters
      */
     private function hasActiveForumFilter(array $filters): bool
     {
@@ -430,7 +431,19 @@ class SiteController extends Controller
             || $filters['withPosts']
             || $filters['imagesCount'] > 0
             || $filters['withLinks']
-            || $filters['linksCount'] > 0;
+            || $filters['linksCount'] > 0
+            || $filters['fitsOnePost'];
+    }
+
+    /**
+     * The character budget a record's own text has to respect while the filter
+     * is on. Zero means no cap at all, so the repository keeps its old query.
+     * The number is the same one the channel refuses to send more than, and
+     * the editor uses it to split a long fill into parts.
+     */
+    private function forumTextLimit(): int
+    {
+        return $this->forumFilters()['fitsOnePost'] ? ChannelService::TEXT_MAX_LENGTH : 0;
     }
 
     /**
@@ -458,6 +471,9 @@ class SiteController extends Controller
         }
         if ($filters['linksCount'] > 0) {
             $url['linksCount'] = (string)$filters['linksCount'];
+        }
+        if ($filters['fitsOnePost']) {
+            $url['fitsOnePost'] = '1';
         }
 
         return $url;
@@ -543,7 +559,7 @@ class SiteController extends Controller
     }
 
     /**
-     * @return array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int}
+     * @return array{withImages: bool, withPosts: bool, imagesCount: int, withLinks: bool, linksCount: int, fitsOnePost: bool}
      */
     private function forumFilters(): array
     {
@@ -848,6 +864,7 @@ class SiteController extends Controller
         $filters = $this->forumFilters();
         $sorts = $this->publicationsSort();
         $textOrder = $this->forumTextOrder();
+        $textLimit = $this->forumTextLimit();
         $settings = $this->publicationSettings();
         $postsSize = (int)$settings['publicationPageSize'];
         $topicsSize = (int)$settings['forumTopicsPageSize'];
@@ -859,6 +876,7 @@ class SiteController extends Controller
             $filters['imagesCount'],
             $filters['withLinks'],
             $filters['linksCount'],
+            $textLimit,
         );
 
         return [
@@ -877,12 +895,14 @@ class SiteController extends Controller
                 $sorts['forumPosts'],
                 0,
                 $textOrder,
+                $textLimit,
             ),
             'withImagesOnly' => $filters['withImages'],
             'withPostsOnly' => $filters['withPosts'],
             'imagesCount' => $filters['imagesCount'],
             'withLinksOnly' => $filters['withLinks'],
             'linksCount' => $filters['linksCount'],
+            'fitsOnePostOnly' => $filters['fitsOnePost'],
             'totals' => $totals,
             'oldestFirst' => $sorts,
             'forumTextOrder' => $textOrder,
@@ -1698,6 +1718,7 @@ class SiteController extends Controller
         $sorts = $this->publicationsSort();
         $filters = $this->forumFilters();
         $textOrder = $this->forumTextOrder();
+        $textLimit = $this->forumTextLimit();
 
         return match ($block) {
             'posts' => ['_item_post', $this->publications->posts($size, $offset, $sorts['posts']), $this->publications->countPosts()],
@@ -1717,6 +1738,7 @@ class SiteController extends Controller
                     $sorts['forumPosts'],
                     $offset,
                     $textOrder,
+                    $textLimit,
                 ),
                 $this->forum->countTopics(
                     $filters['withImages'],
@@ -1724,6 +1746,7 @@ class SiteController extends Controller
                     $filters['imagesCount'],
                     $filters['withLinks'],
                     $filters['linksCount'],
+                    $textLimit,
                 ),
             ],
             default => null,
@@ -1759,6 +1782,7 @@ class SiteController extends Controller
             $filters['withLinks'],
             $filters['linksCount'],
             $sorts['forumPosts'],
+            $this->forumTextLimit(),
         );
         $html = '';
 
