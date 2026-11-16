@@ -1747,6 +1747,9 @@ CSS
                                                 <i class="bi bi-send"></i>
                                             </button>
                                         </div>
+                                        <div class="form-text mt-1">
+                                            Ответ появится в диалоге. Чтобы подставить его в «Текст публикации», нажмите «Принять» под ответом.
+                                        </div>
                                         <button type="button" class="d-none"
                                                 id="publicationLlmSend"
                                                 title="<?= Html::encode($llmSendTitle) ?>">Отправить</button>
@@ -11064,6 +11067,7 @@ jQuery(document).ready(function () {
             take.type = 'button';
             take.className = 'btn btn-outline-info btn-sm';
             take.textContent = 'Принять';
+            take.title = 'Подставить ответ в текст публикации';
             drop.type = 'button';
             drop.className = 'btn btn-outline-secondary btn-sm';
             drop.textContent = 'Отклонить';
@@ -11308,6 +11312,7 @@ jQuery(document).ready(function () {
             }
 
             llmChatBusy = true;
+            var llmChatOk = false;
             updateLlmControls();
             llmSay(llmIsSplit()
                 ? 'Запрос — часть ' + (target.index + 1) + '…'
@@ -11340,18 +11345,22 @@ jQuery(document).ready(function () {
                     ok: payload.ok,
                     model: payload.model || null,
                 });
+                llmChatOk = true;
                 llmOffer(target.index, payload.text, JSON.parse(payload.formatting), '');
             }).catch(function (error) {
                 // The row of the reader is already in the storage by the time a call of
                 // the model fails, so the sentence that is on the screen here is the
                 // sentence the next read of the dialog will bring back.
                 console.error('[LLM] Ошибка диалога:', error);
+                llmSay('Ответ не получен.', 'error');
                 showFlash('error', 'Диалог не задался: '
                     + (error && error.message ? error.message : error));
             }).then(function () {
                 llmChatBusy = false;
                 updateLlmControls();
-                llmSay('Ответ получен.', 'ok');
+                if (llmChatOk) {
+                    llmSay('Ответ получен — нажмите «Принять» под ответом.', 'ok');
+                }
             });
         }
 
