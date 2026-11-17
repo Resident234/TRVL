@@ -210,6 +210,7 @@ class SiteController extends Controller
                     'llm-spelling' => ['post'],
                     'llm-style' => ['post'],
                     'llm-chat' => ['post'],
+                    'llm-template-save' => ['post'],
                     'llm-style-status' => ['get'],
                     'llm-chat-history' => ['get'],
                 ],
@@ -939,6 +940,9 @@ class SiteController extends Controller
             'headingNumberTemplate' => $this->headingNumberTemplate(),
             'headingNumberCustom' => $this->headingNumberCustom(),
             'headingFormatting' => $this->headingFormatting(),
+            'llmPromptTemplates' => $this->settings !== null
+                ? array_values($this->settings->promptTemplates())
+                : [],
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
         ];
@@ -3277,6 +3281,37 @@ class SiteController extends Controller
                 ],
                 $rows,
             ),
+        ]);
+    }
+
+    /**
+     * Keeps a line the reader wrote in the dialog as a prompt template. This
+     * is a local write to the settings table and needs no connection to the
+     * model, so it works even when the buttons that call the model are dark.
+     *
+     * @return Response
+     */
+    public function actionLlmTemplateSave(): Response
+    {
+        if ($this->settings === null) {
+            return $this->asJson(['ok' => false, 'error' => 'Настройки публикаций недоступны.']);
+        }
+
+        $text = trim((string)$this->request->post('llmCommand', ''));
+        if ($text === '') {
+            return $this->asJson(['ok' => false, 'error' => 'Текст шаблона не написан.']);
+        }
+
+        try {
+            $saved = $this->settings->savePromptTemplate($text);
+        } catch (InvalidArgumentException $e) {
+            return $this->asJson(['ok' => false, 'error' => $e->getMessage()]);
+        }
+
+        return $this->asJson([
+            'ok' => true,
+            'code' => $saved['code'],
+            'created' => $saved['created'],
         ]);
     }
 }

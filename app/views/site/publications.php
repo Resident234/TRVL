@@ -26,6 +26,7 @@ declare(strict_types=1);
 /** @var string $headingNumberTemplate the shape a part heading wears its number in: two tokens the reader may put words around */
 /** @var bool $headingNumberCustom whether that shape is the reader's own string rather than the preset of the two rows */
 /** @var string[] $headingFormatting the marks the block of the heading stands with: 'bold', 'italic', 'strike', 'underline' */
+/** @var string[] $llmPromptTemplates texts of the dialog lines already saved as prompt templates */
 /** @var array<string, string> $settings the tunables of the publications page */
 /** @var string $now */
 
@@ -2693,6 +2694,10 @@ $llmStyleUrl = \yii\helpers\Url::to(['site/llm-style']);
 $llmStyleStatusUrl = \yii\helpers\Url::to(['site/llm-style-status']);
 $llmChatUrl = \yii\helpers\Url::to(['site/llm-chat']);
 $llmHistoryUrl = \yii\helpers\Url::to(['site/llm-chat-history']);
+$llmTemplateSaveUrl = \yii\helpers\Url::to(['site/llm-template-save']);
+// The lines of the dialog the reader already kept as templates: the button of a
+// line that is already there starts disabled instead of writing the row twice.
+$llmTemplatesJson = json_encode(array_values($llmPromptTemplates), JSON_UNESCAPED_UNICODE);
 $blockTotals = json_encode($totals);
 // The six shapes of a numbered heading reach the page the same way the totals of the block
 // do: held once by the service, encoded once, interpolated once. The page mirrors the
@@ -2745,6 +2750,8 @@ var __LLM_STYLE_URL = '{$llmStyleUrl}';
 var __LLM_STYLE_STATUS_URL = '{$llmStyleStatusUrl}';
 var __LLM_CHAT_URL = '{$llmChatUrl}';
 var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
+var __LLM_TEMPLATE_SAVE_URL = '{$llmTemplateSaveUrl}';
+var __LLM_TEMPLATE_TEXTS = {$llmTemplatesJson};
 var __BLOCK_TOTALS = {$blockTotals};
 var __NUMBER_PRESETS = {$headingNumberPresetsJson};
 var __CSRF_PARAM = '{$csrfParam}';
@@ -10864,6 +10871,7 @@ jQuery(document).ready(function () {
         var llmStyleBusy = false;
         var llmChatBusy = false;
         var llmPollTimer = null;
+        var llmTemplateTexts = Array.isArray(__LLM_TEMPLATE_TEXTS) ? __LLM_TEMPLATE_TEXTS.slice() : [];
         var llmHistoryPart = -1;
         var llmHistoryToken = 0;
         // The queue is stepped once a minute and one stylization makes two calls
@@ -11008,6 +11016,46 @@ jQuery(document).ready(function () {
         // words under it, the line under those. They are written as words and never
         // as markup, because an answer of the model is a text nobody vouched for, and
         // a bracket that reached it has to stay a bracket on the screen.
+        // A line the reader wrote can be kept among the prompts of the settings
+        // page. The code of the row is made from the text on the server, so two
+        // identical lines find one row; the page only greys out a line it knows
+        // and remembers a new one after the first save.
+        function llmTemplateButton(text) {
+            var value = String(text).trim();
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-link btn-sm p-0 text-decoration-none';
+
+            function state(saved) {
+                button.disabled = saved;
+                button.textContent = saved ? 'Сохранено как шаблон' : 'Сохранить как шаблон';
+                button.title = saved
+                    ? 'Этот текст уже есть среди шаблонов промтов'
+                    : 'Добавить текст в шаблоны промтов';
+            }
+
+            state(llmTemplateTexts.indexOf(value) !== -1);
+            button.addEventListener('click', function () {
+                postForJson(__LLM_TEMPLATE_SAVE_URL, { llmCommand: value }).then(function (payload) {
+                    if (payload.ok !== true) {
+                        throw new Error(payload.error || 'Не удалось сохранить шаблон.');
+                    }
+                    if (llmTemplateTexts.indexOf(value) === -1) {
+                        llmTemplateTexts.push(value);
+                    }
+                    state(true);
+                    llmSay(payload.created === false
+                        ? 'Этот текст уже сохранён как шаблон.'
+                        : 'Текст сохранён как шаблон промта.', 'ok');
+                }).catch(function (error) {
+                    llmSay('Не удалось сохранить шаблон: '
+                        + (error && error.message ? error.message : error), 'error');
+                });
+            });
+
+            return button;
+        }
+
         function llmAddRow(role, words) {
             var row = document.createElement('div');
             var line = document.createElement('div');
@@ -11024,6 +11072,9 @@ jQuery(document).ready(function () {
                 text.className = 'mb-1';
                 text.textContent = words;
                 body.appendChild(text);
+                if (role === 'user') {
+                    body.appendChild(llmTemplateButton(words));
+                }
             }
 
             line.appendChild(mark);

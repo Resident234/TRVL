@@ -199,6 +199,7 @@ $config = [
                 'llm-style-status' => 'site/llm-style-status',
                 'llm-chat' => 'site/llm-chat',
                 'llm-chat-history' => 'site/llm-chat-history',
+                'llm-template-save' => 'site/llm-template-save',
                 'forum-text-order-save' => 'site/forum-text-order-save',
                 'forum-viewed' => 'site/forum-viewed',
                 'forum-filter-save' => 'site/forum-filter-save',
