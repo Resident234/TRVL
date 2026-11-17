@@ -49,21 +49,9 @@ $posts = $record['posts'];
                 <span class="me-3"><i class="bi bi-person"></i>
                     <?= Html::encode($topic->author?->name ?? 'Неизвестный автор') ?>
                 </span>
-                <span class="me-3"><i class="bi bi-clock"></i> <?php
-                    $userTz = $this->context->getUserDisplayTimezone();
-                    $displayFormat = $this->context->publicationSettings()['dateFormat'];
-                    $displayTz = new DateTimeZone($userTz);
-                    if ($topic->publishedAt !== null && $topic->publishedAt !== '') {
-                        $tDate = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $topic->publishedAt, new DateTimeZone('UTC'));
-                        if ($tDate instanceof DateTimeImmutable) {
-                            echo Html::encode($tDate->setTimezone($displayTz)->format($displayFormat));
-                        } else {
-                            echo Html::encode($topic->publishedAt);
-                        }
-                    } else {
-                        echo '';
-                    }
-                ?></span>
+                <span class="me-3"><i class="bi bi-clock"></i>
+                    <?= Html::encode($this->context->formatForumDate($topic->publishedAt)) ?>
+                </span>
                 <span class="me-3"><i class="bi bi-chat-dots"></i> <?= $record['postsTotal'] ?></span>
             </div>
             <div class="thread-meta text-muted small mt-1">

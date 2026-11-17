@@ -59,7 +59,7 @@ use yii\helpers\Html;
                 • пост #<?= $record->number ?>
             <?php endif ?>
             <?php if ($record->postedAt !== null): ?>
-                • <?= Html::encode($record->postedAt) ?>
+                • <?= Html::encode($this->context->formatForumDate($record->postedAt)) ?>
             <?php endif ?>
         </small>
         <small class="text-muted d-block mt-1">

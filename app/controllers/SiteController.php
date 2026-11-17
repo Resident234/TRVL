@@ -36,6 +36,7 @@ use yii\web\Controller;
 use yii\web\ErrorAction;
 use yii\web\Response;
 use yii\web\UploadedFile;
+use DateTimeImmutable;
 use DateTimeZone;
 use InvalidArgumentException;
 use RuntimeException;
@@ -136,6 +137,28 @@ class SiteController extends Controller
     public function publicationSettings(): array
     {
         return $this->settings !== null ? $this->settings->all() : PublicationSettingsService::defaults();
+    }
+
+    /**
+     * One shape of a forum date on the page. Rows of `topic` and `post` carry
+     * UTC without a zone; the reader sees it in their own timezone and in the
+     * one format the settings page defines for the whole portal. A stamp that
+     * cannot be read is shown as it came from the database rather than hidden.
+     */
+    public function formatForumDate(?string $utc): string
+    {
+        if ($utc === null || $utc === '') {
+            return '';
+        }
+
+        $date = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $utc, new DateTimeZone('UTC'));
+        if (!$date instanceof DateTimeImmutable) {
+            return $utc;
+        }
+
+        return $date
+            ->setTimezone(new DateTimeZone($this->getUserDisplayTimezone()))
+            ->format((string)$this->publicationSettings()['dateFormat']);
     }
 
     /**
