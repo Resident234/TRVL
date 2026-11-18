@@ -7,12 +7,11 @@ namespace app\tests\Unit;
 use app\controllers\SiteController;
 use app\shared\Forum\Contract\ForumRepositoryInterface;
 use app\shared\Publications\Service\PublicationsService;
-use app\shared\Settings\Service\PublicationSettingsService;
+use app\shared\Llm\Service\LlmPromptTemplateService;
 use app\shared\Telegram\Contract\PublishedDescriptionRepositoryInterface;
 use app\shared\Telegram\Contract\TelegramChannelClientInterface;
 use app\shared\Telegram\Service\ChannelService;
-use app\tests\Unit\shared\Settings\Service\InMemorySettingsRepository;
-use app\tests\Unit\shared\Settings\Service\ListedStylesStub;
+use app\tests\Unit\shared\Llm\Service\InMemoryLlmPromptTemplateRepository;
 use Codeception\Test\Unit;
 use Yii;
 use yii\base\Security;
@@ -28,7 +27,7 @@ final class SiteControllerLlmTemplateSaveTest extends Unit
 {
     private const CHANNEL_ID = '@gsu_travels';
 
-    private function controller(InMemorySettingsRepository $repository): SiteController
+    private function controller(InMemoryLlmPromptTemplateRepository $repository): SiteController
     {
         $request = new Request();
         $request->setBodyParams(['llmCommand' => 'Сократи текст']);
@@ -45,7 +44,13 @@ final class SiteControllerLlmTemplateSaveTest extends Unit
             ),
             Yii::createObject(PublicationsService::class),
             $this->createMock(ForumRepositoryInterface::class),
-            new PublicationSettingsService($repository, new ListedStylesStub([]), '*/5 * * * *'),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            new LlmPromptTemplateService($repository),
         );
         $controller->request = $request;
 
@@ -65,7 +70,7 @@ final class SiteControllerLlmTemplateSaveTest extends Unit
 
     public function testTheFirstSaveWritesATemplateAndTheSecondOneIsANoOp(): void
     {
-        $repository = new InMemorySettingsRepository();
+        $repository = new InMemoryLlmPromptTemplateRepository();
         $controller = $this->controller($repository);
 
         $first = $this->data($controller->actionLlmTemplateSave());
@@ -81,7 +86,7 @@ final class SiteControllerLlmTemplateSaveTest extends Unit
 
     public function testAnEmptyLineIsRefused(): void
     {
-        $repository = new InMemorySettingsRepository();
+        $repository = new InMemoryLlmPromptTemplateRepository();
         $controller = $this->controller($repository);
         $controller->request->setBodyParams(['llmCommand' => '   ']);
 

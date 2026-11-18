@@ -14,6 +14,7 @@ use app\shared\Llm\Contract\LlmJobQueueInterface;
 use app\shared\Llm\Dto\LlmChatMessageData;
 use app\shared\Llm\Dto\LlmJobData;
 use app\shared\Llm\Infrastructure\LlmRequestException;
+use app\shared\Llm\Service\LlmPromptTemplateService;
 use app\shared\Llm\Service\LlmTextService;
 use app\shared\Llm\Service\TextStyleSampleReader;
 use app\shared\Publications\Dto\ForumPublicationRef;
@@ -118,6 +119,7 @@ class SiteController extends Controller
         private readonly ?LlmJobQueueInterface $llmJobs = null,
         private readonly ?LlmChatRepositoryInterface $llmChat = null,
         private readonly ?TextStyleSampleReader $llmReader = null,
+        private readonly ?LlmPromptTemplateService $promptTemplates = null,
         $config = [],
     ) {
         parent::__construct($id, $module, $config);
@@ -940,8 +942,8 @@ class SiteController extends Controller
             'headingNumberTemplate' => $this->headingNumberTemplate(),
             'headingNumberCustom' => $this->headingNumberCustom(),
             'headingFormatting' => $this->headingFormatting(),
-            'llmPromptTemplates' => $this->settings !== null
-                ? array_values($this->settings->promptTemplates())
+            'llmPromptTemplates' => $this->promptTemplates !== null
+                ? array_values($this->promptTemplates->promptTemplates())
                 : [],
             'settings' => $settings,
             'now' => gmdate('Y-m-d H:i:s'),
@@ -3286,15 +3288,16 @@ class SiteController extends Controller
 
     /**
      * Keeps a line the reader wrote in the dialog as a prompt template. This
-     * is a local write to the settings table and needs no connection to the
-     * model, so it works even when the buttons that call the model are dark.
+     * is a local write to the table of templates, apart from the tunables of
+     * the settings page, and needs no connection to the model — it works even
+     * when the buttons that call the model are dark.
      *
      * @return Response
      */
     public function actionLlmTemplateSave(): Response
     {
-        if ($this->settings === null) {
-            return $this->asJson(['ok' => false, 'error' => 'Настройки публикаций недоступны.']);
+        if ($this->promptTemplates === null) {
+            return $this->asJson(['ok' => false, 'error' => 'Хранилище шаблонов недоступно.']);
         }
 
         $text = trim((string)$this->request->post('llmCommand', ''));
@@ -3303,7 +3306,7 @@ class SiteController extends Controller
         }
 
         try {
-            $saved = $this->settings->savePromptTemplate($text);
+            $saved = $this->promptTemplates->savePromptTemplate($text);
         } catch (InvalidArgumentException $e) {
             return $this->asJson(['ok' => false, 'error' => $e->getMessage()]);
         }

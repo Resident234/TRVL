@@ -63,6 +63,10 @@ $config = [
                     \Yii::createObject(\app\shared\Llm\Service\TextStyleSampleReader::class),
                     \Yii::createObject(\app\shared\Llm\Infrastructure\LlmModelProbeRepository::class),
                 ),
+            \app\shared\Llm\Service\LlmPromptTemplateService::class => static fn (): \app\shared\Llm\Service\LlmPromptTemplateService =>
+                new \app\shared\Llm\Service\LlmPromptTemplateService(
+                    \Yii::createObject(\app\shared\Llm\Contract\LlmPromptTemplateRepositoryInterface::class),
+                ),
             \app\shared\Llm\Contract\LlmJobQueueInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmJobRepository =>
                 new \app\shared\Llm\Infrastructure\LlmJobRepository(\Yii::$app->getDb()),
             \app\shared\Llm\Contract\LlmChatRepositoryInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmChatRepository =>
@@ -75,6 +79,8 @@ $config = [
                 ),
             \app\shared\Settings\Contract\PublicationSettingsRepositoryInterface::class => static fn (): \app\shared\Settings\Infrastructure\PublicationSettingsRepository =>
                 new \app\shared\Settings\Infrastructure\PublicationSettingsRepository(\Yii::$app->getDb()),
+            \app\shared\Llm\Contract\LlmPromptTemplateRepositoryInterface::class => static fn (): \app\shared\Llm\Infrastructure\LlmPromptTemplateRepository =>
+                new \app\shared\Llm\Infrastructure\LlmPromptTemplateRepository(\Yii::$app->getDb()),
             \app\shared\Forum\Contract\ForumHttpClientInterface::class => static function () use ($parserTunables): \app\shared\Forum\Infrastructure\ForumHttpClient {
                 $tunables = $parserTunables();
                 return new \app\shared\Forum\Infrastructure\ForumHttpClient(
