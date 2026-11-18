@@ -27,7 +27,7 @@ use yii\web\Request;
  * editable prompts stay with the settings, the saved ones with the template
  * service, and no row of one side leaks into the other.
  */
-final class SiteControllerTasksTest extends Unit
+final class SiteControllerLlmPromptsTest extends Unit
 {
     private const CHANNEL_ID = '@gsu_travels';
 
@@ -72,7 +72,7 @@ final class SiteControllerTasksTest extends Unit
     private function data(SiteController $controller): array
     {
         /** @var array{settingsPrompts: array<int, array{code: string, label: string, hint: string, text: string}>, templates: array<string, string>} $data */
-        $data = (new ReflectionMethod(SiteController::class, 'tasksData'))->invoke($controller);
+        $data = (new ReflectionMethod(SiteController::class, 'llmPromptsData'))->invoke($controller);
 
         return $data;
     }

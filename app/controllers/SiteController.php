@@ -298,17 +298,17 @@ class SiteController extends Controller
      * next to the templates a reader saved from the AI dialog. Both columns
      * read their own storage, so a template never turns into a tunable.
      */
-    public function actionTasks(): string
+    public function actionLlmPrompts(): string
     {
         $this->layout = 'dashboard';
 
-        return $this->render('tasks', $this->tasksData());
+        return $this->render('llm-prompts', $this->llmPromptsData());
     }
 
     /**
      * @return array{settingsPrompts: array<int, array{code: string, label: string, hint: string, text: string}>, templates: array<string, string>}
      */
-    private function tasksData(): array
+    private function llmPromptsData(): array
     {
         $settings = $this->publicationSettings();
         $schema = PublicationSettingsService::schema();
