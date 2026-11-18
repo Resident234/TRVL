@@ -294,6 +294,44 @@ class SiteController extends Controller
     }
 
     /**
+     * The board of LLM prompts: the two editable prompts of the settings page
+     * next to the templates a reader saved from the AI dialog. Both columns
+     * read their own storage, so a template never turns into a tunable.
+     */
+    public function actionTasks(): string
+    {
+        $this->layout = 'dashboard';
+
+        return $this->render('tasks', $this->tasksData());
+    }
+
+    /**
+     * @return array{settingsPrompts: array<int, array{code: string, label: string, hint: string, text: string}>, templates: array<string, string>}
+     */
+    private function tasksData(): array
+    {
+        $settings = $this->publicationSettings();
+        $schema = PublicationSettingsService::schema();
+        $settingsPrompts = [];
+
+        foreach (['llmPromptSpelling', 'llmPromptStyle'] as $code) {
+            $settingsPrompts[] = [
+                'code' => $code,
+                'label' => (string)($schema[$code]['label'] ?? $code),
+                'hint' => (string)($schema[$code]['hint'] ?? ''),
+                'text' => (string)($settings[$code] ?? ''),
+            ];
+        }
+
+        return [
+            'settingsPrompts' => $settingsPrompts,
+            'templates' => $this->promptTemplates !== null
+                ? $this->promptTemplates->promptTemplates()
+                : [],
+        ];
+    }
+
+    /**
      * Stores the tunables of the publications page.
      *
      * @return Response

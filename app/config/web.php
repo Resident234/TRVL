@@ -179,6 +179,7 @@ $config = [
                 '' => 'site/index',
                 'publications' => 'site/publications',
                 'settings' => 'site/settings',
+                'tasks.html' => 'site/tasks',
                 'settings-save' => 'site/settings-save',
                 'parser-settings' => 'site/parser-settings',
                 'parser-settings-save' => 'site/parser-settings-save',

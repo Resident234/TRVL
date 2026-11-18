@@ -171,6 +171,12 @@ function getPortalTimezone() {
                             <span class="menu-text">Настройки парсера</span>
                         </a>
                     </li>
+                    <li class="<?= $currentRoute === 'site/tasks' ? 'active current-page' : '' ?>">
+                        <a href="<?= Url::to(['site/tasks']) ?>">
+                            <i class="bi bi-file-earmark-text"></i>
+                            <span class="menu-text">Шаблоны промтов</span>
+                        </a>
+                    </li>
                 </ul>
             </div>
 
