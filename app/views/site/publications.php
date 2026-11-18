@@ -7737,7 +7737,7 @@ jQuery(document).ready(function () {
             // before, so the memory of which part they were asked of is dropped, and the
             // next caret that lands reads them again.
             llmHistoryPart = -1;
-            updatePartSchedules();
+            llmHistoryGroupId = '';
             updateAlbumMoves();
             updatePartMoves();
             linkifyParts();
@@ -10873,6 +10873,7 @@ jQuery(document).ready(function () {
         var llmPollTimer = null;
         var llmTemplateTexts = Array.isArray(__LLM_TEMPLATE_TEXTS) ? __LLM_TEMPLATE_TEXTS.slice() : [];
         var llmHistoryPart = -1;
+        var llmHistoryGroupId = '';
         var llmHistoryToken = 0;
         // The queue is stepped once a minute and one stylization makes two calls
         // of the model, each with its own retries and fallback models, so no
@@ -11425,7 +11426,7 @@ jQuery(document).ready(function () {
             var target = llmTarget();
             var groupId = partGroupIdInput ? partGroupIdInput.value : '';
 
-            if (!llmThreadsBox || target === null || target.index === llmHistoryPart) {
+            if (!llmThreadsBox || target === null) {
                 return;
             }
 
@@ -11433,7 +11434,15 @@ jQuery(document).ready(function () {
                 return;
             }
 
+            // Skip if we already loaded history for this exact part+group combination:
+            // a rebuild resets llmHistoryPart to -1, but if the group and index are
+            // the same the content on screen is still correct — no need to reload.
+            if (target.index === llmHistoryPart && groupId === llmHistoryGroupId) {
+                return;
+            }
+
             llmHistoryPart = target.index;
+            llmHistoryGroupId = groupId;
 
             // A read of the dialog that comes back after a newer one has been asked
             // for is an answer about a part the caret has already left: it is dropped,
@@ -11458,6 +11467,7 @@ jQuery(document).ready(function () {
                 .catch(function () {
                     if (token === llmHistoryToken) {
                         llmHistoryPart = -1;
+                        llmHistoryGroupId = '';
                     }
                 });
         }
