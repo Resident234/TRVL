@@ -16,6 +16,7 @@ final readonly class LlmAnswer
     public function __construct(
         public string $text,
         public MessageEntities $entities,
+        public ?LlmReply $debug = null,
     ) {
     }
 

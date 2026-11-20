@@ -634,7 +634,7 @@ final class SiteControllerLlmPanelTest extends Unit
         $this->assertSame(3, $data['partOrder']);
         $this->assertCount(2, $messages);
         $this->assertSame(
-            ['id', 'role', 'content', 'replacementText', 'replacementFormatting', 'createdAt'],
+            ['id', 'role', 'content', 'replacementText', 'replacementFormatting', 'createdAt', 'status', 'model'],
             $keys,
         );
         $this->assertSame('Коротко.', $messages[1]['content']);

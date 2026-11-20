@@ -2694,10 +2694,12 @@ $llmStyleUrl = \yii\helpers\Url::to(['site/llm-style']);
 $llmStyleStatusUrl = \yii\helpers\Url::to(['site/llm-style-status']);
 $llmChatUrl = \yii\helpers\Url::to(['site/llm-chat']);
 $llmHistoryUrl = \yii\helpers\Url::to(['site/llm-chat-history']);
+$llmChatAcceptUrl = \yii\helpers\Url::to(['site/llm-chat-accept']);
 $llmTemplateSaveUrl = \yii\helpers\Url::to(['site/llm-template-save']);
 // The lines of the dialog the reader already kept as templates: the button of a
 // line that is already there starts disabled instead of writing the row twice.
 $llmTemplatesJson = json_encode(array_values($llmPromptTemplates), JSON_UNESCAPED_UNICODE);
+$llmDebugFlag = YII_DEBUG ? 'true' : 'false';
 $blockTotals = json_encode($totals);
 // The six shapes of a numbered heading reach the page the same way the totals of the block
 // do: held once by the service, encoded once, interpolated once. The page mirrors the
@@ -2750,8 +2752,10 @@ var __LLM_STYLE_URL = '{$llmStyleUrl}';
 var __LLM_STYLE_STATUS_URL = '{$llmStyleStatusUrl}';
 var __LLM_CHAT_URL = '{$llmChatUrl}';
 var __LLM_HISTORY_URL = '{$llmHistoryUrl}';
+var __LLM_CHAT_ACCEPT_URL = '{$llmChatAcceptUrl}';
 var __LLM_TEMPLATE_SAVE_URL = '{$llmTemplateSaveUrl}';
 var __LLM_TEMPLATE_TEXTS = {$llmTemplatesJson};
+var __LLM_DEBUG = {$llmDebugFlag};
 var __BLOCK_TOTALS = {$blockTotals};
 var __NUMBER_PRESETS = {$headingNumberPresetsJson};
 var __CSRF_PARAM = '{$csrfParam}';
@@ -11106,7 +11110,7 @@ jQuery(document).ready(function () {
         // the part keeps it beside the ones he took. The index is carried instead of
         // the field, because a queue that answers a minute later meets a form the
         // reader may have cut in two since the press.
-        function llmOffer(index, text, formatting, words) {
+        function llmOffer(index, text, formatting, words, assistantId, groupId) {
             var added = llmAddRow('assistant', words);
             var answer = document.createElement('p');
             var box = document.createElement('div');
@@ -11124,6 +11128,21 @@ jQuery(document).ready(function () {
             drop.className = 'btn btn-outline-secondary btn-sm';
             drop.textContent = 'Отклонить';
 
+            // The status of an offer belongs to the history, not only to this
+            // screen: the next request must know which replies were taken.
+            function reportOffer(accepted) {
+                if (!assistantId || !groupId) {
+                    return;
+                }
+                postForJson(__LLM_CHAT_ACCEPT_URL, {
+                    llmPartGroupId: groupId,
+                    llmAssistantId: assistantId,
+                    llmAccepted: accepted ? 1 : 0,
+                }).catch(function (error) {
+                    console.warn('[LLM] Не удалось отметить принятие:', error);
+                });
+            }
+
             take.addEventListener('click', function () {
                 var fields = textParts();
 
@@ -11134,12 +11153,14 @@ jQuery(document).ready(function () {
                     return;
                 }
                 applyLlmAnswer(fields[index], text, formatting);
+                reportOffer(true);
                 box.remove();
                 llmSay(llmIsSplit()
                     ? 'Принято — часть ' + (index + 1) + ' переписана.'
                     : 'Принято — текст переписан.', 'ok');
             });
             drop.addEventListener('click', function () {
+                reportOffer(false);
                 box.remove();
                 llmSay(llmIsSplit()
                     ? 'Отклонено — часть ' + (index + 1) + ' осталась.'
@@ -11149,6 +11170,20 @@ jQuery(document).ready(function () {
             box.appendChild(drop);
             added.body.appendChild(answer);
             added.body.appendChild(box);
+        }
+
+        // The reasoning of a model is diagnostic, not content for the field. It is
+        // printed next to the answer only when the portal runs in debug mode, and
+        // the server always writes it to llm.log under llm.reasoning.
+        function llmLogDebug(operation, payload) {
+            if (!__LLM_DEBUG || !payload || !payload.debug) {
+                return;
+            }
+            console.groupCollapsed('[LLM] ' + operation + ' — ответ модели');
+            console.log('модель:', payload.debug.model || payload.model || null);
+            console.log('finish_reason:', payload.debug.finishReason || null);
+            console.log('рассуждение:', payload.debug.reasoning || '(модель его не вернула)');
+            console.groupEnd();
         }
 
         // One call, and no row behind it: a check of the orthography answers into the
@@ -11184,10 +11219,11 @@ jQuery(document).ready(function () {
                 console.log('[LLM] Орфография проверена:', {
                     order: target.index,
                     textLength: (payload.text || '').length,
-                    model: payload.model || null,
+                    model: (payload.debug && payload.debug.model) || payload.model || null,
                     text: payload.text,
                     formatting: payload.formatting,
                 });
+                llmLogDebug('Орфография', payload);
                 applyLlmAnswer(target.field, payload.text, JSON.parse(payload.formatting));
                 llmSay(llmIsSplit()
                     ? 'Правки внесены в часть ' + (target.index + 1) + '.'
@@ -11395,10 +11431,13 @@ jQuery(document).ready(function () {
                 console.log('[LLM] Текст ответа:', payload.text);
                 console.log('[LLM] Статус диалога: ответ получен', {
                     ok: payload.ok,
-                    model: payload.model || null,
+                    model: (payload.debug && payload.debug.model) || payload.model || null,
+                    finishReason: payload.debug ? payload.debug.finishReason : null,
                 });
+                llmLogDebug('Диалог', payload);
                 llmChatOk = true;
-                llmOffer(target.index, payload.text, JSON.parse(payload.formatting), '');
+                llmOffer(target.index, payload.text, JSON.parse(payload.formatting), '',
+                    payload.assistantId, llmGroupId());
             }).catch(function (error) {
                 // The row of the reader is already in the storage by the time a call of
                 // the model fails, so the sentence that is on the screen here is the
@@ -11461,7 +11500,14 @@ jQuery(document).ready(function () {
 
                     llmThreadsBox.textContent = '';
                     payload.messages.forEach(function (message) {
-                        llmAddRow(message.role === 'user' ? 'user' : 'assistant', message.content);
+                        var mark = message.role === 'assistant' && message.status === 'accepted'
+                            ? ' [принято]'
+                            : (message.role === 'assistant' && message.status === 'rejected'
+                                ? ' [отклонено]' : '');
+                        llmAddRow(
+                            message.role === 'user' ? 'user' : 'assistant',
+                            message.content + mark,
+                        );
                     });
                 })
                 .catch(function () {

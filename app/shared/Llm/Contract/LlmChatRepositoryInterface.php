@@ -23,4 +23,10 @@ interface LlmChatRepositoryInterface
      * @return LlmChatMessageData[] the last `$limit` replies, oldest first
      */
     public function latest(string $partGroupId, int $partOrder, int $limit): array;
+
+    /**
+     * Marks one reply of the model accepted or rejected. Nothing changes when
+     * the row is gone or belongs to another group.
+     */
+    public function markAcceptance(int $id, string $partGroupId, string $status): bool;
 }

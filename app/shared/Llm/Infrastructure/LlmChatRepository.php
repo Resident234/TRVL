@@ -20,7 +20,7 @@ use yii\db\Connection;
 final class LlmChatRepository implements LlmChatRepositoryInterface
 {
     private const COLUMNS = 'id, part_group_id, part_order, role, content,'
-        . ' replacement_text, replacement_formatting, created_at';
+        . ' replacement_text, replacement_formatting, created_at, status, model';
 
     public function __construct(private readonly Connection $db)
     {
@@ -40,6 +40,8 @@ final class LlmChatRepository implements LlmChatRepositoryInterface
                     ? null
                     : $this->decoded($message->replacementFormatting),
                 'created_at' => $now,
+                'status' => $message->status,
+                'model' => $message->model,
             ])
             ->execute();
 
@@ -74,9 +76,27 @@ final class LlmChatRepository implements LlmChatRepositoryInterface
                     ? null
                     : self::formattingOf($row['replacement_formatting']),
                 (string) $row['created_at'],
+                (string)($row['status'] ?? LlmChatMessageData::STATUS_PENDING),
+                $row['model'] === null ? null : (string)$row['model'],
             ),
             $rows,
         ));
+    }
+
+    public function markAcceptance(int $id, string $partGroupId, string $status): bool
+    {
+        return $this->db
+            ->createCommand(
+                'UPDATE {{%llm_chat_message}} SET status = :status'
+                . ' WHERE id = :id AND part_group_id = :group AND role = :role',
+            )
+            ->bindValues([
+                ':status' => $status,
+                ':id' => $id,
+                ':group' => $partGroupId,
+                ':role' => LlmChatMessageData::ROLE_ASSISTANT,
+            ])
+            ->execute() > 0;
     }
 
     /**

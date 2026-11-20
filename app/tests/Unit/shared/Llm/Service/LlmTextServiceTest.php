@@ -99,11 +99,11 @@ final class LlmTextServiceTest extends Unit
 
     public function testTheTimeoutComesFromTheSetting(): void
     {
-        [$service, $stub] = $this->service([self::ANSWER], ['llmTimeoutSeconds' => '45']);
+        [$service, $stub] = $this->service([self::ANSWER], ['llmTimeoutSeconds' => '180']);
 
         $service->spelling('Привет мир.', '[]');
 
-        $this->assertSame([45], $stub->timeouts);
+        $this->assertSame([180], $stub->timeouts);
     }
 
     public function testTheAnswerBecomesTextAndFormatting(): void

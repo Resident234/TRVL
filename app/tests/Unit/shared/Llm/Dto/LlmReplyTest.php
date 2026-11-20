@@ -88,5 +88,31 @@ final class LlmReplyTest extends Unit
 
         $this->assertNotNull($reply);
         $this->assertSame('Ответ.', $reply->text);
+        $this->assertSame('Длинные рассуждения…', $reply->reasoning);
+    }
+
+    public function testGathersReasoningAndTheModelTheProxyActuallyUsed(): void
+    {
+        $reply = $this->reply([
+            'model' => 'auto',
+            '_routed_via' => ['model' => 'dots-studio/dots-3-note-preview:free'],
+            'choices' => [[
+                'message' => [
+                    'content' => 'Ответ.',
+                    'reasoning_content' => 'Сначала подумал.',
+                    'reasoning_details' => [['text' => 'Потом проверил.'], ['text' => 42]],
+                ],
+                'finish_reason' => 'stop',
+            ]],
+            'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20],
+        ]);
+
+        $this->assertNotNull($reply);
+        $this->assertSame("Сначала подумал.\n\nПотом проверил.", $reply->reasoning);
+        $this->assertSame('dots-studio/dots-3-note-preview:free', $reply->actualModel);
+        $this->assertSame('stop', $reply->finishReason);
+        $this->assertSame(10, $reply->promptTokens);
+        $this->assertSame(20, $reply->completionTokens);
+        $this->assertSame('stop', $reply->debug()['finishReason']);
     }
 }

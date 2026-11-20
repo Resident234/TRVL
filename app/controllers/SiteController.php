@@ -212,6 +212,7 @@ class SiteController extends Controller
                     'llm-spelling' => ['post'],
                     'llm-style' => ['post'],
                     'llm-chat' => ['post'],
+                    'llm-chat-accept' => ['post'],
                     'llm-template-save' => ['post'],
                     'llm-style-status' => ['get'],
                     'llm-chat-history' => ['get'],
@@ -3090,6 +3091,7 @@ class SiteController extends Controller
             'partOrder' => $partOrder,
             'text' => $answer->text,
             'formatting' => $answer->formattingJson(),
+            'debug' => $answer->debug?->debug() ?? [],
         ]);
     }
 
@@ -3245,17 +3247,29 @@ class SiteController extends Controller
             $now,
         );
 
-        /** @var array<int, array{role: string, content: string}> $window */
+        /** @var array<int, array{role: string, content: string, status: string}> $window */
         $window = array_map(
             static fn (LlmChatMessageData $message): array => [
                 'role' => $message->role,
                 'content' => $message->content,
+                'status' => $message->status,
             ],
             $history,
         );
 
+        // One dialog keeps one model. The router may answer `auto` with a
+        // different name on the next call, but the replies of this part carry
+        // the model that actually answered, so the next command reuses it.
+        $stickyModel = null;
+        foreach (array_reverse($history) as $previous) {
+            if ($previous->role === LlmChatMessageData::ROLE_ASSISTANT && $previous->model !== null && $previous->model !== '') {
+                $stickyModel = $previous->model;
+                break;
+            }
+        }
+
         try {
-            $answer = $this->llmText->chat($command, $text, $formatting, $window);
+            $answer = $this->llmText->chat($command, $text, $formatting, $window, $stickyModel);
         } catch (LlmRequestException $e) {
             return $this->asJson(['ok' => false, 'error' => $e->getMessage(), 'userId' => $userId]);
         }
@@ -3269,6 +3283,9 @@ class SiteController extends Controller
                 $answer->text,
                 $answer->text,
                 $answer->formattingJson(),
+                $now,
+                LlmChatMessageData::STATUS_PENDING,
+                $answer->debug?->actualModel,
             ),
             $now,
         );
@@ -3280,6 +3297,7 @@ class SiteController extends Controller
             'assistantId' => $assistantId,
             'text' => $answer->text,
             'formatting' => $answer->formattingJson(),
+            'debug' => $answer->debug?->debug() ?? [],
         ]);
     }
 
@@ -3318,10 +3336,41 @@ class SiteController extends Controller
                     'replacementText' => $message->replacementText,
                     'replacementFormatting' => $message->replacementFormatting,
                     'createdAt' => $message->createdAt,
+                    'status' => $message->status,
+                    'model' => $message->model,
                 ],
                 $rows,
             ),
         ]);
+    }
+
+    /**
+     * Records what the reader did with an offer of the model. The text of the
+     * part itself is written separately by the form; this only tells the next
+     * request whether the reply in the history was taken or dropped.
+     *
+     * @return Response
+     */
+    public function actionLlmChatAccept(): Response
+    {
+        if ($this->llmChat === null) {
+            return $this->llmNothingWired();
+        }
+
+        $groupId = trim((string) $this->request->post('llmPartGroupId', ''));
+        if (preg_match('/^[a-f0-9]{32}$/', $groupId) !== 1) {
+            return $this->asJson(['ok' => false, 'error' => 'Группа частей не названа.']);
+        }
+
+        $id = (int)$this->request->post('llmAssistantId', 0);
+        $accepted = (string)$this->request->post('llmAccepted', '') === '1';
+        $status = $accepted
+            ? LlmChatMessageData::STATUS_ACCEPTED
+            : LlmChatMessageData::STATUS_REJECTED;
+
+        $saved = $this->llmChat->markAcceptance($id, $groupId, $status);
+
+        return $this->asJson(['ok' => $saved, 'status' => $status]);
     }
 
     /**

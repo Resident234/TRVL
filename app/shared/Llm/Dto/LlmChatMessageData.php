@@ -16,6 +16,12 @@ final class LlmChatMessageData
 
     public const ROLE_ASSISTANT = 'assistant';
 
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_ACCEPTED = 'accepted';
+
+    public const STATUS_REJECTED = 'rejected';
+
     public function __construct(
         public readonly int $id = 0,
         public readonly string $partGroupId = '',
@@ -25,6 +31,8 @@ final class LlmChatMessageData
         public readonly ?string $replacementText = null,
         public readonly ?string $replacementFormatting = null,
         public readonly ?string $createdAt = null,
+        public readonly string $status = self::STATUS_PENDING,
+        public readonly ?string $model = null,
     ) {
     }
 }

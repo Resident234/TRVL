@@ -195,11 +195,11 @@ final class LlmJobProcessorTest extends Unit
 
     public function testReclaimAsksForRowsOlderThanTwoTimeouts(): void
     {
-        $this->processor([self::PORTRAIT, self::ANSWER], ['llmTimeoutSeconds' => '45'])->drain();
+        $this->processor([self::PORTRAIT, self::ANSWER], ['llmTimeoutSeconds' => '180'])->drain();
 
         $this->assertSame([], $this->_queue->done);
-        $this->assertGreaterThanOrEqual(90, $this->secondsAgo($this->_queue->reclaimedBefore));
-        $this->assertLessThan(95, $this->secondsAgo($this->_queue->reclaimedBefore));
+        $this->assertGreaterThanOrEqual(355, $this->secondsAgo($this->_queue->reclaimedBefore));
+        $this->assertLessThan(370, $this->secondsAgo($this->_queue->reclaimedBefore));
     }
 
     public function testPurgeAsksForRowsFinishedThreeDaysAgo(): void

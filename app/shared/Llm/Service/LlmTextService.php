@@ -6,6 +6,8 @@ namespace app\shared\Llm\Service;
 
 use app\shared\Llm\Contract\LlmClientInterface;
 use app\shared\Llm\Dto\LlmAnswer;
+use app\shared\Llm\Dto\LlmChatMessageData;
+use app\shared\Llm\Dto\LlmReply;
 use app\shared\Llm\Dto\StyleSampleData;
 use app\shared\Llm\Infrastructure\LlmModelProbeRepository;
 use app\shared\Llm\Infrastructure\LlmRequestException;
@@ -13,6 +15,7 @@ use app\shared\Llm\Infrastructure\StyleSampleUnavailableException;
 use app\shared\Settings\Service\PublicationSettingsService;
 use app\shared\Telegram\Dto\MessageEntities;
 use InvalidArgumentException;
+use Yii;
 
 /**
  * Assembles a request, sends it through the client, and turns the answer into
@@ -84,17 +87,28 @@ final class LlmTextService
      * @param array<int, array{role: string, content: string}> $history
      * @throws LlmRequestException when the answer does not parse or its marks do not describe the text
      */
-    public function chat(string $command, string $text, string $formattingJson, array $history): LlmAnswer
-    {
+    public function chat(
+        string $command,
+        string $text,
+        string $formattingJson,
+        array $history,
+        ?string $modelOverride = null,
+    ): LlmAnswer {
+        $model = $modelOverride ?? (string)$this->settings->value('llmModelChat');
+        if ($model === 'auto') {
+            $model = null;
+        }
+
         return $this->ask([
             ['role' => 'system', 'content' => self::CHAT_INSTRUCTION . self::ANSWER_CONTRACT],
             [
                 'role' => 'user',
                 'content' => $this->historyBlock($history)
-                    . 'Команда: ' . $command . "\n\n"
-                    . $this->sourceBlock($text, $formattingJson),
+                    . $this->sourceBlock($text, $formattingJson)
+                    . '<last_command>ПОСЛЕДНЯЯ КОМАНДА — главная, она важнее всех реплик разговора: '
+                    . $command . '</last_command>',
             ],
-        ]);
+        ], $model === '' ? null : $model);
     }
 
     /**
@@ -136,11 +150,21 @@ final class LlmTextService
      * nothing to edit — the command comes from the field of the block.
      */
     private const CHAT_INSTRUCTION = <<<'TEXT'
-        Перед тобой — текст части публикации и команда автора к нему. Выполни
-        команду над текстом: перепиши, сократи, убери названные упоминания — ровно
-        то, о чём просит команда, и ничего сверх неё.
+        Перед тобой — текст части публикации, разговор и последняя команда автора.
+        Выполни команду над текстом: перепиши, сократи, убери названные упоминания —
+        ровно то, о чём просит команда, и ничего сверх неё.
+        Единственный актуальный текст — блок <current_text>. Реплики «Модель:» в
+        разговоре это только предложения, которые автор мог не принять: они НЕ
+        являются состоянием документа и не должны возвращаться в ответе, если их
+        нет в <current_text> или если команда прямо их не называет.
+        Блок <last_command> имеет приоритет над разговором: если прошлая реплика
+        спорит с командой, выполняй команду.
         Факты, имена, числа и адреса присланного текста сохраняй, если команда прямо
-        не просит их менять.
+        не просит их менять. Не соглашайся с утверждением автора, если оно
+        противоречит тексту: верни текст без изменений и сообщи об этом полем
+        "status":"cannot_verify" вместо выдуманной правки.
+        Если у тебя нет инструмента проверить утверждение (карты, сайт, базу), не
+        пиши, что проверил: сообщи поле "status":"cannot_verify" и не меняй текст.
         Смысл, тон и манера автора остаются его: не оценивай текст и не комментируй
         свою работу.
         Выделение перенеси на исправленный текст и пересчитай его границы; там, где
@@ -208,7 +232,7 @@ final class LlmTextService
             ['role' => 'user', 'content' => $sample->block],
         ]);
 
-        return mb_substr(trim($content), 0, self::MAX_PORTRAIT_CHARS);
+        return mb_substr(trim($content->text), 0, self::MAX_PORTRAIT_CHARS);
     }
 
     private function rewrite(string $styleName, string $portrait, string $text, string $formattingJson): LlmAnswer
@@ -269,9 +293,30 @@ final class LlmTextService
     /**
      * @param array<int, array{role: string, content: string}> $messages
      */
-    private function call(array $messages, ?string $modelOverride = null): string
+    private function call(array $messages, ?string $modelOverride = null): LlmReply
     {
-        return $this->client->chat($messages, $this->timeout(), $modelOverride)->text;
+        $reply = $this->client->chat($messages, $this->timeout(), $modelOverride);
+        $this->logReply($reply, $modelOverride);
+
+        return $reply;
+    }
+
+    /**
+     * The reasoning and the finish reason of one reply go to a log category of
+     * their own: the raw transport body is too big to read for this, and the
+     * browser shows the same fields when the debug flag is on.
+     */
+    private function logReply(LlmReply $reply, ?string $requestedModel): void
+    {
+        Yii::warning([
+            'event' => 'llm.reply',
+            'requestedModel' => $requestedModel,
+            'model' => $reply->actualModel,
+            'finishReason' => $reply->finishReason,
+            'reasoning' => $reply->reasoning,
+            'promptTokens' => $reply->promptTokens,
+            'completionTokens' => $reply->completionTokens,
+        ], 'llm.reasoning');
     }
 
     /**
@@ -282,17 +327,17 @@ final class LlmTextService
      *
      * @param array<int, array{role: string, content: string}> $messages
      */
-    private function callWithFallback(array $messages): string
+    private function callWithFallback(array $messages): LlmReply
     {
         $result = $this->call($messages);
-        if (trim($result) !== '') {
+        if (trim($result->text) !== '') {
             return $result;
         }
 
         foreach ($this->fallbackModels() as $fallbackModel) {
             try {
                 $result = $this->call($messages, $fallbackModel);
-                if (trim($result) !== '') {
+                if (trim($result->text) !== '') {
                     return $result;
                 }
             } catch (LlmRequestException) {
@@ -312,11 +357,11 @@ final class LlmTextService
      *
      * @param array<int, array{role: string, content: string}> $messages
      */
-    private function ask(array $messages): LlmAnswer
+    private function ask(array $messages, ?string $modelOverride = null): LlmAnswer
     {
-        // First attempt: the model from settings (null = use the setting).
+        // First attempt: the per-task model when one is named, else the setting.
         try {
-            return $this->answerOf($this->call($messages));
+            return $this->answerOf($this->call($messages, $modelOverride));
         } catch (LlmRequestException $first) {
             if (!$this->isFormatError($first)) {
                 throw $first;
@@ -366,7 +411,7 @@ final class LlmTextService
             ? 'Меток у этого текста нет.'
             : 'Метки этого текста, единицы UTF-16: ' . $entities->toJson();
 
-        return "Текст части:\n" . $text . "\n\n" . $marks;
+        return "<current_text>\n" . $text . "\n\n" . $marks . "\n</current_text>\n\n";
     }
 
     /**
@@ -374,7 +419,7 @@ final class LlmTextService
      * first, each named by who wrote it. No history — no block, so a first reply
      * is not preceded by an empty section.
      *
-     * @param array<int, array{role: string, content: string}> $history
+     * @param array<int, array{role: string, content: string, status?: string}> $history
      */
     private function historyBlock(array $history): string
     {
@@ -384,7 +429,13 @@ final class LlmTextService
 
         $lines = [];
         foreach (array_slice($history, -self::HISTORY_WINDOW) as $message) {
-            $who = $message['role'] === 'assistant' ? 'Модель: ' : 'Вы: ';
+            $who = $message['role'] === 'assistant'
+                ? (($message['status'] ?? '') === LlmChatMessageData::STATUS_ACCEPTED
+                    ? 'Модель (принято, это уже в тексте): '
+                    : (($message['status'] ?? '') === LlmChatMessageData::STATUS_REJECTED
+                        ? 'Модель (отклонено, не используй): '
+                        : 'Модель (предложение, могло быть не принято): '))
+                : 'Вы: ';
             $lines[] = $who . $message['content'];
         }
 
@@ -397,9 +448,9 @@ final class LlmTextService
      * The contract read back. `fromArray` drops the types the channel cannot
      * render, `assertFitsText` refuses marks that do not describe this text.
      */
-    private function answerOf(string $content): LlmAnswer
+    private function answerOf(LlmReply $reply): LlmAnswer
     {
-        $payload = $this->jsonPiece($content);
+        $payload = $this->jsonPiece($reply->text);
         if ($payload === null || !isset($payload['text']) || !is_string($payload['text'])) {
             throw new LlmRequestException('Ответ LLM не разбирается: в нём нет текста.');
         }
@@ -409,7 +460,7 @@ final class LlmTextService
             $raw = $payload['entities'];
         }
 
-        $answer = new LlmAnswer($payload['text'], MessageEntities::fromArray($raw));
+        $answer = new LlmAnswer($payload['text'], MessageEntities::fromArray($raw), $reply);
         try {
             $answer->entities->assertFitsText($answer->text);
         } catch (InvalidArgumentException $e) {

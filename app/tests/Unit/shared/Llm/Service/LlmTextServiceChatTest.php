@@ -43,7 +43,7 @@ final class LlmTextServiceChatTest extends Unit
             new InMemorySettingsRepository($values + [
                 'llmApiKey' => 'ключ',
                 'llmModel' => 'auto',
-                'llmTimeoutSeconds' => '45',
+                'llmTimeoutSeconds' => '180',
                 'activeTextStyle' => self::STYLE,
             ]),
             new ListedStylesStub([self::STYLE]),
@@ -86,8 +86,17 @@ final class LlmTextServiceChatTest extends Unit
         $answer = $this->_service->chat('сократи текст', 'Братишка, мы в Америке.', '', []);
 
         $this->assertSame(1, $this->_stub->calls);
-        $this->assertSame([45], $this->_stub->timeouts);
+        $this->assertSame([180], $this->_stub->timeouts);
         $this->assertSame('Коротко: братишка, мы в Америке.', $answer->text);
+    }
+
+    public function testTheDialogUsesItsOwnModelWhenOneIsNamed(): void
+    {
+        $this->service(['llmBaseUrl' => 'http://host.docker.internal:31415/v1', 'llmModelChat' => 'chat-model']);
+
+        $this->_service->chat('сократи текст', 'Братишка, мы в Америке.', '', []);
+
+        $this->assertSame(['chat-model'], $this->_stub->models);
     }
 
     public function testTheSystemPromptIsTheInstructionOfTheCode(): void
@@ -99,7 +108,11 @@ final class LlmTextServiceChatTest extends Unit
 
         $this->assertSame('system', $messages[0]['role']);
         $this->assertSame('user', $messages[1]['role']);
-        $this->assertStringStartsWith('Перед тобой — текст части публикации и команда автора к нему.', $system);
+        $this->assertStringStartsWith(
+            'Перед тобой — текст части публикации, разговор и последняя команда автора.',
+            $system,
+        );
+        $this->assertStringContainsString('<last_command>', $system);
         $this->assertStringContainsString(LlmTextService::ANSWER_CONTRACT, $system);
     }
 
@@ -121,11 +134,16 @@ final class LlmTextServiceChatTest extends Unit
     {
         $user = $this->userMessage($this->history(2));
 
-        $this->assertStringContainsString('Команда: сократи текст', $user);
+        $this->assertStringContainsString('ПОСЛЕДНЯЯ КОМАНДА — главная, она важнее всех реплик разговора: сократи текст', $user);
         $this->assertGreaterThan(
             strpos($user, '--- конец разговора ---'),
-            strpos($user, 'Команда: '),
+            strpos($user, '<last_command>'),
             'Команда идёт за блоком истории: модель читает разговор до того, как ей прикажут.',
+        );
+        $this->assertGreaterThan(
+            strpos($user, '</current_text>'),
+            strpos($user, '<last_command>'),
+            'Команда стоит после актуального текста: именно её модель читает последней.',
         );
     }
 
@@ -153,9 +171,9 @@ final class LlmTextServiceChatTest extends Unit
         ]);
 
         $this->assertStringContainsString('Вы: сократи текст', $user);
-        $this->assertStringContainsString('Модель: Коротко: братишка, мы в Америке.', $user);
+        $this->assertStringContainsString('Модель (предложение, могло быть не принято): Коротко: братишка, мы в Америке.', $user);
         $this->assertStringContainsString(
-            "Вы: сократи текст\nМодель: Коротко: братишка, мы в Америке.",
+            "Вы: сократи текст\nМодель (предложение, могло быть не принято): Коротко: братишка, мы в Америке.",
             $user,
             'Реплики идут в блоке от старых к новым: модель не видит ответа раньше своей команды.',
         );
@@ -169,7 +187,7 @@ final class LlmTextServiceChatTest extends Unit
         $this->assertStringContainsString('реплика 00', $user);
         $this->assertStringContainsString('реплика 05', $user);
         $this->assertStringContainsString(
-            "Модель: реплика 03\nВы: реплика 04",
+            "Модель (предложение, могло быть не принято): реплика 03\nВы: реплика 04",
             $user,
             'Реплики идут в порядке разговора, а не группами по говорящим.',
         );

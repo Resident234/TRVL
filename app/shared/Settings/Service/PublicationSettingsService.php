@@ -307,6 +307,15 @@ final class PublicationSettingsService
             'hint' => 'Алиас роутера прокси, а не имя модели: какое окно у «auto» и на что он меняется — '
                 . 'дело роутера.',
         ],
+        'llmModelChat' => [
+            'type' => 'text',
+            'default' => 'auto',
+            'min' => 0,
+            'max' => 120,
+            'label' => 'Модель LLM для диалога',
+            'hint' => '«auto» — та же модель, что общая «Модель LLM». Своя модель нужна, чтобы правки '
+                . 'в диалоге не зависели от ротации «auto» и не менялись между репликами.',
+        ],
         'llmPromptSpelling' => [
             'type' => 'textarea',
             'default' => self::DEFAULT_PROMPT_SPELLING,

@@ -50,6 +50,31 @@ final class FakeChatHistory implements LlmChatRepositoryInterface
         return $id;
     }
 
+    public function markAcceptance(int $id, string $partGroupId, string $status): bool
+    {
+        $this->calls[] = 'markAcceptance';
+        foreach ($this->rows as $index => $row) {
+            if ($row->id === $id && $row->partGroupId === $partGroupId) {
+                $this->rows[$index] = new LlmChatMessageData(
+                    $row->id,
+                    $row->partGroupId,
+                    $row->partOrder,
+                    $row->role,
+                    $row->content,
+                    $row->replacementText,
+                    $row->replacementFormatting,
+                    $row->createdAt,
+                    $status,
+                    $row->model,
+                );
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @return LlmChatMessageData[]
      */
