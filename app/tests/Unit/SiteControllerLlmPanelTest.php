@@ -263,7 +263,7 @@ final class SiteControllerLlmPanelTest extends Unit
 
     public function testSpellingAnswersTheRefusalOfTheProxy(): void
     {
-        $controller = $this->controller(['текст, а не JSON'], [], $this->part());
+        $controller = $this->controller(array_fill(0, 4, 'текст, а не JSON'), [], $this->part());
 
         $data = $this->data($controller->actionLlmSpelling());
 
@@ -566,7 +566,7 @@ final class SiteControllerLlmPanelTest extends Unit
     public function testChatRefusalOfTheProxyKeepsTheCommandRow(): void
     {
         $body = array_merge($this->part(), ['llmCommand' => 'сократи текст']);
-        $controller = $this->controller(['текст, а не JSON'], [], $body);
+        $controller = $this->controller(array_fill(0, 4, 'текст, а не JSON'), [], $body);
 
         $data = $this->data($controller->actionLlmChat());
 

@@ -21,4 +21,14 @@ interface LlmClientInterface
      * @throws LlmRequestException when the proxy refused, timed out or answered nonsense
      */
     public function chat(array $messages, int $timeout, ?string $modelOverride = null): LlmReply;
+
+    /**
+     * The same question put to several models at once. Keyed by the model
+     * actually asked; a model that refused or timed out has a null reply.
+     *
+     * @param array<int, array{role: string, content: string}> $messages
+     * @param string[] $models
+     * @return array<string, LlmReply|null>
+     */
+    public function chatMany(array $messages, int $timeout, array $models): array;
 }

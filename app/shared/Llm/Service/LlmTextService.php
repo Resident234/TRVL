@@ -94,12 +94,13 @@ final class LlmTextService
         array $history,
         ?string $modelOverride = null,
     ): LlmAnswer {
+        $started = microtime(true);
         $model = $modelOverride ?? (string)$this->settings->value('llmModelChat');
         if ($model === 'auto') {
             $model = null;
         }
 
-        return $this->ask([
+        $messages = [
             ['role' => 'system', 'content' => self::CHAT_INSTRUCTION . self::ANSWER_CONTRACT],
             [
                 'role' => 'user',
@@ -108,7 +109,43 @@ final class LlmTextService
                     . '<last_command>ПОСЛЕДНЯЯ КОМАНДА — главная, она важнее всех реплик разговора: '
                     . $command . '</last_command>',
             ],
-        ], $model === '' ? null : $model);
+        ];
+
+        try {
+            $reply = $this->call($messages, $model);
+            $answer = $this->answerOf($reply);
+            $applied = $this->commandApplied($command, $text, $answer->text);
+            $this->metrics('chat', $reply, [
+                'parseStrategy' => 'primary',
+                'commandApplied' => $applied,
+                'latencyMs' => (int)round((microtime(true) - $started) * 1000),
+            ]);
+            if ($applied) {
+                return $answer;
+            }
+            $reason = 'no_op';
+        } catch (LlmRequestException $e) {
+            $reason = 'format';
+        }
+
+        // The first answer did not do what was asked: put the same question to
+        // several models at once and take the best answer instead of whichever
+        // fallback happens to answer first.
+        $candidates = $this->councilModels($model);
+        if ($candidates === []) {
+            return $this->ask($messages, $model);
+        }
+
+        $answer = $this->council($messages, $command, $text, $candidates, $started);
+        $this->metrics('chat.council', $answer->debug, [
+            'parseStrategy' => 'council',
+            'commandApplied' => true,
+            'fallbacks' => count($candidates),
+            'latencyMs' => (int)round((microtime(true) - $started) * 1000),
+            'firstAttempt' => $reason,
+        ]);
+
+        return $answer;
     }
 
     /**
@@ -143,6 +180,9 @@ final class LlmTextService
      * of numbers lives in code so the two halves cannot drift apart on their own.
      */
     public const HISTORY_WINDOW = 12;
+
+    /** How many extra models the council asks when the first answer is weak. */
+    public const COUNCIL_SIZE = 2;
 
     /**
      * The instruction of the free dialog. It is a const of the code, not a setting:
@@ -317,6 +357,151 @@ final class LlmTextService
             'promptTokens' => $reply->promptTokens,
             'completionTokens' => $reply->completionTokens,
         ], 'llm.reasoning');
+    }
+
+    /**
+     * One compact record per operation, so parse failures, no-ops and fallback
+     * rates can be compared between models without reading the raw bodies.
+     *
+     * @param array<string, mixed> $extra
+     */
+    private function metrics(string $task, ?LlmReply $reply, array $extra): void
+    {
+        Yii::info(array_merge([
+            'event' => 'llm.metrics',
+            'task' => $task,
+            'model' => $reply?->actualModel,
+            'finishReason' => $reply?->finishReason,
+            'reasoningField' => $reply !== null && $reply->reasoning !== '',
+            'promptTokens' => $reply === null ? 0 : $reply->promptTokens,
+            'completionTokens' => $reply === null ? 0 : $reply->completionTokens,
+        ], $extra), 'llm.metrics');
+    }
+
+    /**
+     * The models of the council: the model of this dialog first, then the ones
+     * that passed the edit probe, fastest last. A dialog never rotates to a
+     * model the router happened to pick for one call.
+     *
+     * @return string[]
+     */
+    private function councilModels(?string $primary): array
+    {
+        $models = $primary === null ? [] : [$primary];
+        if ($this->probeRepo !== null) {
+            $models = array_merge($models, $this->probeRepo->bestModels(self::COUNCIL_SIZE + 1));
+        }
+        if ($models === []) {
+            $models = self::FORMAT_FALLBACK_MODELS;
+        }
+
+        $models = array_values(array_unique(array_filter(
+            $models,
+            static fn (string $model): bool => $model !== '' && $model !== 'auto',
+        )));
+
+        return array_slice($models, 0, self::COUNCIL_SIZE + ($primary !== null ? 1 : 0));
+    }
+
+    /**
+     * Did the answer actually do what the command asked? A quoted fragment the
+     * command names and that is still in the answer means the edit was not
+     * made; an unchanged text is a no-op unless the command asked for one.
+     */
+    private function commandApplied(string $command, string $source, string $answer): bool
+    {
+        $source = trim($source);
+        $answer = trim($answer);
+        if ($source === '' || $answer === '') {
+            return false;
+        }
+
+        if (preg_match('~оставь|не меняй|без изменений~ui', $command) === 1) {
+            return $source === $answer;
+        }
+        if ($source === $answer) {
+            return false;
+        }
+
+        preg_match_all('~[«"]([^»"]{2,80})[»"]~u', $command, $matches);
+        foreach ($matches[1] as $target) {
+            if (str_contains($source, $target) && str_contains($answer, $target)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Asks the same question of several models in one flight, rejects answers
+     * that did not apply the command, and returns the best of the rest. Every
+     * candidate and its score go to `llm.council` for later analysis.
+     *
+     * @param array<int, array{role: string, content: string}> $messages
+     * @param string[] $models
+     */
+    private function council(
+        array $messages,
+        string $command,
+        string $source,
+        array $models,
+        float $started,
+    ): LlmAnswer {
+        $replies = $this->client->chatMany($messages, $this->timeout(), $models);
+        $best = null;
+        $bestScore = -1000;
+        $lastReason = 'no_reply';
+        $candidates = [];
+
+        foreach ($replies as $model => $reply) {
+            $answer = null;
+            $score = -1000;
+            $reason = 'no_reply';
+
+            if ($reply instanceof LlmReply) {
+                try {
+                    $answer = $this->answerOf($reply);
+                    $applied = $this->commandApplied($command, $source, $answer->text);
+                    $score = $applied ? 100 : 40;
+                    $reason = $applied ? 'applied' : 'no_op';
+                    if ($reply->finishReason !== 'stop') {
+                        $score -= 20;
+                    }
+                    $delta = abs(mb_strlen($answer->text) - mb_strlen($source));
+                    $score -= min(20, intdiv($delta, 10));
+                } catch (LlmRequestException $e) {
+                    $reason = $e->getMessage();
+                }
+            }
+
+            $lastReason = $reason;
+            $candidates[] = [
+                'model' => (string)$model,
+                'score' => $score,
+                'reason' => $reason,
+                'textLength' => $answer === null ? 0 : mb_strlen($answer->text),
+                'finishReason' => $reply instanceof LlmReply ? $reply->finishReason : '',
+            ];
+            if ($answer !== null && $score > $bestScore) {
+                $best = $answer;
+                $bestScore = $score;
+            }
+        }
+
+        Yii::warning([
+            'event' => 'llm.council',
+            'candidates' => $candidates,
+            'latencyMs' => (int)round((microtime(true) - $started) * 1000),
+        ], 'llm.council');
+
+        if ($best === null) {
+            throw new LlmRequestException(
+                'Ни одна из доступных моделей не вернула подходящего ответа: ' . $lastReason . '.',
+            );
+        }
+
+        return $best;
     }
 
     /**

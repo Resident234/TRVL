@@ -55,7 +55,7 @@ final class LlmModelProbeService
      */
     private const PROBE_MESSAGES = [
         ['role' => 'system', 'content' => LlmTextService::ANSWER_CONTRACT],
-        ['role' => 'user', 'content' => "Текст части:\nКстати сами монголы русский язык знают неплохо.\n\nМеток у этого текста нет."],
+        ['role' => 'user', 'content' => "Текст части:\nКстати сами монголы русский язык знают неплохо.\n\nМеток у этого текста нет.\n\nКоманда: замени «неплохо» на «отлично»."],
     ];
 
     /** Seconds to wait for each probe response. Short to keep the run fast. */
@@ -93,13 +93,13 @@ final class LlmModelProbeService
             }
 
             $probed++;
-            [$isOk, $rank] = $this->probe($modelId);
+            [$isOk, $rank, $editOk] = $this->probe($modelId);
 
             if ($isOk) {
                 $ok++;
             }
 
-            $this->repo->save($modelId, $isOk, $rank, $now);
+            $this->repo->save($modelId, $isOk, $rank, $now, $editOk);
         }
 
         return ['probed' => $probed, 'ok' => $ok, 'skipped' => $skipped];
@@ -147,7 +147,7 @@ final class LlmModelProbeService
     }
 
     /**
-     * @return array{0: bool, 1: int}  [isOk, rankMs]
+     * @return array{0: bool, 1: int, 2: bool}  [isOk, rankMs, editOk]
      */
     private function probe(string $modelId): array
     {
@@ -162,17 +162,20 @@ final class LlmModelProbeService
             $from = strpos($content, '{');
             $to = strrpos($content, '}');
             if ($from === false || $to === false || $to <= $from) {
-                return [false, 9999];
+                return [false, 9999, false];
             }
 
             $decoded = json_decode(substr($content, $from, $to - $from + 1), true);
             if (!is_array($decoded) || !isset($decoded['text']) || !is_string($decoded['text'])) {
-                return [false, 9999];
+                return [false, 9999, false];
             }
 
-            return [true, min($elapsed, 9998)];
+            $text = $decoded['text'];
+            $editOk = str_contains($text, 'отлично') && !str_contains($text, 'неплохо');
+
+            return [true, min($elapsed, 9998), $editOk];
         } catch (LlmRequestException) {
-            return [false, 9999];
+            return [false, 9999, false];
         }
     }
 

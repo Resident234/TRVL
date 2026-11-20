@@ -216,6 +216,31 @@ final class LlmTextServiceChatTest extends Unit
         $this->assertStringNotContainsString('Разговор до этой команды', $user);
     }
 
+    public function testACouncilReplacesAnAnswerThatDidNotApplyTheCommand(): void
+    {
+        $source = 'Кстати сами монголы русский язык знают неплохо.';
+        $good = 'Кстати сами монголы русский язык знают отлично.';
+        $json = static fn (string $text): string => (string)json_encode(
+            ['text' => $text, 'entities' => []],
+            JSON_UNESCAPED_UNICODE,
+        );
+        $this->service(
+            ['llmBaseUrl' => 'http://host.docker.internal:31415/v1'],
+            [$json($source), $json($source), $json($good)],
+        );
+
+        $answer = $this->_service->chat(
+            'замени «неплохо» на «отлично»',
+            $source,
+            '',
+            [],
+        );
+
+        $this->assertSame($good, $answer->text);
+        $this->assertCount(1, $this->_stub->councilModels);
+        $this->assertLessThanOrEqual(LlmTextService::COUNCIL_SIZE, count($this->_stub->councilModels[0]));
+    }
+
     public function testAnUnparseableAnswerIsRefused(): void
     {
         // 1 primary + 3 fallback models — all return the same bad answer.

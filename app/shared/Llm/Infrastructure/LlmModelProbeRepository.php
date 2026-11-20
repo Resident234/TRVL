@@ -24,7 +24,7 @@ final class LlmModelProbeRepository
      *
      * @param int $rank Lower is faster/better; set from response latency.
      */
-    public function save(string $modelId, bool $isOk, int $rank, string $now): void
+    public function save(string $modelId, bool $isOk, int $rank, string $now, bool $editOk = false): void
     {
         $this->db
             ->createCommand()
@@ -34,11 +34,13 @@ final class LlmModelProbeRepository
                     'model_id' => $modelId,
                     'is_ok' => $isOk,
                     'probe_rank' => $rank,
+                    'edit_ok' => $editOk,
                     'probed_at' => $now,
                 ],
                 [
                     'is_ok' => $isOk,
                     'probe_rank' => $rank,
+                    'edit_ok' => $editOk,
                     'probed_at' => $now,
                 ],
             )
@@ -58,6 +60,28 @@ final class LlmModelProbeRepository
                 'SELECT model_id FROM {{%llm_model_probe}}'
                 . ' WHERE is_ok = TRUE'
                 . ' ORDER BY probe_rank ASC'
+                . ' LIMIT :limit',
+                [':limit' => $limit],
+            )
+            ->queryColumn();
+
+        return array_values(array_map('strval', $rows));
+    }
+
+    /**
+     * Models ordered for a quality-sensitive council: those that passed the
+     * edit probe first, then by latency. The fallback chain keeps `okModels()`
+     * with its latency-only order — a council needs different priorities.
+     *
+     * @return string[]
+     */
+    public function bestModels(int $limit = 3): array
+    {
+        $rows = $this->db
+            ->createCommand(
+                'SELECT model_id FROM {{%llm_model_probe}}'
+                . ' WHERE is_ok = TRUE'
+                . ' ORDER BY edit_ok DESC, probe_rank ASC'
                 . ' LIMIT :limit',
                 [':limit' => $limit],
             )

@@ -141,6 +141,112 @@ final class OpenAiCompatibleClient implements LlmClientInterface
     }
 
     /**
+     * One question, several models, one wall-clock wait. The council of the
+     * dialog uses this instead of a chain of sequential fallbacks: a slow model
+     * no longer holds back the others, and every answer arrives with the model
+     * that actually produced it.
+     *
+     * @param array<int, array{role: string, content: string}> $messages
+     * @param string[] $models
+     * @return array<string, \app\shared\Llm\Dto\LlmReply|null>
+     */
+    public function chatMany(array $messages, int $timeout, array $models): array
+    {
+        $baseUrl = (string) $this->settings->value('llmBaseUrl');
+        $apiKey = (string) $this->settings->value('llmApiKey');
+        if ($baseUrl === '' || $apiKey === '') {
+            throw new LlmRequestException('LLM не настроен: адрес или ключ не заданы.');
+        }
+
+        $url = self::chatCompletionsUrl($baseUrl);
+        $timeout = max(1, $timeout);
+        $multi = curl_multi_init();
+        $handles = [];
+        $states = [];
+
+        foreach (array_values(array_unique($models)) as $model) {
+            $body = (string)json_encode([
+                'model' => $model,
+                'messages' => $messages,
+                'stream' => false,
+            ], JSON_UNESCAPED_UNICODE);
+            $handle = curl_init($url);
+            if ($handle === false) {
+                continue;
+            }
+            $state = new \stdClass();
+            $state->status = 0;
+            $state->statusText = '';
+            curl_setopt_array($handle, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => min(20, $timeout),
+                CURLOPT_TIMEOUT => $timeout,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Accept: application/json',
+                    'Authorization: Bearer ' . $apiKey,
+                ],
+                CURLOPT_HEADERFUNCTION => static function ($ch, string $header) use ($state): int {
+                    $trimmed = trim($header);
+                    if (preg_match('~^HTTP/\S+\s+(\d+)~', $trimmed, $m) === 1) {
+                        $state->status = (int)$m[1];
+                        $state->statusText = $trimmed;
+                    }
+
+                    return strlen($header);
+                },
+            ]);
+            curl_multi_add_handle($multi, $handle);
+            $handles[$model] = $handle;
+            $states[$model] = $state;
+        }
+
+        do {
+            $running = 0;
+            curl_multi_exec($multi, $running);
+            if ($running > 0) {
+                curl_multi_select($multi, 0.1);
+            }
+        } while ($running > 0);
+
+        $replies = [];
+        foreach ($handles as $model => $handle) {
+            $raw = (string)curl_multi_getcontent($handle);
+            $state = $states[$model];
+            curl_multi_remove_handle($multi, $handle);
+            curl_close($handle);
+
+            $reply = null;
+            if ($state->status >= 200 && $state->status < 300 && $raw !== '') {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $reply = LlmReply::fromApi($decoded);
+                }
+            }
+            if ($reply === null) {
+                $this->log('warning', 'LLM council member failed', [
+                    'model' => $model,
+                    'status' => $state->status,
+                    'statusLine' => $state->statusText,
+                    'body' => $this->bodyForLog($raw),
+                ]);
+            } else {
+                $this->log('info', 'LLM council member answered', [
+                    'model' => $model,
+                    'textLength' => mb_strlen($reply->text),
+                    'finishReason' => $reply->finishReason,
+                ]);
+            }
+            $replies[$model] = $reply;
+        }
+        curl_multi_close($multi);
+
+        return $replies;
+    }
+
+    /**
      * @return array{0: int, 1: string, 2: string, 3: ?int}
      */
     private function request(string $url, string $body, string $apiKey, int $timeout): array
